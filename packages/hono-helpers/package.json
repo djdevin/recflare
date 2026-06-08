@@ -1,0 +1,27 @@
+{
+	"name": "@repo/hono-helpers",
+	"version": "0.1.4",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-oxlint",
+		"check:types": "run-tsc",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@hono/standard-validator": "0.2.2",
+		"hono": "4.12.9",
+		"http-codex": "0.6.6",
+		"workers-tagged-logger": "1.0.0",
+		"zod": "4.3.6"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.13.3",
+		"@cloudflare/workers-types": "4.20260317.1",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "4.1.0"
+	}
+}

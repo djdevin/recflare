@@ -1,0 +1,23 @@
+{
+	"name": "@repo/turbo-generators",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"check:lint": "run-oxlint",
+		"check:types": "run-tsc",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@turbo/gen": "2.8.20",
+		"slugify": "1.6.8",
+		"zod": "4.3.6",
+		"zx": "8.8.5"
+	},
+	"devDependencies": {
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "4.1.0"
+	}
+}

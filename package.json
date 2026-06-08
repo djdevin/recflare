@@ -1,0 +1,32 @@
+{
+	"name": "workers-monorepo-template",
+	"version": "1.0.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"check:deps": "runx check --deps",
+		"check:format": "runx check --format",
+		"check:lint:all": "run-oxlint",
+		"test": "vitest",
+		"test:ci": "run-vitest-ci"
+	},
+	"devDependencies": {
+		"@babel/plugin-transform-explicit-resource-management": "7.28.6",
+		"@changesets/cli": "2.30.0",
+		"@ianvs/prettier-plugin-sort-imports": "4.6.2",
+		"@repo/oxlint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@repo/workspace-dependencies": "workspace:*",
+		"@turbo/gen": "2.8.20",
+		"prettier": "3.8.1",
+		"prettier-plugin-packagejson": "3.0.2",
+		"prettier-plugin-toml": "2.0.6",
+		"syncpack": "13.0.4",
+		"turbo": "2.8.20",
+		"typescript": "5.9.3",
+		"vitest": "4.1.0"
+	},
+	"packageManager": "pnpm@10.14.0"
+}

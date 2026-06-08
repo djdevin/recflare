@@ -1,0 +1,20 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "example-worker-echoback",
+	"main": "src/example-worker-echoback.app.ts",
+	"compatibility_date": "2025-09-20",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": true,
+	"upload_source_maps": true,
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1 // 100%
+		}
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

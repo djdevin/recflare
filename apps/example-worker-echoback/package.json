@@ -1,0 +1,30 @@
+{
+	"name": "example-worker-echoback",
+	"version": "0.1.4",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"build:wrangler": "run-wrangler-build",
+		"check:lint": "run-oxlint",
+		"check:types": "run-tsc",
+		"check:workers-types": "run-wrangler-types --check",
+		"deploy": "run-wrangler-deploy",
+		"dev": "run-wrangler-dev",
+		"fix:workers-types": "run-wrangler-types",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@repo/hono-helpers": "workspace:*",
+		"hono": "4.12.9",
+		"workers-tagged-logger": "1.0.0"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.13.3",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@types/node": "25.5.0",
+		"vitest": "4.1.0",
+		"wrangler": "4.76.0"
+	}
+}
