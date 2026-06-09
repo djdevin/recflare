@@ -1,10 +1,15 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "example-worker-echoback",
-	"main": "src/example-worker-echoback.app.ts",
+	"name": "match",
+	"main": "src/match.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [],
+	"routes": [
+		{
+			"pattern": "match.rec.djdevin.net",
+			"custom_domain": true
+		}
+	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {
