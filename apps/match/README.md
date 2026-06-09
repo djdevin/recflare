@@ -13,8 +13,9 @@ C# `MatchmakingController`. EF Core (`AppDbContext`) queries are stubbed for now
   (the C# fell back to that file when the account/room instance wasn't found).
 - **`POST /goto/none`** returns the static offline-dorm instance with a fresh
   `photonRoomId`.
-- **`POST /goto/room/:room`** 404s — without a Rooms binding the room can't be
-  resolved, matching the C# `NotFound` path.
+- **`POST /goto/room/:room`** synthesizes the room-instance response (no Rooms
+  binding yet). The dorm gets its known scene id and a private instance; other
+  rooms get an empty `location` and respect the posted `JoinMode` (2 = private).
 - **`POST /player/heartbeat`** echoes the posted heartbeat fields; `roomInstance`
   is always null and `isOnline` false until there's a DB binding.
 - **`/player/login`, `/player/statusvisibility`, `/roominstance/:id/reportjoinresult`**

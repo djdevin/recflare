@@ -81,12 +81,34 @@ describe('auth-gated endpoints', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('POST /goto/room/:room 404s with a valid token (no DB)', async () => {
+	test('POST /goto/room/dormroom returns the dorm instance', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/goto/room/dormroom`, {
 			method: 'POST',
 			headers: await bearer(),
 		})
-		expect(res.status).toBe(404)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			errorCode: number
+			roomInstance: { name: string; location: string; isPrivate: boolean; roomId: number }
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).toMatchObject({
+			name: 'DormRoom',
+			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
+			isPrivate: true,
+			roomId: 1,
+		})
+	})
+
+	test('POST /goto/room/:id synthesizes an instance and honors JoinMode', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/goto/room/42`, {
+			method: 'POST',
+			headers: { ...(await bearer()), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ JoinMode: '2' }).toString(),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { roomInstance: { roomId: number; isPrivate: boolean; name: string } }
+		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true, name: '42' })
 	})
 
 	test('POST /player/heartbeat 401s without a token', async () => {

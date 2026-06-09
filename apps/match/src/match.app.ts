@@ -123,9 +123,40 @@ const app = new Hono<App>()
 	.post('/goto/room/:room', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// No Rooms binding → the room can never be found (C# returns NotFound here).
-		// TODO: resolve the Room, upsert a RoomInstance, and return it.
-		return c.text('Room not found', 404)
+
+		const room = c.req.param('room')
+		const isDorm = room.toLowerCase() === 'dormroom'
+
+		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+		const joinMode = typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
+		const isPrivate = joinMode === 2 || isDorm
+
+		// No Rooms/SubRooms/RoomInstances bindings yet, so synthesize the instance
+		// the C# would build. The dorm scene id is known; other rooms get an empty
+		// location until there's real Room data.
+		// TODO: resolve the Room + SubRoom and upsert a RoomInstance once a DB binding exists.
+		return c.json({
+			errorCode: 0,
+			roomInstance: {
+				roomInstanceId: 1,
+				roomId: isDorm ? 1 : Number.parseInt(room, 10) || 1,
+				subRoomId: isDorm ? 1 : 0,
+				roomInstanceType: 2,
+				location: isDorm ? '76d98498-60a1-430c-ab76-b54a29b7a163' : '',
+				dataBlob: '',
+				eventId: 0,
+				clubId: 0,
+				roomCode: '',
+				photonRegionId: 'us',
+				photonRoomId: crypto.randomUUID(),
+				name: isDorm ? 'DormRoom' : room,
+				maxCapacity: 4,
+				isFull: false,
+				isPrivate,
+				isInProgress: false,
+				EncryptVoiceChat: false,
+			},
+		})
 	})
 
 	.post('/goto/none', (c) =>
