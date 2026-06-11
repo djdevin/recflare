@@ -71,9 +71,19 @@ const app = new Hono<App>({ strict: false })
 	.notFound(withNotFound())
 
 	// ---- Config / version ----------------------------------------------------
-	.get('/api/config/v1/amplitude', (c) => c.json({ AmplitudeKey: 'NoKeyProvided' }))
+	.get('/api/config/v1/amplitude', (c) => c.json({
+		AmplitudeKey: "a",
+		StatSigKey: "a",
+		RudderStackKey: "a",
+		UseRudderStack: false
+	}))
 	.get('/api/config/v2', (c) => c.json(apiConfigV2))
-	.get('/api/versioncheck/v4', (c) => c.json({ VersionStatus: 0 }))
+	.get('/api/versioncheck/v4', (c) => c.json({
+		"VersionStatus": 0,
+		"UpdateNotificationStage": 0,
+		"IsVersionIslanded": false,
+		"IsCrossPlayDisabled": false,
+	}))
 	.get('/api/gameconfigs/v1/all', (c) => c.json(gameConfigsV1All))
 
 	// ---- Social ---------------------------------------------------------------

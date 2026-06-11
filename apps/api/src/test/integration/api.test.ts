@@ -42,7 +42,7 @@ describe('public endpoints', () => {
 
 	test('GET /api/versioncheck/v4', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4`)
-		expect(await res.json()).toEqual({ VersionStatus: 0 })
+		expect(await res.json()).toMatchObject({ VersionStatus: 0 })
 	})
 
 	test('GET /api/relationships/v2/get returns empty array', async () => {

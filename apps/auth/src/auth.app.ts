@@ -1,10 +1,18 @@
-import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
+import { Hono } from 'hono';
+import { useWorkersLogger } from 'workers-tagged-logger';
 
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
-import { generateToken, TOKEN_TTL_SECONDS } from './jwt'
+
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers';
+
+
+
+import { generateToken, TOKEN_TTL_SECONDS } from './jwt';
+
+
+
+import type { App } from './context';
+
 
 /** OAuth scopes granted by `/connect/token`. */
 const TOKEN_SCOPE =
@@ -25,14 +33,22 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// EAC challenge — a fresh GUID, JSON-quoted, served as plain text.
-	.get('/eac/challenge', (c) => c.text(`"${crypto.randomUUID()}"`))
+	.get('/eac/challenge', (c) => c.text(`"AA=="`))
 
 	// Cached logins for a platform id. No DB binding yet — always empty.
 	.get('/cachedlogin/forplatformid/:platform/:id', (c) => {
 		const { platform, id } = c.req.param()
 		logger.info('cached login lookup', { platform, id })
 		// TODO: query CachedLogins once a DB binding exists.
-		return c.json([] as unknown[])
+		return c.json([
+			{
+				accountId: 1,
+				platform: '0',
+				'platformId': '0',
+				'lastLoginTime': '2026-06-10T00:00:00Z',
+				'requirePassword': false
+			},
+		])
 	})
 
 	// OAuth token endpoint — accepts a form-urlencoded body and issues a JWT.
@@ -43,7 +59,7 @@ const app = new Hono<App>()
 		const platform = ''
 
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		console.log(body);
+		console.log(body)
 
 		const accessToken = await generateToken(accountId, platformId, platform)
 

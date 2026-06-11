@@ -1,1 +1,373 @@
-{"ShareBaseUrl":"https://rec.net/{0}","LevelProgressionMaps":[{"Level":0,"RequiredXp":0,"GiftDropId":null},{"Level":1,"RequiredXp":10,"GiftDropId":3288},{"Level":2,"RequiredXp":10,"GiftDropId":3293},{"Level":3,"RequiredXp":10,"GiftDropId":3288},{"Level":4,"RequiredXp":20,"GiftDropId":3293},{"Level":5,"RequiredXp":20,"GiftDropId":3288},{"Level":6,"RequiredXp":20,"GiftDropId":3293},{"Level":7,"RequiredXp":20,"GiftDropId":3288},{"Level":8,"RequiredXp":20,"GiftDropId":3293},{"Level":9,"RequiredXp":20,"GiftDropId":3288},{"Level":10,"RequiredXp":20,"GiftDropId":3293},{"Level":11,"RequiredXp":45,"GiftDropId":3293},{"Level":12,"RequiredXp":45,"GiftDropId":3293},{"Level":13,"RequiredXp":45,"GiftDropId":3293},{"Level":14,"RequiredXp":45,"GiftDropId":3293},{"Level":15,"RequiredXp":45,"GiftDropId":3293},{"Level":16,"RequiredXp":45,"GiftDropId":3293},{"Level":17,"RequiredXp":45,"GiftDropId":3293},{"Level":18,"RequiredXp":45,"GiftDropId":3293},{"Level":19,"RequiredXp":45,"GiftDropId":3293},{"Level":20,"RequiredXp":45,"GiftDropId":3293},{"Level":21,"RequiredXp":115,"GiftDropId":3293},{"Level":22,"RequiredXp":115,"GiftDropId":3292},{"Level":23,"RequiredXp":115,"GiftDropId":3293},{"Level":24,"RequiredXp":115,"GiftDropId":3292},{"Level":25,"RequiredXp":115,"GiftDropId":3293},{"Level":26,"RequiredXp":115,"GiftDropId":3292},{"Level":27,"RequiredXp":115,"GiftDropId":3293},{"Level":28,"RequiredXp":115,"GiftDropId":3292},{"Level":29,"RequiredXp":115,"GiftDropId":3293},{"Level":30,"RequiredXp":115,"GiftDropId":3292},{"Level":31,"RequiredXp":360,"GiftDropId":3291},{"Level":32,"RequiredXp":360,"GiftDropId":3292},{"Level":33,"RequiredXp":360,"GiftDropId":3292},{"Level":34,"RequiredXp":360,"GiftDropId":3292},{"Level":35,"RequiredXp":360,"GiftDropId":3291},{"Level":36,"RequiredXp":360,"GiftDropId":3292},{"Level":37,"RequiredXp":360,"GiftDropId":3292},{"Level":38,"RequiredXp":360,"GiftDropId":3292},{"Level":39,"RequiredXp":360,"GiftDropId":3292},{"Level":40,"RequiredXp":360,"GiftDropId":3291},{"Level":41,"RequiredXp":1080,"GiftDropId":3291},{"Level":42,"RequiredXp":1080,"GiftDropId":3291},{"Level":43,"RequiredXp":1080,"GiftDropId":3291},{"Level":44,"RequiredXp":1080,"GiftDropId":3291},{"Level":45,"RequiredXp":1080,"GiftDropId":3291},{"Level":46,"RequiredXp":1080,"GiftDropId":3291},{"Level":47,"RequiredXp":1080,"GiftDropId":3291},{"Level":48,"RequiredXp":1080,"GiftDropId":3291},{"Level":49,"RequiredXp":1080,"GiftDropId":3291},{"Level":50,"RequiredXp":1080,"GiftDropId":3290},{"Level":51,"RequiredXp":270,"GiftDropId":33363},{"Level":52,"RequiredXp":270,"GiftDropId":3292},{"Level":53,"RequiredXp":297,"GiftDropId":33462},{"Level":54,"RequiredXp":297,"GiftDropId":3291},{"Level":55,"RequiredXp":297,"GiftDropId":18152},{"Level":56,"RequiredXp":356,"GiftDropId":3292},{"Level":57,"RequiredXp":356,"GiftDropId":33466},{"Level":58,"RequiredXp":356,"GiftDropId":3291},{"Level":59,"RequiredXp":356,"GiftDropId":3314},{"Level":60,"RequiredXp":356,"GiftDropId":3290},{"Level":61,"RequiredXp":428,"GiftDropId":3292},{"Level":62,"RequiredXp":428,"GiftDropId":33338},{"Level":63,"RequiredXp":428,"GiftDropId":3292},{"Level":64,"RequiredXp":428,"GiftDropId":33463},{"Level":65,"RequiredXp":428,"GiftDropId":4463},{"Level":66,"RequiredXp":428,"GiftDropId":3291},{"Level":67,"RequiredXp":428,"GiftDropId":3880},{"Level":68,"RequiredXp":428,"GiftDropId":3292},{"Level":69,"RequiredXp":428,"GiftDropId":33464},{"Level":70,"RequiredXp":428,"GiftDropId":33329},{"Level":71,"RequiredXp":556,"GiftDropId":3292},{"Level":72,"RequiredXp":556,"GiftDropId":3025},{"Level":73,"RequiredXp":556,"GiftDropId":3291},{"Level":74,"RequiredXp":556,"GiftDropId":33305},{"Level":75,"RequiredXp":556,"GiftDropId":33467},{"Level":76,"RequiredXp":556,"GiftDropId":3292},{"Level":77,"RequiredXp":556,"GiftDropId":33465},{"Level":78,"RequiredXp":556,"GiftDropId":3291},{"Level":79,"RequiredXp":556,"GiftDropId":33202},{"Level":80,"RequiredXp":556,"GiftDropId":33051},{"Level":81,"RequiredXp":778,"GiftDropId":3291},{"Level":82,"RequiredXp":778,"GiftDropId":33335},{"Level":83,"RequiredXp":778,"GiftDropId":3292},{"Level":84,"RequiredXp":778,"GiftDropId":33281},{"Level":85,"RequiredXp":778,"GiftDropId":33203},{"Level":86,"RequiredXp":778,"GiftDropId":3291},{"Level":87,"RequiredXp":778,"GiftDropId":33468}],"DailyObjectives":[[{"type":1030,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":1033,"score":10,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":2000,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}],[{"type":601,"score":2,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":32,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":6,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}],[{"type":301,"score":2,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":302,"score":2,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":6,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}],[{"type":701,"score":2,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":702,"score":20,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":32,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}],[{"type":1010,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":1013,"score":10,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":6,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}],[{"type":500,"score":2,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":502,"score":20,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":2000,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}],[{"type":1020,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":1023,"score":10,"xp":200,"descriptionOverride":null,"tooltipOverride":null},{"type":32,"score":1,"xp":200,"descriptionOverride":null,"tooltipOverride":null}]],"ServerMaintenance":{"StartsInMinutes":0},"AutoMicMutingConfig":{"MicSpamVolumeThreshold":1.125,"MicVolumeSampleInterval":0.25,"MicVolumeSampleRollingWindowLength":7,"MicSpamSamplePercentageForWarning":0.8,"MicSpamSamplePercentageForWarningToEnd":0.2,"MicSpamSamplePercentageForForceMute":0.8,"MicSpamSamplePercentageForForceMuteToEnd":0.2,"MicSpamWarningStateVolumeMultiplier":0.25},"StorefrontConfig":{"MinPlayerLevelForGifting":15,"LatestStoreBadgeDateTime":"2025-11-13T17:27:21.5641043Z"},"RoomKeyConfig":{"MaxKeysPerRoom":500},"RoomCurrencyConfig":{"AwardCurrencyCooldownSeconds":5}}
+{
+	"LevelProgressionMaps": [
+		{
+			"Level": 0,
+			"RequiredXp": 0,
+			"GiftRarity": -1
+		},
+		{
+			"Level": 1,
+			"RequiredXp": 10,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 2,
+			"RequiredXp": 10,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 3,
+			"RequiredXp": 10,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 4,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 5,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 6,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 7,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 8,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 9,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 10,
+			"RequiredXp": 20,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 11,
+			"RequiredXp": 45,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 12,
+			"RequiredXp": 45,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 13,
+			"RequiredXp": 45,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 14,
+			"RequiredXp": 45,
+			"GiftRarity": 10
+		},
+		{
+			"Level": 15,
+			"RequiredXp": 45,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 16,
+			"RequiredXp": 45,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 17,
+			"RequiredXp": 45,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 18,
+			"RequiredXp": 45,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 19,
+			"RequiredXp": 45,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 20,
+			"RequiredXp": 45,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 21,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 22,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 23,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 24,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 25,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 26,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 27,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 28,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 29,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 30,
+			"RequiredXp": 115,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 31,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 32,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 33,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 34,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 35,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 36,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 37,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 38,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 39,
+			"RequiredXp": 360,
+			"GiftRarity": 20
+		},
+		{
+			"Level": 40,
+			"RequiredXp": 360,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 41,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 42,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 43,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 44,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 45,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 46,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 47,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 48,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 49,
+			"RequiredXp": 1080,
+			"GiftRarity": 30
+		},
+		{
+			"Level": 50,
+			"RequiredXp": 1080,
+			"GiftRarity": 50
+		}
+	],
+	"DailyObjectives": [
+		[
+			{
+				"type": 1030,
+				"score": 1
+			},
+			{
+				"type": 1033,
+				"score": 10
+			},
+			{
+				"type": 2000,
+				"score": 1
+			}
+		],
+		[
+			{
+				"type": 601,
+				"score": 2
+			},
+			{
+				"type": 31,
+				"score": 1
+			},
+			{
+				"type": 6,
+				"score": 1
+			}
+		],
+		[
+			{
+				"type": 301,
+				"score": 2
+			},
+			{
+				"type": 300,
+				"score": 2
+			},
+			{
+				"type": 6,
+				"score": 1
+			}
+		],
+		[
+			{
+				"type": 700,
+				"score": 2
+			},
+			{
+				"type": 701,
+				"score": 20
+			},
+			{
+				"type": 31,
+				"score": 1
+			}
+		],
+		[
+			{
+				"type": 1010,
+				"score": 1
+			},
+			{
+				"type": 1013,
+				"score": 10
+			},
+			{
+				"type": 6,
+				"score": 1
+			}
+		],
+		[
+			{
+				"type": 500,
+				"score": 2
+			},
+			{
+				"type": 502,
+				"score": 20
+			},
+			{
+				"type": 2000,
+				"score": 1
+			}
+		],
+		[
+			{
+				"type": 1020,
+				"score": 1
+			},
+			{
+				"type": 1023,
+				"score": 10
+			},
+			{
+				"type": 31,
+				"score": 1
+			}
+		]
+	],
+	"ServerMaintenance": {
+		"StartsInMinutes": 0
+	},
+	"AutoMicMutingConfig": {
+		"MicSpamVolumeThreshold": 0.75,
+		"MicVolumeSampleInterval": 0.25,
+		"MicVolumeSampleRollingWindowLength": 10,
+		"MicSpamSamplePercentageForWarning": 0.8,
+		"MicSpamSamplePercentageForWarningToEnd": 0.2,
+		"MicSpamSamplePercentageForForceMute": 0.8,
+		"MicSpamSamplePercentageForForceMuteToEnd": 0.2,
+		"MicSpamWarningStateVolumeMultiplier": 0.25
+	},
+	"ShareBaseUrl": "https://www.rec.djdevin.net/{0}"
+}
