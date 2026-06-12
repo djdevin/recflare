@@ -11,7 +11,7 @@ Player-settings worker served at `playersettings.rec.djdevin.net`.
   player's settings, keyed by the `sub` claim of the Bearer JWT. Returns `200`.
   Persisted in Workers KV (`PLAYER_SETTINGS`, key `player:<id>`).
 
-> The C# `PutPlayerSettings` replaces the player's *entire* settings set on each
+> The C# `PutPlayerSettings` replaces the player's _entire_ settings set on each
 > call; we merge instead, so a single-key PUT (e.g. `key=PlayerSessionCount`)
 > doesn't wipe the others.
 

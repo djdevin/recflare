@@ -37,7 +37,10 @@ async function bearer(sub = '42'): Promise<Record<string, string>> {
 	return { Authorization: `Bearer ${signingInput}.${b64url(sig)}` }
 }
 
-function putForm(fields: Record<string, string>, headers: Record<string, string> = {}): RequestInit {
+function putForm(
+	fields: Record<string, string>,
+	headers: Record<string, string> = {}
+): RequestInit {
 	return {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
@@ -99,8 +102,14 @@ describe('playersettings endpoints', () => {
 	})
 
 	it('PUT /playersettings merges instead of replacing', async () => {
-		await SELF.fetch(`${ORIGIN}/playersettings`, putForm({ key: 'A', value: '1' }, await bearer('8')))
-		await SELF.fetch(`${ORIGIN}/playersettings`, putForm({ key: 'B', value: '2' }, await bearer('8')))
+		await SELF.fetch(
+			`${ORIGIN}/playersettings`,
+			putForm({ key: 'A', value: '1' }, await bearer('8'))
+		)
+		await SELF.fetch(
+			`${ORIGIN}/playersettings`,
+			putForm({ key: 'B', value: '2' }, await bearer('8'))
+		)
 
 		const stored = await env.PLAYER_SETTINGS.get<Record<string, string>>('player:8', 'json')
 		expect(stored).toEqual({ A: '1', B: '2' })
