@@ -104,7 +104,10 @@ export class NotificationsHub extends DurableObject<Env> {
 		if (state) {
 			// Mirrors OnDisconnected: drop this connection's subscriptions, which
 			// also removes it from every player's connection set.
-			this.ctx.storage.sql.exec('DELETE FROM subscriptions WHERE connectionId = ?', state.connectionId)
+			this.ctx.storage.sql.exec(
+				'DELETE FROM subscriptions WHERE connectionId = ?',
+				state.connectionId
+			)
 		}
 		try {
 			ws.close()
@@ -191,7 +194,9 @@ export class NotificationsHub extends DurableObject<Env> {
 		// Flush any notifications queued while these players were offline.
 		for (const playerId of unique) {
 			const pending = this.ctx.storage.sql
-				.exec<{ payload: string }>('SELECT payload FROM pending WHERE playerId = ? ORDER BY id', playerId)
+				.exec<{
+					payload: string
+				}>('SELECT payload FROM pending WHERE playerId = ? ORDER BY id', playerId)
 				.toArray()
 			if (pending.length === 0) continue
 			for (const row of pending) {
@@ -241,14 +246,21 @@ export class NotificationsHub extends DurableObject<Env> {
 		}
 
 		if (delivered === 0) {
-			this.ctx.storage.sql.exec('INSERT INTO pending (playerId, payload) VALUES (?, ?)', playerId, payload)
+			this.ctx.storage.sql.exec(
+				'INSERT INTO pending (playerId, payload) VALUES (?, ?)',
+				playerId,
+				payload
+			)
 			return { delivered: 0, queued: true }
 		}
 		return { delivered, queued: false }
 	}
 
 	/** Broadcast a notification to every connected (handshaken) client. */
-	async broadcast(notificationType: number, data?: Record<string, unknown>): Promise<{ delivered: number }> {
+	async broadcast(
+		notificationType: number,
+		data?: Record<string, unknown>
+	): Promise<{ delivered: number }> {
 		const payload = this.buildNotificationPayload(notificationType, data)
 		let delivered = 0
 		for (const ws of this.ctx.getWebSockets()) {
@@ -266,7 +278,10 @@ export class NotificationsHub extends DurableObject<Env> {
 	 * Build the `Notification` argument: a JSON string `{ Id, Msg }`, matching the
 	 * C# `SendToConnection` (null values are dropped from `Msg`).
 	 */
-	private buildNotificationPayload(notificationType: number, data?: Record<string, unknown>): string {
+	private buildNotificationPayload(
+		notificationType: number,
+		data?: Record<string, unknown>
+	): string {
 		const msg: Record<string, unknown> = {}
 		if (data) {
 			for (const [key, value] of Object.entries(data)) {

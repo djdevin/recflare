@@ -3,8 +3,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
 import defaultAvatarItems from '../static/default-avatar-items.json'
+
+import type { App } from './context'
 
 /**
  * Economy Worker. Hosts the avatar/economy endpoints the game client calls on

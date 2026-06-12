@@ -100,12 +100,16 @@ describe('auth-gated endpoints', () => {
 	test('GET /account/me returns the self account with a valid token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer() })
 		expect(res.status).toBe(200)
-		expect(await res.json()).toMatchObject({
+		const body = (await res.json()) as Record<string, unknown>
+		expect(body).toMatchObject({
 			AccountId: 42,
 			Username: 'Player42',
 			AvailableUsernameChanges: 1,
-			ParentAccountId: null,
 		})
+		// JuniorState + ParentAccountId must be omitted when null, not emitted as
+		// null, or the client's enum parser throws on `juniorState`.
+		expect('JuniorState' in body).toBe(false)
+		expect('ParentAccountId' in body).toBe(false)
 	})
 
 	test('GET /parentalcontrol/me returns the flags', async () => {

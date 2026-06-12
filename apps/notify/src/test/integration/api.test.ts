@@ -15,7 +15,9 @@ interface HubRecord {
 }
 
 /** Open a hub WebSocket, accept it, and complete the SignalR handshake. */
-async function connect(id: string): Promise<{ ws: WebSocket; waitFor: (pred: (r: HubRecord) => boolean) => Promise<HubRecord> }> {
+async function connect(
+	id: string
+): Promise<{ ws: WebSocket; waitFor: (pred: (r: HubRecord) => boolean) => Promise<HubRecord> }> {
 	const res = await exports.default.fetch(`${ORIGIN}/hub/v1?id=${id}`, {
 		headers: { Upgrade: 'websocket' },
 	})
@@ -26,7 +28,8 @@ async function connect(id: string): Promise<{ ws: WebSocket; waitFor: (pred: (r:
 	const records: HubRecord[] = []
 	const waiters: Array<{ pred: (r: HubRecord) => boolean; resolve: (r: HubRecord) => void }> = []
 	ws.addEventListener('message', (e: MessageEvent) => {
-		const text = typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data as ArrayBuffer)
+		const text =
+			typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data as ArrayBuffer)
 		for (const part of text.split(RS)) {
 			if (!part) continue
 			const rec = JSON.parse(part) as HubRecord
@@ -45,7 +48,13 @@ async function connect(id: string): Promise<{ ws: WebSocket; waitFor: (pred: (r:
 		if (existing) return Promise.resolve(existing)
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => reject(new Error('timed out waiting for hub message')), 2000)
-			waiters.push({ pred, resolve: (r) => { clearTimeout(timer); resolve(r) } })
+			waiters.push({
+				pred,
+				resolve: (r) => {
+					clearTimeout(timer)
+					resolve(r)
+				},
+			})
 		})
 	}
 
@@ -67,7 +76,9 @@ const post = (path: string, body: unknown) =>
 
 describe('negotiate', () => {
 	test('POST /hub/v1/negotiate advertises the WebSocket transport', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/hub/v1/negotiate?negotiateVersion=1`, { method: 'POST' })
+		const res = await exports.default.fetch(`${ORIGIN}/hub/v1/negotiate?negotiateVersion=1`, {
+			method: 'POST',
+		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
 			connectionId: string
@@ -113,7 +124,11 @@ describe('hub protocol', () => {
 describe('notification delivery', () => {
 	test('queues for an offline player and flushes on subscribe', async () => {
 		const playerId = 9001
-		const queued = await post('/internal/notify', { playerId, notificationType: 2, data: { messageId: 'm1' } })
+		const queued = await post('/internal/notify', {
+			playerId,
+			notificationType: 2,
+			data: { messageId: 'm1' },
+		})
 		expect(await queued.json()).toMatchObject({ queued: true, delivered: 0 })
 
 		const { ws, waitFor } = await connect('conn-pending')
@@ -127,10 +142,19 @@ describe('notification delivery', () => {
 	test('delivers live to a subscribed player', async () => {
 		const playerId = 9002
 		const { ws, waitFor } = await connect('conn-live')
-		send(ws, { type: 1, invocationId: 's', target: 'SubscribeToPlayers', arguments: [{ playerIds: [playerId] }] })
+		send(ws, {
+			type: 1,
+			invocationId: 's',
+			target: 'SubscribeToPlayers',
+			arguments: [{ playerIds: [playerId] }],
+		})
 		await waitFor((r) => r.type === 3 && r.invocationId === 's')
 
-		const res = await post('/internal/notify', { playerId, notificationType: 1, data: { accountId: 42 } })
+		const res = await post('/internal/notify', {
+			playerId,
+			notificationType: 1,
+			data: { accountId: 42 },
+		})
 		expect(await res.json()).toMatchObject({ delivered: 1, queued: false })
 
 		const note = await waitFor((r) => r.type === 1 && r.target === 'Notification')
@@ -141,10 +165,16 @@ describe('notification delivery', () => {
 
 	test('broadcast reaches connected clients', async () => {
 		const { ws, waitFor } = await connect('conn-broadcast')
-		const res = await post('/internal/broadcast', { notificationType: 25, data: { message: 'maint' } })
+		const res = await post('/internal/broadcast', {
+			notificationType: 25,
+			data: { message: 'maint' },
+		})
 		expect(((await res.json()) as { delivered: number }).delivered).toBeGreaterThanOrEqual(1)
 		const note = await waitFor((r) => r.type === 1 && r.target === 'Notification')
-		expect(JSON.parse((note.arguments as string[])[0])).toEqual({ Id: 25, Msg: { message: 'maint' } })
+		expect(JSON.parse((note.arguments as string[])[0])).toEqual({
+			Id: 25,
+			Msg: { message: 'maint' },
+		})
 		ws.close()
 	})
 })

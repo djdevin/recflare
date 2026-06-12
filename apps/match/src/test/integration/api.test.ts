@@ -39,8 +39,25 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(200)
 	})
 
-	test('GET /player returns the default payload', async () => {
+	test('GET /player?id=N synthesizes a player payload for that id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player?id=99`)
+		expect(res.status).toBe(200)
+		const players = (await res.json()) as Array<{
+			playerId: number
+			isOnline: boolean
+			appVersion: string
+			roomInstance: unknown
+		}>
+		expect(players[0]).toMatchObject({
+			playerId: 99,
+			isOnline: false,
+			appVersion: '',
+			roomInstance: null,
+		})
+	})
+
+	test('GET /player without an id returns the default payload', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/player`)
 		expect(res.status).toBe(200)
 		const players = (await res.json()) as Array<{ playerId: number; isOnline: boolean }>
 		expect(players[0]).toMatchObject({ playerId: 1, isOnline: true, appVersion: '20210129' })
@@ -107,7 +124,9 @@ describe('auth-gated endpoints', () => {
 			body: new URLSearchParams({ JoinMode: '2' }).toString(),
 		})
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as { roomInstance: { roomId: number; isPrivate: boolean; name: string } }
+		const body = (await res.json()) as {
+			roomInstance: { roomId: number; isPrivate: boolean; name: string }
+		}
 		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true, name: '42' })
 	})
 

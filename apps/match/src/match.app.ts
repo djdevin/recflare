@@ -3,9 +3,10 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
-import type { Context } from 'hono'
 import { validateAndGetAccountId } from './jwt'
+
+import type { Context } from 'hono'
+import type { App } from './context'
 
 /**
  * Ported from the C# `MatchmakingController`. Endpoints the C# backs with EF Core
@@ -80,13 +81,33 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// ---- Player presence -----------------------------------------------------
+	// Login is a no-op ack in the C# (`Results.Ok()`).
 	.post('/player/login', (c) => c.body(null, 200))
 
 	.get('/player', (c) => {
-		// C# loads the account + its active RoomInstance; without a DB binding it
-		// always falls through to the JSON/getplayer.json default.
-		// TODO: build the per-account payload once a DB binding exists.
-		return c.json(DEFAULT_GET_PLAYER)
+		// The C# reads the `id` query param: a valid id for an existing account
+		// returns that player's payload; a missing/invalid id (or unknown account)
+		// falls back to the static JSON/getplayer.json default. With no DB we treat
+		// any account as existing and synthesize its payload.
+		const idParam = c.req.query('id')
+		const accountId = idParam ? Number.parseInt(idParam, 10) : Number.NaN
+		if (Number.isNaN(accountId)) return c.json(DEFAULT_GET_PLAYER)
+
+		// No RoomInstances binding → roomInstance null / isOnline false, matching
+		// the C# branch where the account exists but owns no room instance.
+		// TODO: look up the player's active RoomInstance once a DB binding exists.
+		return c.json([
+			{
+				playerId: accountId,
+				statusVisibility: 0,
+				deviceClass: 0,
+				vrMovementMode: 1,
+				roomInstance: null,
+				isOnline: false,
+				appVersion: '',
+				platform: 0,
+			},
+		])
 	})
 
 	.post('/player/heartbeat', async (c) => {

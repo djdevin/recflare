@@ -2,6 +2,7 @@ import { exports } from 'cloudflare:workers'
 import { describe, expect, test } from 'vitest'
 
 import '../../api.app'
+
 import { DEFAULT_AVATAR_ITEMS } from '../../default-avatar-items'
 
 const ORIGIN = 'https://api.rec.djdevin.net'
@@ -37,7 +38,12 @@ describe('public endpoints', () => {
 	test('GET /api/config/v1/amplitude', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/config/v1/amplitude`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ AmplitudeKey: 'NoKeyProvided' })
+		expect(await res.json()).toEqual({
+			AmplitudeKey: 'a',
+			StatSigKey: 'a',
+			RudderStackKey: 'a',
+			UseRudderStack: false,
+		})
 	})
 
 	test('GET /api/versioncheck/v4', async () => {
@@ -53,6 +59,25 @@ describe('public endpoints', () => {
 	test('GET /api/playerReputation/v1/:id echoes the id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v1/99`)
 		expect(await res.json()).toMatchObject({ AccountId: 99, CheerCredit: 20 })
+	})
+
+	test('POST /api/playerReputation/v2/bulk returns a reputation per id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Ids: '1,2,3' }),
+		})
+		expect(res.status).toBe(200)
+		const reps = (await res.json()) as Array<{ AccountId: number; CheerCredit: number }>
+		expect(reps.map((r) => r.AccountId)).toEqual([1, 2, 3])
+		expect(reps.every((r) => r.CheerCredit === 20)).toBe(true)
+	})
+
+	test('POST /api/playerReputation/v2/bulk returns [] without ids', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk`, {
+			method: 'POST',
+		})
+		expect(await res.json()).toEqual([])
 	})
 
 	test('GET /api/storefronts/v1/p2p/betaEnabled returns false', async () => {

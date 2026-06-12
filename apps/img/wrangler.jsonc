@@ -1,0 +1,35 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "img",
+	"main": "src/img.app.ts",
+	"compatibility_date": "2025-09-20",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [
+		{
+			"pattern": "img.rec.djdevin.net",
+			"custom_domain": true
+		}
+	],
+	// Images are stored as objects in an R2 bucket and streamed back by key.
+	"r2_buckets": [
+		{
+			"binding": "IMAGES",
+			"bucket_name": "rec-img"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1 // 100%
+		}
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		// RSA-2048 private key (PKCS8 DER, base64) used to sign image responses
+		// requested with ?sig=p1. This is an INSECURE DEV KEY committed for local
+		// dev / tests — override in production with `wrangler secret put IMG_SIGNING_KEY`.
+		"IMG_SIGNING_KEY": "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDUQhwHM8K84VHLdZi4bwgJpHKv86mi0AEkGmIyrbNxkexI9dDDs0L43TzYkOpgvLrbugH2on7ALeJ21vMVMA0uQhggRYxYkL2GNaXnq8FVc4iuiOLb6U6lHiFX0lF2CYl8FheYk+0dE/gYCXyen3Fydmlswl1q5H4cgmJBPdAdzZGiYtdYJR85vnrhxbwqzsIuWZc9Z/gzvsO58eFj7vzy5arpsjT5BInWqtSLeBqi7Qc+Ptg9OXulRPBfhU6Yco3k3D7+MH1/Yk2lEqn2eLKUJVSB0eeYfPmKoxbzodF/sQlxqVLJiftwLpvWeD0Y9ivLJuKlntC5OCXnaq7YZANpAgMBAAECggEAAmWMs3geJsvUhJubUdnPGWzF7r6tl60JlkLGARR9BjdDl79O0CbiBrVYzok0XEtFQN3kz8gd7kWWXQkoTYDxZShR5WtjnkxkF3Pbn7YMxM49KNta1GjZ/ntMnRU+3jpVVxVYxtxEvSNQldTll1TtjwFPR28aZu6VjfTa7ymng+6dBSVfqe3Fp58Ci2BHDQczRangA3TzB3NOJxDi8VF4IbSHEhSNzVHM/CfsHguXQ8HjYxbsuVU+zlLt/QzdRBWHyyffvxWb5b22VmfeJDgA5QgmW5J9+6rhVZL/RZ8htf43Q5cTxmNxIgQib+gkvgaWTM0hoJGIMuvCU367KM2wQQKBgQD0pimupc5W7wp5cjxV45sp+jLePOHaBKqiNwZSsryVHXSUCK9yViFpKgaQqvIJz8q+ELK69/naN8nTQC8HrcKgQqKAaKBBDdNF03/CuldTdvCNTWrXnQdt/L8ttB1xAAuFW3YoNZN4QV1myeLHReNoTKBmZXwGAgR3+fNEebpA/QKBgQDeGzjg+y7L9g/4TrvCijpo2zE2dzI7GuXpVvizSqeGkAZFBoC5r3qL7r/YpR82aZFI1vP2b3bvEYz+r6W8NdPy7nLcAQeX/4gVnZxmg1hWdAXw0HnluL0nw75BmKGq1XdqjcdzaVYou4ZTemTNot9zckSbfVAw9XyWqUuZlFZd3QKBgQCBB+YyA6cJOLf4h6SE1C9w+1G63rdrqkxok8bU9Qn7R3bF4LLQBddHRPADevV+8UYH6nypmcIAMq5SqaZkUWO17I8SVJw401bbnAnlJSyLi86hZ/Ry1ZImk0gtjbJ9d72bzzpJSMCHi0n8vXvLB/RBfTCX8Oxxqry6nmyMb/so7QKBgCsVqsXx09Ua6WQomcGWINiAVJ6VJrhScnD+PwZAoBi5TY4MQeJDSQlmCe8TsOdUOSuhDvgqDS84/1nUZtkItBG28a79wCRbHGHdDh7Qsc0reo+JUWwflwnkrb55xjqmaCDSWfNoZp9GKTt+TZmaU7BIZUioWWr14/Ix6wlivhI9AoGBAOBX8pgZKUPb5tS0pTIYmnbB8o36Cgs8OaCLVy4iJG9irwrq4FyOlKpWlUI/GKSltVl9564PVL5bexu3nGStFUt+uzKgg5xJxZzbqRUxtgtOvw32bXoHcTvVs1JQ5qo8K6c7MmWbP3n07pr7XzCKc6sFlMtdJBHhrFz5oXvrqOVk"
+	}
+}

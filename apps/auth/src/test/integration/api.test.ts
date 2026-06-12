@@ -26,7 +26,11 @@ describe('auth worker routes', () => {
 			body: 'account_id=42&platform_id=steam-123',
 		})
 		expect(res.status).toBe(200)
-		const json = (await res.json()) as { access_token: string; token_type: string; expires_in: number }
+		const json = (await res.json()) as {
+			access_token: string
+			token_type: string
+			expires_in: number
+		}
 		expect(json.token_type).toBe('Bearer')
 		expect(json.expires_in).toBe(3600)
 		// header.payload.signature

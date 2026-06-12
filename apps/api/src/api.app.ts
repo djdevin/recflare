@@ -3,16 +3,17 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
-import type { Context } from 'hono'
-import { DEFAULT_AVATAR_ITEMS } from './default-avatar-items'
 import apiConfigV2 from '../static/api-config-v2.json'
 import gameConfigsV1All from '../static/gameconfigs-v1-all.json'
 import storefrontGiftDrop2 from '../static/storefronts-v3-giftdropstore-2.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
 import storefrontGiftDrop300 from '../static/storefronts-v3-giftdropstore-300.json'
+import { DEFAULT_AVATAR_ITEMS } from './default-avatar-items'
 import { defaultSettings } from './default-settings'
 import { validateAndGetAccountId } from './jwt'
+
+import type { Context } from 'hono'
+import type { App } from './context'
 
 /**
  * Ported from the C# `APIController`. Endpoints that the C# backs with EF Core
@@ -55,6 +56,21 @@ async function parseFormIds(c: Context<App>): Promise<number[]> {
 		.filter((n) => !Number.isNaN(n))
 }
 
+/** Default reputation for an account — the fallback the C# fills with no DB. */
+function defaultReputation(id: number) {
+	return {
+		AccountId: id,
+		Noteriety: 0,
+		CheerGeneral: 0,
+		CheerHelpful: 0,
+		CheerCreative: 0,
+		CheerGreatHost: 0,
+		CheerSportsman: 0,
+		CheerCredit: 20,
+		SelectedCheer: null,
+	}
+}
+
 // strict: false so trailing-slash routes (e.g. `/gifts/consume/`) match either form.
 const app = new Hono<App>({ strict: false })
 	.use(
@@ -71,19 +87,23 @@ const app = new Hono<App>({ strict: false })
 	.notFound(withNotFound())
 
 	// ---- Config / version ----------------------------------------------------
-	.get('/api/config/v1/amplitude', (c) => c.json({
-		AmplitudeKey: "a",
-		StatSigKey: "a",
-		RudderStackKey: "a",
-		UseRudderStack: false
-	}))
+	.get('/api/config/v1/amplitude', (c) =>
+		c.json({
+			AmplitudeKey: 'a',
+			StatSigKey: 'a',
+			RudderStackKey: 'a',
+			UseRudderStack: false,
+		})
+	)
 	.get('/api/config/v2', (c) => c.json(apiConfigV2))
-	.get('/api/versioncheck/v4', (c) => c.json({
-		"VersionStatus": 0,
-		"UpdateNotificationStage": 0,
-		"IsVersionIslanded": false,
-		"IsCrossPlayDisabled": false,
-	}))
+	.get('/api/versioncheck/v4', (c) =>
+		c.json({
+			VersionStatus: 0,
+			UpdateNotificationStage: 0,
+			IsVersionIslanded: false,
+			IsCrossPlayDisabled: false,
+		})
+	)
 	.get('/api/gameconfigs/v1/all', (c) => c.json(gameConfigsV1All))
 
 	// ---- Social ---------------------------------------------------------------
@@ -91,25 +111,20 @@ const app = new Hono<App>({ strict: false })
 	.get('/api/messages/v2/get', (c) => c.json([]))
 
 	// ---- Reputation / progression --------------------------------------------
-	.get('/api/playerReputation/v1/:id', (c) => {
-		const id = Number.parseInt(c.req.param('id'), 10)
-		return c.json({
-			AccountId: id,
-			Noteriety: 0,
-			CheerGeneral: 0,
-			CheerHelpful: 0,
-			CheerCreative: 0,
-			CheerGreatHost: 0,
-			CheerSportsman: 0,
-			CheerCredit: 20,
-			SelectedCheer: null,
-		})
-	})
+	.get('/api/playerReputation/v1/:id', (c) =>
+		c.json(defaultReputation(Number.parseInt(c.req.param('id'), 10)))
+	)
 	.get('/api/players/v1/progression/:id', (c) => {
 		const id = Number.parseInt(c.req.param('id'), 10)
 		return c.json({ PlayerId: id, Level: 1, XP: 0 })
 	})
 	.post('/api/playerReputation/v1/bulk', (c) => c.json([])) // TODO: hydrate from JSON/bulkprogression.json
+	// Synthesize a default reputation per requested id (the C#'s intended
+	// behavior; its DB-less fallback reads a static JSON file instead).
+	.post('/api/playerReputation/v2/bulk', async (c) => {
+		const ids = await parseFormIds(c)
+		return c.json(ids.map(defaultReputation))
+	})
 	.post('/api/players/v1/progression/bulk', async (c) => {
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
@@ -161,7 +176,8 @@ const app = new Hono<App>({ strict: false })
 		if (id === null) return unauthorized(c)
 
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const giftContext = typeof body.GiftContext === 'string' ? Number.parseInt(body.GiftContext, 10) || 0 : 0
+		const giftContext =
+			typeof body.GiftContext === 'string' ? Number.parseInt(body.GiftContext, 10) || 0 : 0
 		const message = typeof body.Message === 'string' ? body.Message : ''
 		const xp = typeof body.Xp === 'string' ? Number.parseInt(body.Xp, 10) || 0 : 0
 
@@ -214,7 +230,7 @@ const app = new Hono<App>({ strict: false })
 		})
 	)
 	.get('/api/PlayerReporting/v1/voteToKickReasons', (c) => c.json([])) // TODO: hydrate from JSON/vtkreasons.json
-	.post('/api/PlayerReporting/v1/hile', (c) => c.body(null, 200))
+	.post('/api/PlayerReporting/v1/hile', (c) => c.json(false))
 
 	// ---- Settings -------------------------------------------------------------
 	.get('/api/settings/v2', async (c) => {
@@ -319,7 +335,9 @@ const app = new Hono<App>({ strict: false })
 	.get('/roomserver/rooms/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
 	.get('/roomserver/roomsandplaylists/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
 	.get('/roomserver/rooms/createdby/me', (c) => c.json([])) // TODO: hydrate from JSON/ownedrooms.json
-	.get('/roomserver/rooms/:id/interactionby/me', (c) => c.json({ Cheered: false, Favorited: false }))
+	.get('/roomserver/rooms/:id/interactionby/me', (c) =>
+		c.json({ Cheered: false, Favorited: false })
+	)
 	.get('/roomserver/rooms/:id', (c) => {
 		const roomId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(roomId)) return c.notFound()

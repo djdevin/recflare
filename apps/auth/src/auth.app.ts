@@ -1,18 +1,11 @@
-import { Hono } from 'hono';
-import { useWorkersLogger } from 'workers-tagged-logger';
+import { Hono } from 'hono'
+import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { generateToken, TOKEN_TTL_SECONDS } from './jwt'
 
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers';
-
-
-
-import { generateToken, TOKEN_TTL_SECONDS } from './jwt';
-
-
-
-import type { App } from './context';
-
+import type { App } from './context'
 
 /** OAuth scopes granted by `/connect/token`. */
 const TOKEN_SCOPE =
@@ -44,9 +37,9 @@ const app = new Hono<App>()
 			{
 				accountId: 1,
 				platform: '0',
-				'platformId': '0',
-				'lastLoginTime': '2026-06-10T00:00:00Z',
-				'requirePassword': false
+				platformId: '0',
+				lastLoginTime: '2026-06-10T00:00:00Z',
+				requirePassword: false,
 			},
 		])
 	})

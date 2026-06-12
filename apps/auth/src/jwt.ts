@@ -10,8 +10,7 @@ const DEV_SECRET = 'dev-insecure-signing-key-change-me'
 export const TOKEN_TTL_SECONDS = 3600
 
 function base64url(input: ArrayBuffer | string): string {
-	const bytes =
-		typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
+	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
 	let binary = ''
 	for (const byte of bytes) {
 		binary += String.fromCharCode(byte)

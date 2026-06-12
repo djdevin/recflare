@@ -3,8 +3,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
 import endpoints from '../static/endpoints.json'
+
+import type { App } from './context'
 
 /**
  * Name-server / service-discovery worker served at the apex `rec.djdevin.net`.

@@ -1,0 +1,113 @@
+import { env, SELF } from 'cloudflare:test'
+import { describe, expect, it } from 'vitest'
+
+import '../../playersettings.app'
+
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
+const ORIGIN = 'https://playersettings.rec.djdevin.net'
+
+// Mint a token the way the `auth` worker does, using the same dev secret.
+const DEV_SECRET = 'dev-insecure-signing-key-change-me'
+
+function b64url(input: ArrayBuffer | string): string {
+	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
+	let binary = ''
+	for (const byte of bytes) binary += String.fromCharCode(byte)
+	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+async function bearer(sub = '42'): Promise<Record<string, string>> {
+	const now = Math.floor(Date.now() / 1000)
+	const signingInput = `${b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64url(
+		JSON.stringify({ sub, exp: now + 3600 })
+	)}`
+	const key = await crypto.subtle.importKey(
+		'raw',
+		new TextEncoder().encode(DEV_SECRET),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	)
+	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput))
+	return { Authorization: `Bearer ${signingInput}.${b64url(sig)}` }
+}
+
+function putForm(fields: Record<string, string>, headers: Record<string, string> = {}): RequestInit {
+	return {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
+		body: new URLSearchParams(fields).toString(),
+	}
+}
+
+describe('playersettings endpoints', () => {
+	it('GET / reports service status', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ service: 'playersettings', status: 'ok' })
+	})
+
+	it('GET /playersettings 401s without a token', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/playersettings`)
+		expect(res.status).toBe(401)
+	})
+
+	it('GET /playersettings seeds and returns the default settings on first read', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/playersettings`, { headers: await bearer('100') })
+		expect(res.status).toBe(200)
+		const settings = (await res.json()) as Array<{ PlayerId: number; Key: string; Value: string }>
+		expect(settings.length).toBeGreaterThan(0)
+		expect(settings.every((s) => s.PlayerId === 100)).toBe(true)
+		expect(settings.find((s) => s.Key === 'Recroom.OOBE')?.Value).toBe('77')
+		expect(settings.find((s) => s.Key === 'PlayerSessionCount')?.Value).toBe('13')
+
+		// Defaults were persisted to KV.
+		const stored = await env.PLAYER_SETTINGS.get<Record<string, string>>('player:100', 'json')
+		expect(stored?.['Recroom.OOBE']).toBe('77')
+	})
+
+	it('GET /playersettings reflects a value written by PUT', async () => {
+		await SELF.fetch(
+			`${ORIGIN}/playersettings`,
+			putForm({ key: 'PlayerSessionCount', value: '99' }, await bearer('101'))
+		)
+		const res = await SELF.fetch(`${ORIGIN}/playersettings`, { headers: await bearer('101') })
+		const settings = (await res.json()) as Array<{ Key: string; Value: string }>
+		// PUT created the only entry, so GET returns it without seeding defaults.
+		expect(settings).toEqual([{ PlayerId: 101, Key: 'PlayerSessionCount', Value: '99' }])
+	})
+
+	it('PUT /playersettings 401s without a token', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/playersettings`, putForm({ key: 'X', value: '1' }))
+		expect(res.status).toBe(401)
+	})
+
+	it('PUT /playersettings persists the form key/value into KV', async () => {
+		const res = await SELF.fetch(
+			`${ORIGIN}/playersettings`,
+			putForm({ key: 'PlayerSessionCount', value: '1' }, await bearer('7'))
+		)
+		expect(res.status).toBe(200)
+
+		const stored = await env.PLAYER_SETTINGS.get<Record<string, string>>('player:7', 'json')
+		expect(stored).toEqual({ PlayerSessionCount: '1' })
+	})
+
+	it('PUT /playersettings merges instead of replacing', async () => {
+		await SELF.fetch(`${ORIGIN}/playersettings`, putForm({ key: 'A', value: '1' }, await bearer('8')))
+		await SELF.fetch(`${ORIGIN}/playersettings`, putForm({ key: 'B', value: '2' }, await bearer('8')))
+
+		const stored = await env.PLAYER_SETTINGS.get<Record<string, string>>('player:8', 'json')
+		expect(stored).toEqual({ A: '1', B: '2' })
+	})
+
+	it('PUT /playersettings 200s with no parseable settings', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/playersettings`, putForm({}, await bearer('9')))
+		expect(res.status).toBe(200)
+	})
+})

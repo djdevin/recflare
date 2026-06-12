@@ -3,8 +3,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
 import { NotificationsHub } from './notifications-hub'
+
+import type { App } from './context'
 
 /**
  * Ported from the C# `NotifyController`, which maps a SignalR hub at `/hub/v1`

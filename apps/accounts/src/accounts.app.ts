@@ -3,9 +3,10 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import type { App } from './context'
-import type { Context } from 'hono'
 import { validateAndGetAccountId } from './jwt'
+
+import type { Context } from 'hono'
+import type { App } from './context'
 
 /**
  * Ported from the C# `AccountsController`. Endpoints that the C# backs with EF
@@ -36,7 +37,7 @@ interface Account {
  */
 async function authedId(c: Context<App>): Promise<number | null> {
 	const authHeader = c.req.header('Authorization') ?? ''
-	console.log(authHeader);
+	console.log(authHeader)
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
 
 	const token = authHeader.slice('Bearer '.length)
@@ -100,14 +101,17 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		// TODO: load the real account; the C# 404s when the row is missing.
 		const account = defaultAccount(id)
+		// The C# `SelfAccount` marks `JuniorState` (an enum) and `ParentAccountId`
+		// with `[JsonIgnore(WhenWritingNull)]`, so they're OMITTED when null —
+		// emitting `"juniorState":null` makes the client's enum parser throw
+		// ("Can't parse JSON to Enum format"). `Email`/`Phone`/`Birthday` are kept
+		// as null (the C# has no JsonIgnore on those, and they aren't enums).
 		return c.json({
 			...account,
 			ProfileImage: 'hdqeamlcmatc6qzoi2ybgf0ddijjcf.jpg',
 			Email: null,
 			Phone: null,
-			JuniorState: null,
 			Birthday: null,
-			ParentAccountId: null,
 			AvailableUsernameChanges: 1,
 		})
 	})

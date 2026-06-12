@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "playersettings",
+	"main": "src/playersettings.app.ts",
+	"compatibility_date": "2025-09-20",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [
+		{
+			"pattern": "playersettings.rec.djdevin.net",
+			"custom_domain": true
+		}
+	],
+	// Per-player settings persistence.
+	"kv_namespaces": [
+		{
+			"binding": "PLAYER_SETTINGS",
+			"id": "d33a90014e904b0eac720bddcbe0b036"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1 // 100%
+		}
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}
