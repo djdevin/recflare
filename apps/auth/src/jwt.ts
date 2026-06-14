@@ -18,6 +18,27 @@ function base64url(input: ArrayBuffer | string): string {
 	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+/** Scopes the C# `JwtTokenService` stamps onto every token (as a claim array). */
+const TOKEN_SCOPES = [
+	'profile',
+	'rn',
+	'rn.accounts',
+	'rn.accounts.gc',
+	'rn.api',
+	'rn.chat',
+	'rn.clubs',
+	'rn.commerce',
+	'rn.match.read',
+	'rn.match.write',
+	'rn.notify',
+	'rn.rooms',
+	'rn.storage',
+	'offline_access',
+]
+
+/** Roles the C# grants — the client needs `gameClient` to operate. */
+const TOKEN_ROLES = ['gameClient', 'developer', 'moderator']
+
 export async function generateToken(
 	accountId: string,
 	platformId: string,
@@ -26,12 +47,27 @@ export async function generateToken(
 ): Promise<string> {
 	const now = Math.floor(Date.now() / 1000)
 	const header = { alg: 'HS256', typ: 'JWT' }
+	// Mirror the claim set produced by the C# `JwtTokenService.GenerateToken`.
+	// The client reads `role`/`scope` (and expects a well-formed iss/aud) to
+	// authorize itself; a token with only `sub` is rejected before login finishes.
 	const payload = {
-		sub: accountId,
-		platform_id: platformId,
-		platform,
+		iss: 'https://auth.lapis.codes',
+		aud: 'https://auth.lapis.codes/resources',
+		nbf: now,
 		iat: now,
 		exp: now + TOKEN_TTL_SECONDS,
+		auth_time: now,
+		amr: 'cached_login',
+		client_id: 'recroom',
+		sub: accountId,
+		idp: 'local',
+		platform,
+		platform_id: platformId,
+		'rn.ver': '20210129',
+		'rn.plat': '0',
+		role: TOKEN_ROLES,
+		scope: TOKEN_SCOPES,
+		jti: crypto.randomUUID().replace(/-/g, '').toUpperCase(),
 	}
 
 	const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`

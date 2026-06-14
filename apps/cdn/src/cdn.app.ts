@@ -1,0 +1,148 @@
+import { Hono } from 'hono'
+import { useWorkersLogger } from 'workers-tagged-logger'
+
+import { withNotFound, withOnError } from '@repo/hono-helpers'
+
+import loadingScreenTipData from '../static/loading-screen-tip-data.json'
+import { validateAndGetAccountId } from './jwt'
+
+import type { Context } from 'hono'
+import type { App, Env } from './context'
+
+/**
+ * Ported from the C# `CDNController`. The class `[Route("cdn")]` prefix maps to
+ * this worker's subdomain, so method routes are served bare. File-backed routes
+ * (`sigs`, `upload`) have no storage binding yet and are stubbed.
+ */
+
+/**
+ * Resolve the account id from a Bearer token. Returns `null` when the header is
+ * missing, the token is invalid, or the `sub` claim isn't an integer.
+ */
+async function authedId(c: Context<App>): Promise<number | null> {
+	const authHeader = c.req.header('Authorization') ?? ''
+	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
+
+	const token = authHeader.slice('Bearer '.length)
+	const accountId = await validateAndGetAccountId(token)
+	if (!accountId) return null
+
+	const id = Number.parseInt(accountId, 10)
+	return Number.isNaN(id) ? null : id
+}
+
+/** Parse a single-range `Range: bytes=start-end` header into an R2 range. */
+function parseRange(header: string | undefined): R2Range | undefined {
+	if (!header) return undefined
+	const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim())
+	if (!m) return undefined
+	const start = m[1]
+	const end = m[2]
+	if (start === '' && end !== '') return { suffix: Number(end) } // last N bytes
+	if (start !== '') {
+		return end !== '' ? { offset: Number(start), length: Number(end) - Number(start) + 1 } : { offset: Number(start) }
+	}
+	return undefined
+}
+
+/**
+ * Stream a binary asset from the CDN R2 bucket as application/octet-stream
+ * (matching the C#'s `Results.File(..., "application/octet-stream")`, which also
+ * honors Range requests). The C# 404s when the file is missing; so do we.
+ * Supports conditional GET and byte-range requests (206) — large-file
+ * downloaders fetch in ranges, and a 200 where a 206 is expected corrupts the
+ * reassembled file (e.g. EAC "Signatures don't match").
+ */
+async function serveAsset(c: Context<App>, key: string) {
+	if (key.includes('..')) return c.body(null, 400)
+
+	const ifNoneMatch = c.req.header('if-none-match')?.replace(/"/g, '')
+	const range = parseRange(c.req.header('range'))
+	const object = await (c.env as Env).CDN_ASSETS.get(key, {
+		...(ifNoneMatch ? { onlyIf: { etagDoesNotMatch: ifNoneMatch } } : {}),
+		...(range ? { range } : {}),
+	})
+	if (!object) return c.notFound()
+
+	const headers = new Headers()
+	object.writeHttpMetadata(headers)
+	headers.set('etag', object.httpEtag)
+	headers.set('content-type', 'application/octet-stream')
+	headers.set('accept-ranges', 'bytes')
+	headers.set('cache-control', 'public, max-age=3600')
+
+	// Precondition matched (If-None-Match) → R2 returns no body.
+	if (!('body' in object)) return new Response(null, { status: 304, headers })
+
+	// Range honored → 206 Partial Content with Content-Range.
+	if (object.range && c.req.header('range')) {
+		const r = object.range
+		let offset: number
+		let length: number
+		if ('suffix' in r) {
+			length = r.suffix
+			offset = object.size - length
+		} else {
+			offset = r.offset ?? 0
+			length = r.length ?? object.size - offset
+		}
+		headers.set('content-length', String(length))
+		headers.set('content-range', `bytes ${offset}-${offset + length - 1}/${object.size}`)
+		return new Response(object.body, { status: 206, headers })
+	}
+
+	return new Response(object.body, { headers })
+}
+
+const app = new Hono<App>()
+	.use(
+		'*',
+		// middleware
+		(c, next) =>
+			useWorkersLogger(c.env.NAME, {
+				environment: c.env.ENVIRONMENT,
+				release: c.env.SENTRY_RELEASE,
+			})(c, next)
+	)
+
+	.onError(withOnError())
+	.notFound(withNotFound())
+
+	.get('/', (c) => c.json({ service: 'cdn', status: 'ok' }))
+
+	// Loading-screen tips. The C# serves JSON/loadingscreentipdata.json; bundled
+	// here as static JSON.
+	.get('/config/LoadingScreenTipData', (c) => c.json(loadingScreenTipData))
+
+	// Signature blobs by name (C#: Sigs/ directory). Streamed from R2 under the
+	// `sigs/` key prefix; 404 when missing.
+	.get('/sigs/:sigName', (c) => serveAsset(c, `sigs/${c.req.param('sigName')}`))
+
+	// Room build data by name (C#: Data/DataBlobs/). The client fetches this for
+	// a SubRoom's DataBlob to load the room. Streamed from R2 under `room/`.
+	.get('/room/:dataBlob', (c) => serveAsset(c, `room/${c.req.param('dataBlob')}`))
+
+	// Image upload. [Authorize] in the C#; returns the saved filename. No storage
+	// binding yet, so we accept the file and return a synthesized filename without
+	// persisting it. TODO: write to an R2 bucket like the `img` worker.
+	.post('/upload', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+		const file = body.file
+		if (!(file instanceof File)) {
+			return c.json({ error: 'No file found in request' }, 400)
+		}
+
+		const validExtensions = ['.png', '.jpg', '.jpeg']
+		const dot = file.name.lastIndexOf('.')
+		const rawExt = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
+		const extension = validExtensions.includes(rawExt) ? rawExt : '.png'
+
+		const filename = crypto.randomUUID().replace(/-/g, '') + extension
+		// TODO: persist `file` to an R2 bucket under `filename`.
+		return c.json({ filename })
+	})
+
+export default app

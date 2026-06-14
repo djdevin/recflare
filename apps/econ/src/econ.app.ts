@@ -4,6 +4,9 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import defaultAvatarItems from '../static/default-avatar-items.json'
+import myProgress from '../static/my-progress.json'
+import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
+import weeklyChallenge from '../static/weekly-challenge.json'
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
@@ -55,6 +58,10 @@ const app = new Hono<App>()
 	// Default-unlocked avatar items, served from the bundled static JSON.
 	.get('/api/avatar/v1/defaultunlocked', (c) => c.json(defaultAvatarItems))
 
+	// Default base avatar items. The C# reads the same JSON/defaultAvatarItems.json
+	// file as defaultunlocked, so it returns the identical catalog.
+	.get('/api/avatar/v1/defaultbaseavataritems', (c) => c.json(defaultAvatarItems))
+
 	// The player's avatar items — owned items concatenated with the default
 	// catalog. No DB binding yet, so owned is empty and this is just the catalog.
 	.get('/api/avatar/v4/items', async (c) => {
@@ -64,6 +71,16 @@ const app = new Hono<App>()
 		return c.json(defaultAvatarItems)
 	})
 
+	// The player's owned custom avatar items. No auth in the C#, which returns
+	// `{ items: [] }`. The client downloads these when custom-item creation is
+	// allowed; a 404 here surfaces as "Failed to download unlocked avatar items".
+	.get('/econ/customAvatarItems/v1/owned', (c) => c.json({ items: [] }))
+
+	// The player's objectives progress. The C# serves a static JSON file
+	// (JSON/tempmyprogress.json) verbatim with no auth — same default for everyone
+	// until there's a DB binding to track per-player progress.
+	.get('/api/objectives/v1/myprogress', (c) => c.json(myProgress))
+
 	// The player's avatar. No DB binding yet, so it always returns the default
 	// the C# seeds for a player with no PlayerAvatar row.
 	.get('/api/avatar/v2', async (c) => {
@@ -72,5 +89,75 @@ const app = new Hono<App>()
 		// TODO: load/create the PlayerAvatar for `id` once a DB binding exists.
 		return c.json({ OutfitSelections: '', FaceFeatures: '{}', SkinColor: '', HairColor: '' })
 	})
+
+	// The player's saved outfits. [Authorize]; empty without a DB binding.
+	.get('/api/avatar/v3/saved', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: query SavedOutfits once a DB binding exists.
+		return c.json([])
+	})
+
+	// Pending avatar gifts for the player. [Authorize]; empty without a DB binding.
+	.get('/api/avatar/v2/gifts', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: query pending ReceivedGifts once a DB binding exists.
+		return c.json([])
+	})
+
+	// Unlocked equipment. The C# returns "[]" with no auth.
+	.get('/api/equipment/v2/getUnlocked', (c) => c.json([]))
+
+	// Not in CannedNet — room consumables/currencies for a given room. Stubbed
+	// as empty lists so the client doesn't 404.
+	.get('/api/roomconsumables/v1/roomConsumable/room/:roomId', (c) => c.json([]))
+	.get('/api/roomconsumables/v1/roomConsumable/room/:roomId/me', (c) => c.json([]))
+	.get('/api/roomcurrencies/v1/currencies', (c) => c.json([]))
+	.get('/api/roomcurrencies/v1/getAllBalances', (c) => c.json([]))
+
+	// Persist player settings. [Authorize]; the C# replaces the player's settings
+	// and returns Ok(). No DB binding yet, so accept-and-ack.
+	.post('/api/settings/v2/set', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: replace stored settings for `id` once a DB binding exists.
+		return c.body(null, 200)
+	})
+
+	// Unlocked consumables. [Authorize]; empty without a DB binding.
+	.get('/api/consumables/v2/getUnlocked', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: query ConsumableItems once a DB binding exists.
+		return c.json([])
+	})
+
+	// Token balance. [Authorize]; empty without a DB binding.
+	.get('/api/storefronts/v4/balance/2', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: query TokenBalances once a DB binding exists.
+		return c.json([])
+	})
+
+	// Gift-drop storefront. The C# falls back to JSON/storefront3.json when no
+	// storefront row exists; that's the bundled static catalog here.
+	.get('/api/storefronts/v3/giftdropstore/3', (c) => c.json(storefrontGiftDrop3))
+
+	// Current weekly challenge. Served from the bundled static JSON (the C#'s
+	// JSON/weeklychallenge.json) until per-rotation challenge data is wired up.
+	.get('/api/challenge/v2/getCurrent', (c) => c.json(weeklyChallenge))
+
+	// Pending game rewards. The C# returns "[]".
+	.get('/api/gamerewards/v1/pending', (c) => c.json([]))
+
+	// The player's room keys. The C# returns "[]".
+	.get('/api/roomkeys/v1/mine', (c) => c.json([]))
+
+	// Subscription lookup. The C# returns both fields null with no auth.
+	.post('/api/CampusCard/v1/UpdateAndGetSubscription', (c) =>
+		c.json({ subscription: null, platformAccountSubscribedPlayerId: null })
+	)
 
 export default app

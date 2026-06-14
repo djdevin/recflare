@@ -46,6 +46,23 @@ describe('public endpoints', () => {
 		})
 	})
 
+	test('GET /api/config/v1/azurespeech', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/config/v1/azurespeech`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			Key: 'dce8de5b297747d9b5bddcc7f19e8c5b',
+			Region: 'eastus',
+			Enabled: false,
+		})
+	})
+
+	test('GET /api/config/v1/backtrace', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/config/v1/backtrace`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { ReportBudget: number; VersionRegex: string }
+		expect(body).toMatchObject({ ReportBudget: 125, VersionRegex: '.*' })
+	})
+
 	test('GET /api/versioncheck/v4', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4`)
 		expect(await res.json()).toMatchObject({ VersionStatus: 0 })
@@ -83,6 +100,42 @@ describe('public endpoints', () => {
 	test('GET /api/storefronts/v1/p2p/betaEnabled returns false', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v1/p2p/betaEnabled`)
 		expect(await res.json()).toBe(false)
+	})
+
+	test('POST /api/players/v2/progression/bulk returns an array', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/players/v2/progression/bulk`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Ids: '1,2,3' }),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/customAvatarItems/v1/isCreationAllowedForAccount returns true', async () => {
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/customAvatarItems/v1/isCreationAllowedForAccount`
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toBe(true)
+	})
+
+	test('GET /api/customAvatarItems/v1/isCreationEnabled returns true', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1/isCreationEnabled`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toBe(true)
+	})
+
+	test('GET /api/customAvatarItems/v1/isRenderingEnabled returns true', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1/isRenderingEnabled`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toBe(true)
+	})
+
+	test('GET /voice/config returns an object', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/voice/config`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({})
 	})
 })
 
@@ -129,10 +182,12 @@ describe('room server', () => {
 		expect(res.status).toBe(400)
 	})
 
-	test('GET /roomserver/rooms/bulk with id returns empty array', async () => {
+	test('GET /roomserver/rooms/bulk with id returns rooms with SubRooms', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk?id=1,2`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([])
+		const rooms = (await res.json()) as Array<{ RoomId: number; SubRooms: unknown[] }>
+		expect(rooms.map((r) => r.RoomId)).toEqual([1, 2])
+		expect(rooms[0].SubRooms).toHaveLength(1)
 	})
 
 	test('GET /roomserver/rooms/hot returns an empty result set', async () => {
@@ -140,9 +195,16 @@ describe('room server', () => {
 		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
 	})
 
-	test('GET /roomserver/rooms/:id 404s without data', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/5`)
-		expect(res.status).toBe(404)
+	test('GET /roomserver/rooms/:id synthesizes a room with a SubRoom', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/1`)
+		expect(res.status).toBe(200)
+		const room = (await res.json()) as {
+			RoomId: number
+			IsDorm: boolean
+			SubRooms: Array<{ UnitySceneId: string }>
+		}
+		expect(room).toMatchObject({ RoomId: 1, IsDorm: true })
+		expect(room.SubRooms[0].UnitySceneId).toBe('76d98498-60a1-430c-ab76-b54a29b7a163')
 	})
 
 	test('GET /roomserver/rooms/:id/interactionby/me', async () => {

@@ -56,6 +56,64 @@ async function parseFormIds(c: Context<App>): Promise<number[]> {
 		.filter((n) => !Number.isNaN(n))
 }
 
+/** Unity scene id for the dorm (matches the match worker's instance location). */
+const DORM_SCENE_ID = '76d98498-60a1-430c-ab76-b54a29b7a163'
+
+/**
+ * Full room payload (PascalCase), mirroring the C#'s `BuildRoomResponse` /
+ * `RoomserverRoomsBulk`. With no Rooms DB, room 1 is the dorm and other ids get
+ * a generic published room. The SubRoom carries the UnitySceneId/DataBlob the
+ * client needs to load the scene.
+ */
+function buildRoomResponse(roomId: number) {
+	const isDorm = roomId === 1
+	return {
+		RoomId: roomId,
+		Name: isDorm ? 'DormRoom' : `Room${roomId}`,
+		Description: isDorm ? 'Your private room' : '',
+		CreatorAccountId: 1,
+		ImageName: 'DefaultRoomImage.jpg',
+		State: 0,
+		Accessibility: 0,
+		SupportsLevelVoting: false,
+		IsRRO: false,
+		IsDorm: isDorm,
+		CloningAllowed: false,
+		SupportsVRLow: true,
+		SupportsQuest2: true,
+		SupportsMobile: true,
+		SupportsScreens: true,
+		SupportsWalkVR: true,
+		SupportsTeleportVR: true,
+		SupportsJuniors: true,
+		MinLevel: 0,
+		WarningMask: 0,
+		CustomWarning: null,
+		DisableMicAutoMute: false,
+		DisableRoomComments: false,
+		EncryptVoiceChat: false,
+		CreatedAt: '2026-01-18T02:31:37.6171131',
+		Stats: { CheerCount: 0, FavoriteCount: 0, VisitorCount: 1, VisitCount: 1 },
+		SubRooms: [
+			{
+				SubRoomId: 1,
+				Name: '',
+				DataBlob: '',
+				IsSandbox: false,
+				MaxPlayers: 4,
+				Accessibility: 0,
+				UnitySceneId: isDorm ? DORM_SCENE_ID : '',
+				DataSavedAt: '2026-01-18T02:31:37.6171131',
+			},
+		],
+		Roles: [],
+		LoadScreens: [],
+		PromoImages: [],
+		PromoExternalContent: [],
+		Tags: [],
+	}
+}
+
 /** Default reputation for an account — the fallback the C# fills with no DB. */
 function defaultReputation(id: number) {
 	return {
@@ -95,6 +153,27 @@ const app = new Hono<App>({ strict: false })
 			UseRudderStack: false,
 		})
 	)
+	.get('/api/config/v1/azurespeech', (c) =>
+		c.json({
+			Key: 'dce8de5b297747d9b5bddcc7f19e8c5b',
+			Region: 'eastus',
+			Enabled: false,
+		})
+	)
+	.get('/api/config/v1/backtrace', (c) =>
+		c.json({
+			ReportBudget: 125,
+			FilterType: 0,
+			SampleRate: 0.025,
+			LogLineCount: 50,
+			CaptureNativeCrashes: 1,
+			AMRThresholdMS: 0,
+			MessageCount: 1000,
+			MessageRegex:
+				"^Cannot set the parent of the GameObject .* while its new parent|^\\\\>\\\\x2010x\\\\:\\\\x20|\\\\'LabelTheme\\\\' contains missing PaletteTheme reference on",
+			VersionRegex: '.*',
+		})
+	)
 	.get('/api/config/v2', (c) => c.json(apiConfigV2))
 	.get('/api/versioncheck/v4', (c) =>
 		c.json({
@@ -126,6 +205,11 @@ const app = new Hono<App>({ strict: false })
 		return c.json(ids.map(defaultReputation))
 	})
 	.post('/api/players/v1/progression/bulk', async (c) => {
+		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
+		return c.json([])
+	})
+	// C# v2 is identical to v1 — same ParseFormIds + PlayerProgressions query.
+	.post('/api/players/v2/progression/bulk', async (c) => {
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
 	})
@@ -216,6 +300,17 @@ const app = new Hono<App>({ strict: false })
 		// No DB → gift can never be found.
 		return c.json({ success: false, error: 'Gift not found' }, 404)
 	})
+
+	// Custom avatar item gates. None of these are in CannedNet — they're real Rec
+	// Room client endpoints the C# never implemented. Each returns a bare JSON
+	// boolean; we enable them. Flip to `false` to disable the corresponding flow.
+	.get('/api/customAvatarItems/v1/isCreationAllowedForAccount', (c) => c.json(true))
+	.get('/api/customAvatarItems/v1/isCreationEnabled', (c) => c.json(true))
+	.get('/api/customAvatarItems/v1/isRenderingEnabled', (c) => c.json(true))
+
+	// Voice chat config. Not in CannedNet; the client fetches it to set up voice.
+	// No reference shape, so return an empty object until the client needs fields.
+	.get('/voice/config', (c) => c.json({}))
 
 	// ---- Player reporting -----------------------------------------------------
 	.get('/api/PlayerReporting/v1/moderationBlockDetails', (c) =>
@@ -330,19 +425,25 @@ const app = new Hono<App>({ strict: false })
 		if (!idParam && !nameParam) {
 			return c.text("Either 'id' or 'name' query parameter is required", 400)
 		}
-		return c.json([]) // TODO: query Rooms + related tables
+		// Synthesize a room per requested id (the client needs SubRooms to load).
+		// TODO: query Rooms + related tables once a DB binding exists.
+		const ids = (idParam ?? '')
+			.split(',')
+			.map((s) => Number.parseInt(s.trim(), 10))
+			.filter((n) => !Number.isNaN(n))
+		return c.json(ids.map(buildRoomResponse))
 	})
 	.get('/roomserver/rooms/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
 	.get('/roomserver/roomsandplaylists/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
-	.get('/roomserver/rooms/createdby/me', (c) => c.json([])) // TODO: hydrate from JSON/ownedrooms.json
+	.get('/roomserver/rooms/createdby/me', (c) => c.json([buildRoomResponse(1)]))
 	.get('/roomserver/rooms/:id/interactionby/me', (c) =>
 		c.json({ Cheered: false, Favorited: false })
 	)
 	.get('/roomserver/rooms/:id', (c) => {
 		const roomId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(roomId)) return c.notFound()
-		// No Rooms binding → room can never be found.
-		return c.notFound()
+		// No Rooms binding → synthesize the room so the client can load it.
+		return c.json(buildRoomResponse(roomId))
 	})
 
 export default app

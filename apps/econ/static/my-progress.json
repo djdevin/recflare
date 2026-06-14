@@ -1,0 +1,19 @@
+{
+	"Objectives": [
+		{
+			"Index": 2,
+			"Group": 0,
+			"Progress": 0,
+			"VisualProgress": 0,
+			"IsCompleted": false,
+			"HasClaimedReward": false
+		}
+	],
+	"ObjectiveGroups": [
+		{
+			"Group": 0,
+			"IsCompleted": false,
+			"ClearedAt": "2026-03-31T01:26:32.5904766"
+		}
+	]
+}

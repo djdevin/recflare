@@ -21,7 +21,7 @@
 	"Link": "https://link.rec.djdevin.net",
 	"Lists": "https://lists.rec.djdevin.net",
 	"Matchmaking": "https://match.rec.djdevin.net",
-	"Moderation": "https://moderation.rec.djdevin.net",
+	"Moderation": "https://api.rec.djdevin.net",
 	"Notifications": "https://notify.rec.djdevin.net",
 	"PlatformNotifications": "https://platformnotifications.rec.djdevin.net",
 	"PlayerSettings": "https://playersettings.rec.djdevin.net",

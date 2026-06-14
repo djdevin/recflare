@@ -39,6 +39,12 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(200)
 	})
 
+	test('POST /player/exclusivelogin returns { errorCode: 0 }', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/player/exclusivelogin`, { method: 'POST' })
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ errorCode: 0 })
+	})
+
 	test('GET /player?id=N synthesizes a player payload for that id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player?id=99`)
 		expect(res.status).toBe(200)
@@ -69,6 +75,22 @@ describe('public endpoints', () => {
 		const body = (await res.json()) as {
 			errorCode: number
 			roomInstance: { name: string; location: string; photonRoomId: string }
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).toMatchObject({
+			name: 'DormRoom',
+			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
+			isPrivate: true,
+		})
+		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
+	})
+
+	test('POST /matchmake/none returns the offline dorm', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/none`, { method: 'POST' })
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			errorCode: number
+			roomInstance: { name: string; location: string; isPrivate: boolean; photonRoomId: string }
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
@@ -130,26 +152,117 @@ describe('auth-gated endpoints', () => {
 		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true, name: '42' })
 	})
 
+	test('POST /matchmake/:room 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST' })
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /matchmake/dorm returns the dorm instance', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, {
+			method: 'POST',
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			errorCode: number
+			roomInstance: { name: string; location: string; isPrivate: boolean; roomId: number }
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).toMatchObject({
+			name: 'DormRoom',
+			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
+			isPrivate: true,
+			roomId: 1,
+		})
+	})
+
+	test('POST /matchmake/:id synthesizes an instance and honors JoinMode', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/42`, {
+			method: 'POST',
+			headers: { ...(await bearer()), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ JoinMode: '2' }).toString(),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			roomInstance: { roomId: number; isPrivate: boolean; name: string }
+		}
+		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true, name: '42' })
+	})
+
 	test('POST /player/heartbeat 401s without a token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST' })
 		expect(res.status).toBe(401)
 	})
 
-	test('POST /player/heartbeat echoes the body and defaults playerId to the token id', async () => {
+	test('POST /player/heartbeat reports no presence before matchmake', async () => {
+		// Fresh token (sub 7) with no stored presence → not in a room.
 		const res = await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
 			method: 'POST',
-			headers: { ...(await bearer()), 'Content-Type': 'application/json' },
-			body: JSON.stringify({ statusVisibility: 2, platform: 5, appVersion: '20210129' }),
+			headers: { ...(await bearer('7')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ statusVisibility: 2, platform: 5 }),
 		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toMatchObject({
-			playerId: 42,
-			statusVisibility: 2,
-			vrMovementMode: 1,
+			playerId: 7,
 			roomInstance: null,
 			isOnline: false,
-			appVersion: '20210129',
-			platform: 5,
 		})
+	})
+
+	test('matchmake then heartbeat replays the stored instance (in sync)', async () => {
+		const headers = await bearer()
+		const mm = (await (
+			await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
+		).json()) as { roomInstance: Record<string, unknown> }
+		// LoginLock form heartbeat (no presence fields) still gets the stored room.
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+				method: 'POST',
+				headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'LoginLock=abc',
+			})
+		).json()) as { roomInstance: Record<string, unknown>; isOnline: boolean }
+		expect(hb.isOnline).toBe(true)
+		expect(hb.roomInstance).toEqual(mm.roomInstance)
+	})
+
+	test('heartbeat merges posted status fields into stored presence', async () => {
+		const headers = await bearer('8')
+		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+				method: 'POST',
+				headers: { ...headers, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ statusVisibility: 2, platform: 5, appVersion: '20210129' }),
+			})
+		).json()) as { statusVisibility: number; platform: number; appVersion: string; isOnline: boolean }
+		expect(hb).toMatchObject({
+			statusVisibility: 2,
+			platform: 5,
+			appVersion: '20210129',
+			isOnline: true,
+		})
+	})
+
+	test('player/login clears presence (back to not-in-a-room)', async () => {
+		const headers = await bearer('9')
+		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
+		await exports.default.fetch(`${ORIGIN}/player/login`, { method: 'POST', headers })
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
+		).json()) as { roomInstance: unknown; isOnline: boolean }
+		expect(hb.roomInstance).toBeNull()
+		expect(hb.isOnline).toBe(false)
+	})
+
+	test('GET /player?id reports stored presence per id', async () => {
+		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, {
+			method: 'POST',
+			headers: await bearer('55'),
+		})
+		const res = await exports.default.fetch(`${ORIGIN}/player?id=55`)
+		expect(res.status).toBe(200)
+		const players = (await res.json()) as Array<{ playerId: number; isOnline: boolean }>
+		expect(players[0]).toMatchObject({ playerId: 55, isOnline: true })
 	})
 })

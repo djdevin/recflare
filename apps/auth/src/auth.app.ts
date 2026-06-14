@@ -11,6 +11,20 @@ import type { App } from './context'
 const TOKEN_SCOPE =
 	'offline_access profile rn rn.accounts rn.accounts.gc rn.api rn.chat rn.clubs rn.commerce rn.match.read rn.match.write rn.notify rn.rooms rn.storage'
 
+/** C# `PlatformType` enum names by value, used for the token's `platform` claim. */
+const PLATFORM_TYPES: Record<number, string> = {
+	[-1]: 'All',
+	0: 'Steam',
+	1: 'Oculus',
+	2: 'PlayStation',
+	3: 'Xbox',
+	4: 'RecNet',
+	5: 'IOS',
+	6: 'GooglePlay',
+	7: 'Standalone',
+	8: 'Pico',
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -46,17 +60,30 @@ const app = new Hono<App>()
 
 	// OAuth token endpoint — accepts a form-urlencoded body and issues a JWT.
 	.post('/connect/token', async (c) => {
-		let accountId = '1'
-		let platformId = ''
-		// `platform` is never populated from the body in the C# source either.
-		const platform = ''
-
+		// The C# reads `grant_type`, `account_id`, `platform_id` and `platform` from
+		// the form body.
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		console.log(body)
+		const grantType = typeof body.grant_type === 'string' ? body.grant_type : ''
+		const platformId = typeof body.platform_id === 'string' ? body.platform_id : ''
+		// `platform` is the PlatformType int → its enum name (e.g. 0 → "Steam").
+		const platformInt = typeof body.platform === 'string' ? Number.parseInt(body.platform, 10) : NaN
+		const platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
+
+		// grant_type=create_account mints a brand-new account (the C# persists it
+		// plus a dorm; with no DB we just allocate a random id — the accounts worker
+		// synthesizes the account on demand). Otherwise use the posted account_id,
+		// falling back to "1" (the cachedlogin stub hands the client account 1).
+		const accountId =
+			grantType === 'create_account'
+				? String(Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000)
+				: typeof body.account_id === 'string' && body.account_id
+					? body.account_id
+					: '1'
 
 		const accessToken = await generateToken(accountId, platformId, platform)
 
-		// TODO: once a DB binding exists, remove any RoomInstance owned by accountId.
+		// TODO: once a DB binding exists, create the account + dorm on create_account
+		// and remove any RoomInstance owned by accountId on login.
 
 		return c.json({
 			access_token: accessToken,

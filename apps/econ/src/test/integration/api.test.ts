@@ -41,6 +41,15 @@ describe('econ endpoints', () => {
 		expect(body[0]).toHaveProperty('AvatarItemDesc')
 	})
 
+	test('GET /api/avatar/v1/defaultbaseavataritems returns the same catalog', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v1/defaultbaseavataritems`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as unknown[]
+		expect(Array.isArray(body)).toBe(true)
+		expect(body.length).toBeGreaterThan(0)
+		expect(body[0]).toHaveProperty('AvatarItemDesc')
+	})
+
 	test('GET /api/avatar/v4/items 401s without a token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`)
 		expect(res.status).toBe(401)
@@ -71,6 +80,144 @@ describe('econ endpoints', () => {
 			FaceFeatures: '{}',
 			SkinColor: '',
 			HairColor: '',
+		})
+	})
+
+	test('GET /econ/customAvatarItems/v1/owned returns { items: [] } (no auth)', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/econ/customAvatarItems/v1/owned`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ items: [] })
+	})
+
+	test('GET /api/objectives/v1/myprogress returns the default progress (no auth)', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/myprogress`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { Objectives: unknown[]; ObjectiveGroups: unknown[] }
+		expect(Array.isArray(body.Objectives)).toBe(true)
+		expect(Array.isArray(body.ObjectiveGroups)).toBe(true)
+	})
+
+	test('GET /api/avatar/v3/saved 401s without a token, returns [] with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/avatar/v3/saved`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v3/saved`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/avatar/v2/gifts 401s without a token, returns [] with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/equipment/v2/getUnlocked returns [] (no auth)', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/equipment/v2/getUnlocked`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/roomconsumables/v1/roomConsumable/room/:id returns []', async () => {
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/roomconsumables/v1/roomConsumable/room/1`
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/roomcurrencies/v1/currencies returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/roomcurrencies/v1/currencies?roomId=1`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/roomconsumables/v1/roomConsumable/room/:id/me returns []', async () => {
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/roomconsumables/v1/roomConsumable/room/1/me`
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/roomcurrencies/v1/getAllBalances returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/roomcurrencies/v1/getAllBalances?roomId=1`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('POST /api/settings/v2/set 401s without a token, 200s with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/settings/v2/set`, { method: 'POST' })
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2/set`, {
+			method: 'POST',
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+	})
+
+	test('GET /api/consumables/v2/getUnlocked 401s without a token, returns []', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/storefronts/v4/balance/2 401s without a token, returns []', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/storefronts/v3/giftdropstore/3 returns the storefront catalog', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v3/giftdropstore/3`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toBeTruthy()
+	})
+
+	test('GET /api/challenge/v2/getCurrent returns the weekly challenge', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/challenge/v2/getCurrent`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { ChallengeMapId: number; Challenges: unknown[] }
+		expect(body).toHaveProperty('ChallengeMapId')
+		expect(Array.isArray(body.Challenges)).toBe(true)
+	})
+
+	test('GET /api/gamerewards/v1/pending returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/pending`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /api/roomkeys/v1/mine returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/mine`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('POST /api/CampusCard/v1/UpdateAndGetSubscription returns null fields', async () => {
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/CampusCard/v1/UpdateAndGetSubscription`,
+			{
+				method: 'POST',
+			}
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			subscription: null,
+			platformAccountSubscribedPlayerId: null,
 		})
 	})
 
