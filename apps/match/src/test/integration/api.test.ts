@@ -96,7 +96,7 @@ describe('public endpoints', () => {
 		expect(players[0]).toMatchObject({
 			playerId: 99,
 			isOnline: false,
-			appVersion: '',
+			appVersion: '20230302',
 			roomInstance: null,
 		})
 	})
@@ -105,7 +105,7 @@ describe('public endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player`)
 		expect(res.status).toBe(200)
 		const players = (await res.json()) as Array<{ playerId: number; isOnline: boolean }>
-		expect(players[0]).toMatchObject({ playerId: 1, isOnline: true, appVersion: '20210129' })
+		expect(players[0]).toMatchObject({ playerId: 1, isOnline: true, appVersion: '20230302' })
 	})
 
 	test('POST /goto/none returns the offline dorm', async () => {
@@ -117,7 +117,7 @@ describe('public endpoints', () => {
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
-			name: 'DormRoom',
+			name: '^DormRoom',
 			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 			isPrivate: true,
 		})
@@ -139,7 +139,7 @@ describe('public endpoints', () => {
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
 			roomId: 2,
-			name: 'RecCenter',
+			name: '^RecCenter',
 			location: RECCENTER_SCENE,
 			isPrivate: true,
 		})
@@ -163,7 +163,7 @@ describe('public endpoints', () => {
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
-			name: 'DormRoom',
+			name: '^DormRoom',
 			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 			isPrivate: true,
 		})
@@ -206,7 +206,7 @@ describe('auth-gated endpoints', () => {
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
-			name: 'DormRoom',
+			name: '^DormRoom',
 			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 			isPrivate: true,
 			roomId: 1,
@@ -221,14 +221,26 @@ describe('auth-gated endpoints', () => {
 		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
-			roomInstance: { roomId: number; isPrivate: boolean; name: string; location: string }
+			roomInstance: {
+				roomId: number
+				roomInstanceId: number
+				isPrivate: boolean
+				name: string
+				location: string
+				photonRoomId: string
+			}
 		}
 		expect(body.roomInstance).toMatchObject({
 			roomId: 2,
-			name: 'RecCenter',
+			// Must differ from the dorm's instance id (1) so the client treats this
+			// as a new room and actually loads the scene.
+			roomInstanceId: 2,
+			name: '^RecCenter',
 			location: RECCENTER_SCENE,
 			isPrivate: true,
 		})
+		// Private instances get a unique Photon room id; public share `rec.<roomId>`.
+		expect(body.roomInstance.photonRoomId.startsWith('rec.2')).toBe(true)
 	})
 
 	test('POST /matchmake/:room 401s without a token', async () => {
@@ -248,7 +260,7 @@ describe('auth-gated endpoints', () => {
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
-			name: 'DormRoom',
+			name: '^DormRoom',
 			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 			isPrivate: true,
 			roomId: 1,
@@ -267,7 +279,7 @@ describe('auth-gated endpoints', () => {
 		}
 		expect(body.roomInstance).toMatchObject({
 			roomId: 2,
-			name: 'RecCenter',
+			name: '^RecCenter',
 			location: RECCENTER_SCENE,
 			isPrivate: true,
 		})
@@ -351,7 +363,7 @@ describe('auth-gated endpoints', () => {
 			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
 		).json()) as { roomInstance: { name: string } | null; isOnline: boolean }
 		expect(hb.isOnline).toBe(true)
-		expect(hb.roomInstance?.name).toBe('DormRoom')
+		expect(hb.roomInstance?.name).toBe('^DormRoom')
 	})
 
 	test('GET /player?id reports stored presence per id', async () => {

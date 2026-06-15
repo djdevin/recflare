@@ -4,7 +4,16 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
-import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds, searchRooms } from './rooms-db'
+import {
+	getInteraction,
+	getRoomById,
+	getRoomByName,
+	getRoomsByCreator,
+	getRoomsByIds,
+	searchRooms,
+	toggleCheer,
+	toggleFavorite,
+} from './rooms-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
@@ -140,6 +149,36 @@ const app = new Hono<App>()
 	)
 	.get('/rooms/ownedby/me', async (c) => c.json(await getRoomsByCreator(c.env.DB, await ownerId(c))))
 	.get('/rooms/createdby/me', async (c) => c.json(await getRoomsByCreator(c.env.DB, await ownerId(c))))
+
+	// The current player's interaction state with a room (cheered/favorited/last
+	// visited), read from the `interaction` table.
+	.get('/rooms/:roomId{[0-9]+}/interactionby/me', async (c) => {
+		const interaction = await getInteraction(
+			c.env.DB,
+			await ownerId(c),
+			Number.parseInt(c.req.param('roomId'), 10)
+		)
+		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
+	})
+
+	// Toggle the player's cheer/favorite on a room. Both are PUTs that flip the
+	// stored flag and return the updated interaction (matches the C#).
+	.put('/rooms/:roomId{[0-9]+}/interactionby/me/cheer', async (c) => {
+		const interaction = await toggleCheer(
+			c.env.DB,
+			await ownerId(c),
+			Number.parseInt(c.req.param('roomId'), 10)
+		)
+		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
+	})
+	.put('/rooms/:roomId{[0-9]+}/interactionby/me/favorite', async (c) => {
+		const interaction = await toggleFavorite(
+			c.env.DB,
+			await ownerId(c),
+			Number.parseInt(c.req.param('roomId'), 10)
+		)
+		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
+	})
 
 	// Single room by id. 404 when the room isn't in D1 (matches the C#). Ignores
 	// the include/unityAsset* query params, same as the C#.

@@ -384,6 +384,9 @@ const app = new Hono<App>({ strict: false })
 	.get('/api/challenge/v2/getCurrent', (c) => c.json({})) // TODO: hydrate from JSON/weeklychallenge.json
 	.get('/api/announcement/v1/get', (c) => c.json([])) // TODO: hydrate from JSON/announcements.json
 
+	// GameSight attribution/analytics event sink. Accept and ack without persisting.
+	.post('/api/gamesight/event', (c) => c.body(null, 200))
+
 	// ---- Subscription ---------------------------------------------------------
 	.post('/api/CampusCard/v1/UpdateAndGetSubscription', (c) =>
 		c.json({ subscription: null, platformAccountSubscribedPlayerId: null })

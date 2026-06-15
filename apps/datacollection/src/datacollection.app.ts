@@ -28,4 +28,10 @@ const app = new Hono<App>()
 	// Periodic session heartbeat. Same deal — accept and ack with 200.
 	.post('/data/heartbeat', (c) => c.body(null, 200))
 
+	// Analytics identify call (player/device identification). Accept and ack.
+	.post('/identify', (c) => c.body(null, 200))
+
+	// Generic analytics HTTP API sink. Accept and ack.
+	.post('/httpapi', (c) => c.body(null, 200))
+
 export default app

@@ -155,4 +155,36 @@ describe('rooms endpoints', () => {
 			expect(body.Permissions.length).toBeGreaterThan(0)
 		}
 	})
+
+	it('interaction: defaults to false, cheer/favorite toggle and persist', async () => {
+		type Interaction = { Cheered: boolean; Favorited: boolean; LastVisitedAt: string }
+		const headers = await bearer('555')
+		const get = async () =>
+			(await (
+				await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me`, { headers })
+			).json()) as Interaction
+		const put = async (action: 'cheer' | 'favorite') =>
+			(await (
+				await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/${action}`, { method: 'PUT', headers })
+			).json()) as Interaction
+
+		// No row yet → both false.
+		expect(await get()).toMatchObject({ Cheered: false, Favorited: false })
+
+		// Cheer on, then favorite on.
+		expect(await put('cheer')).toMatchObject({ Cheered: true, Favorited: false })
+		expect(await put('favorite')).toMatchObject({ Cheered: true, Favorited: true })
+		// Persisted across a fresh GET.
+		expect(await get()).toMatchObject({ Cheered: true, Favorited: true })
+
+		// Toggling again flips back.
+		expect(await put('cheer')).toMatchObject({ Cheered: false, Favorited: true })
+
+		// Scoped per player — a different account starts fresh.
+		const other = await bearer('556')
+		const otherGet = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me`, { headers: other })
+		).json()) as Interaction
+		expect(otherGet).toMatchObject({ Cheered: false, Favorited: false })
+	})
 })

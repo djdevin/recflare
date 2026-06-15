@@ -31,7 +31,7 @@ const DEFAULT_GET_PLAYER = [
 		vrMovementMode: 1,
 		roomInstance: null,
 		isOnline: true,
-		appVersion: '20210129',
+		appVersion: '20230302',
 		platform: 0,
 	},
 ]
@@ -88,6 +88,14 @@ interface Presence {
 /** Presence is kept this long (s) after the last matchmake/heartbeat refresh. */
 const PRESENCE_TTL = 900
 
+/**
+ * Game build version reported in presence. Like the reference servers (FemRec
+ * `ServerConfig.GameVersion`, 2025 `HeartbeatDB`), this is a server-side
+ * constant — the client doesn't supply it, and an empty value breaks the
+ * client's presence/version handling. Matches our target 2023 client build.
+ */
+const GAME_VERSION = '20230302'
+
 const presenceKey = (id: number) => `presence:${id}`
 
 /** Persist the player's presence (room instance + status), refreshing the TTL. */
@@ -111,7 +119,7 @@ async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance
 		deviceClass: prev?.deviceClass ?? 0,
 		vrMovementMode: prev?.vrMovementMode ?? 1,
 		platform: prev?.platform ?? 0,
-		appVersion: prev?.appVersion ?? '',
+		appVersion: prev?.appVersion || GAME_VERSION,
 	})
 }
 
@@ -146,7 +154,7 @@ function dormRoomInstance() {
 		photonRegion: 'us',
 		photonRegionId: 'us',
 		photonRoomId: DORM_PHOTON_ROOM_ID,
-		name: 'DormRoom',
+		name: '^DormRoom',
 		maxCapacity: 4,
 		isFull: false,
 		isPrivate: true,
@@ -167,10 +175,21 @@ function roomInstanceFromRoom(room: Room, isPrivate: boolean): RoomInstance {
 		| undefined
 	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
+	const roomId = num(room.RoomId, 1)
+	// All room instance names are prefixed with `^` (the username prefix `@` is a
+	// separate thing, e.g. a dorm is `^@user's Dorm`). The client uses this prefix
+	// to resolve the instance; without it the new scene won't load. Matches Stella.
+	const rawName = str(room.Name, 'Room')
+	const name = rawName.startsWith('^') ? rawName : `^${rawName}`
+	// roomInstanceId must differ from the room the player is leaving — the client
+	// keys the transition off it. The dorm is instance 1, so a room that also
+	// returned 1 looked like "no change". Use the room id (per Stella), with a
+	// unique suffix-free deterministic Photon room so public players share it.
+	const photonRoomId = isPrivate ? `rec.${roomId}.${crypto.randomUUID()}` : `rec.${roomId}`
 	return {
-		roomInstanceId: 1,
-		roomId: num(room.RoomId, 1),
-		subRoomId: num(sub?.SubRoomId, 0),
+		roomInstanceId: roomId,
+		roomId,
+		subRoomId: num(sub?.SubRoomId, 1),
 		roomInstanceType: room.IsDorm === true ? 2 : 0,
 		location: str(sub?.UnitySceneId),
 		dataBlob: str(sub?.DataBlob),
@@ -179,8 +198,8 @@ function roomInstanceFromRoom(room: Room, isPrivate: boolean): RoomInstance {
 		roomCode: '',
 		photonRegion: 'us',
 		photonRegionId: 'us',
-		photonRoomId: crypto.randomUUID(),
-		name: str(room.Name),
+		photonRoomId,
+		name,
 		maxCapacity: num(sub?.MaxPlayers, 4),
 		isFull: false,
 		isPrivate: isPrivate || room.IsDorm === true,
@@ -261,7 +280,7 @@ const app = new Hono<App>()
 					vrMovementMode: p?.vrMovementMode ?? 1,
 					roomInstance: p?.roomInstance ?? null,
 					isOnline: p?.roomInstance != null,
-					appVersion: p?.appVersion ?? '',
+					appVersion: p?.appVersion || GAME_VERSION,
 					platform: p?.platform ?? 0,
 				}
 			})
@@ -295,7 +314,8 @@ const app = new Hono<App>()
 			if (hb.deviceClass !== undefined) presence.deviceClass = hb.deviceClass
 			if (hb.vrMovementMode !== undefined) presence.vrMovementMode = hb.vrMovementMode
 			if (hb.platform !== undefined) presence.platform = hb.platform
-			if (hb.appVersion != null) presence.appVersion = hb.appVersion
+			if (hb.appVersion) presence.appVersion = hb.appVersion
+			if (!presence.appVersion) presence.appVersion = GAME_VERSION
 			await setPresence(c, id, presence)
 		}
 
@@ -306,7 +326,7 @@ const app = new Hono<App>()
 			vrMovementMode: presence?.vrMovementMode ?? (hb.vrMovementMode ? hb.vrMovementMode : 1),
 			roomInstance: presence?.roomInstance ?? null,
 			isOnline: presence?.roomInstance != null,
-			appVersion: presence?.appVersion ?? hb.appVersion ?? '',
+			appVersion: presence?.appVersion || hb.appVersion || GAME_VERSION,
 			platform: presence?.platform ?? hb.platform ?? 0,
 		})
 	})

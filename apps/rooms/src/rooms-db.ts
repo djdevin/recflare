@@ -22,6 +22,16 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_room_id ON rooms (room_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_rooms_name_lower ON rooms (name_lower)`,
 	`CREATE INDEX IF NOT EXISTS idx_rooms_creator ON rooms (creator_account_id)`,
+	// Per-player interaction state with a room (cheered/favorited + last visit).
+	// One row per (player, room); cheer/favorite are toggled in place.
+	`CREATE TABLE IF NOT EXISTS interaction (
+		player_id INTEGER NOT NULL,
+		room_id INTEGER NOT NULL,
+		cheered INTEGER NOT NULL DEFAULT 0,
+		favorited INTEGER NOT NULL DEFAULT 0,
+		last_visited_at TEXT,
+		PRIMARY KEY (player_id, room_id)
+	)`,
 ]
 
 /** A stored room — the parsed JSON blob (full client-facing room response). */
@@ -69,6 +79,77 @@ export async function getRoomsByCreator(db: D1Database, accountId: number): Prom
 		.bind(accountId)
 		.all<RoomRow>()
 	return parseAll(results)
+}
+
+/** A player's interaction state with a room. */
+export interface Interaction {
+	Cheered: boolean
+	Favorited: boolean
+}
+
+interface InteractionRow {
+	cheered: number
+	favorited: number
+}
+
+const toInteraction = (row: InteractionRow | null): Interaction => ({
+	Cheered: row?.cheered === 1,
+	Favorited: row?.favorited === 1,
+})
+
+/** Read a player's interaction with a room (defaults to all-false if none). */
+export async function getInteraction(
+	db: D1Database,
+	playerId: number,
+	roomId: number
+): Promise<Interaction> {
+	return toInteraction(
+		await db
+			.prepare('SELECT cheered, favorited FROM interaction WHERE player_id = ?1 AND room_id = ?2')
+			.bind(playerId, roomId)
+			.first<InteractionRow>()
+	)
+}
+
+/** Upsert+toggle a single boolean column, returning the resulting interaction. */
+async function toggleInteraction(
+	db: D1Database,
+	playerId: number,
+	roomId: number,
+	column: 'cheered' | 'favorited'
+): Promise<Interaction> {
+	const now = new Date().toISOString()
+	// First interaction defaults the toggled column to 1; subsequent calls flip it.
+	return toInteraction(
+		await db
+			.prepare(
+				`INSERT INTO interaction (player_id, room_id, ${column}, last_visited_at)
+				 VALUES (?1, ?2, 1, ?3)
+				 ON CONFLICT(player_id, room_id)
+				 DO UPDATE SET ${column} = NOT ${column}, last_visited_at = ?3
+				 RETURNING cheered, favorited`
+			)
+			.bind(playerId, roomId, now)
+			.first<InteractionRow>()
+	)
+}
+
+/** Toggle the player's cheer on a room, returning the resulting interaction. */
+export async function toggleCheer(
+	db: D1Database,
+	playerId: number,
+	roomId: number
+): Promise<Interaction> {
+	return toggleInteraction(db, playerId, roomId, 'cheered')
+}
+
+/** Toggle the player's favorite on a room, returning the resulting interaction. */
+export async function toggleFavorite(
+	db: D1Database,
+	playerId: number,
+	roomId: number
+): Promise<Interaction> {
+	return toggleInteraction(db, playerId, roomId, 'favorited')
 }
 
 /**
