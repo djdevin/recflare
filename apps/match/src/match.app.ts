@@ -4,9 +4,11 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
+import { getRoomById, getRoomByName } from './rooms-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
+import type { Room } from './rooms-db'
 
 /**
  * Ported from the C# `MatchmakingController`. Endpoints the C# backs with EF Core
@@ -122,6 +124,9 @@ async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance
  */
 const DORM_PHOTON_ROOM_ID = '00000000-0000-4000-8000-000000000001'
 
+/** MatchmakingErrorCode.NoSuchRoom — returned when a room isn't in the DB. */
+const NO_SUCH_ROOM = 20
+
 /**
  * The canonical dorm room instance (room 1, instance 1.1). Returned identically
  * by every dorm entry point and the presence heartbeat so the client's local
@@ -150,30 +155,60 @@ function dormRoomInstance() {
 	}
 }
 
-/** Synthesize a non-dorm room instance. No Rooms DB, so location is empty and
- * the photon id is freshly minted — it's persisted as presence and replayed by
- * the heartbeat, so it stays consistent for the session. */
-function buildRoomInstance(roomName: string, isPrivate: boolean): RoomInstance {
+/**
+ * Build a room instance from a stored D1 room — crucially using the room's real
+ * SubRoom `UnitySceneId` as the instance `location` (an empty/unknown location
+ * makes the client reject the session with "unknown scene location ID").
+ */
+function roomInstanceFromRoom(room: Room, isPrivate: boolean): RoomInstance {
+	const subRooms = room.SubRooms
+	const sub = (Array.isArray(subRooms) ? subRooms[0] : undefined) as
+		| Record<string, unknown>
+		| undefined
+	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
+	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
 	return {
 		roomInstanceId: 1,
-		roomId: Number.parseInt(roomName, 10) || 1,
-		subRoomId: 0,
-		roomInstanceType: 2,
-		location: '',
-		dataBlob: '',
+		roomId: num(room.RoomId, 1),
+		subRoomId: num(sub?.SubRoomId, 0),
+		roomInstanceType: room.IsDorm === true ? 2 : 0,
+		location: str(sub?.UnitySceneId),
+		dataBlob: str(sub?.DataBlob),
 		eventId: 0,
 		clubId: 0,
 		roomCode: '',
 		photonRegion: 'us',
 		photonRegionId: 'us',
 		photonRoomId: crypto.randomUUID(),
-		name: roomName,
-		maxCapacity: 4,
+		name: str(room.Name),
+		maxCapacity: num(sub?.MaxPlayers, 4),
 		isFull: false,
-		isPrivate,
+		isPrivate: isPrivate || room.IsDorm === true,
 		isInProgress: false,
 		EncryptVoiceChat: false,
 	}
+}
+
+/** Read the `JoinMode` form field (2 = private instance). */
+async function readJoinMode(c: Context<App>): Promise<number> {
+	const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+	return typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
+}
+
+/**
+ * Resolve a room by `:room` path segment (numeric id or name) from D1 and build
+ * its instance. Returns null when the room isn't found.
+ */
+async function resolveRoomInstance(
+	c: Context<App>,
+	roomKey: string,
+	isPrivate: boolean
+): Promise<RoomInstance | null> {
+	const id = Number.parseInt(roomKey, 10)
+	const room = Number.isNaN(id)
+		? await getRoomByName(c.env.DB, roomKey)
+		: await getRoomById(c.env.DB, id)
+	return room ? roomInstanceFromRoom(room, isPrivate) : null
 }
 
 const app = new Hono<App>()
@@ -299,10 +334,12 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 
 		const room = c.req.param('room')
-		const isDorm = room.toLowerCase() === 'dormroom'
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const joinMode = typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
-		const instance = isDorm ? dormRoomInstance() : buildRoomInstance(room, joinMode === 2)
+		const joinMode = await readJoinMode(c)
+		const instance =
+			room.toLowerCase() === 'dormroom'
+				? dormRoomInstance()
+				: await resolveRoomInstance(c, room, joinMode === 2)
+		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
@@ -315,15 +352,14 @@ const app = new Hono<App>()
 		if (id !== null) await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
-	// The 2023 client uses a two-segment matchmake/room/{roomId}. Synthesize the
-	// room instance and store it as presence.
+	// The 2023 client uses a two-segment matchmake/room/{roomId}. Look the room up
+	// in D1 so the instance carries its real scene, and store it as presence.
 	.post('/matchmake/room/:roomId', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		const roomId = c.req.param('roomId')
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const joinMode = typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
-		const instance = roomId === '1' ? dormRoomInstance() : buildRoomInstance(roomId, joinMode === 2)
+		const joinMode = await readJoinMode(c)
+		const instance = await resolveRoomInstance(c, c.req.param('roomId'), joinMode === 2)
+		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
@@ -332,11 +368,13 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 
 		const room = c.req.param('room')
-		// Identical to goto/room/:room except the C# dorm check here is "dorm".
-		const isDorm = room.toLowerCase() === 'dorm'
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const joinMode = typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
-		const instance = isDorm ? dormRoomInstance() : buildRoomInstance(room, joinMode === 2)
+		const joinMode = await readJoinMode(c)
+		// The C# dorm check here is "dorm" (goto/room uses "dormroom").
+		const instance =
+			room.toLowerCase() === 'dorm'
+				? dormRoomInstance()
+				: await resolveRoomInstance(c, room, joinMode === 2)
+		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})

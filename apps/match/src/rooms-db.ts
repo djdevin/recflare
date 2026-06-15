@@ -1,0 +1,31 @@
+/**
+ * Read helpers for the shared `rec-rooms` D1 database. The schema, migrations,
+ * and seed are owned by the `rooms` worker (apps/rooms/src/rooms-db.ts +
+ * migrations); this worker binds the same database read-only to resolve a room's
+ * real scene/subroom when building a matchmake instance. Keep these queries in
+ * sync with the rooms worker's.
+ */
+
+/** A stored room — the parsed JSON blob (full client-facing room response). */
+export type Room = Record<string, unknown>
+
+interface RoomRow {
+	data: string
+}
+
+const parseOne = (row: RoomRow | null): Room | null => (row ? (JSON.parse(row.data) as Room) : null)
+
+export async function getRoomById(db: D1Database, roomId: number): Promise<Room | null> {
+	return parseOne(
+		await db.prepare('SELECT data FROM rooms WHERE room_id = ?1').bind(roomId).first<RoomRow>()
+	)
+}
+
+export async function getRoomByName(db: D1Database, name: string): Promise<Room | null> {
+	return parseOne(
+		await db
+			.prepare('SELECT data FROM rooms WHERE name_lower = ?1')
+			.bind(name.toLowerCase())
+			.first<RoomRow>()
+	)
+}

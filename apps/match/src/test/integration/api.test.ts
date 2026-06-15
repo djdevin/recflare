@@ -1,9 +1,48 @@
+import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../match.app'
 
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
 const ORIGIN = 'https://match.rec.djdevin.net'
+
+// Matchmaking into a room resolves its real scene from the shared rec-rooms D1.
+// Seed the schema + a couple of rooms (matching the rooms worker's migration).
+const RECCENTER_SCENE = 'cbad71af-0831-44d8-b8ef-69edafa841f6'
+const TEST_ROOMS = [
+	{
+		RoomId: 1,
+		Name: 'DormRoom',
+		IsDorm: true,
+		Accessibility: 2,
+		SubRooms: [{ SubRoomId: 1, UnitySceneId: '76d98498-60a1-430c-ab76-b54a29b7a163' }],
+	},
+	{
+		RoomId: 2,
+		Name: 'RecCenter',
+		IsDorm: false,
+		Accessibility: 1,
+		SubRooms: [{ SubRoomId: 2, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 12 }],
+	},
+]
+
+beforeAll(async () => {
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS rooms (
+			data TEXT NOT NULL,
+			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
+			name_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Name'))) VIRTUAL
+		)`
+	).run()
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
+})
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
 // match worker's validation accepts it. Kept inline to avoid a cross-package
@@ -85,16 +124,34 @@ describe('public endpoints', () => {
 		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
 	})
 
-	test('POST /matchmake/room/:roomId synthesizes an instance and stores presence', async () => {
+	test('POST /matchmake/room/:roomId resolves the room scene from D1', async () => {
 		const headers = await bearer('88')
-		const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/42`, {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
 			method: 'POST',
 			headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({ JoinMode: '2' }).toString(),
 		})
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as { roomInstance: { roomId: number; isPrivate: boolean } }
-		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true })
+		const body = (await res.json()) as {
+			errorCode: number
+			roomInstance: { roomId: number; location: string; isPrivate: boolean; name: string }
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).toMatchObject({
+			roomId: 2,
+			name: 'RecCenter',
+			location: RECCENTER_SCENE,
+			isPrivate: true,
+		})
+	})
+
+	test('POST /matchmake/room/:roomId returns NoSuchRoom for an unknown room', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/99999`, {
+			method: 'POST',
+			headers: await bearer('88'),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ errorCode: 20, roomInstance: null })
 	})
 
 	test('POST /matchmake/none returns the offline dorm', async () => {
@@ -156,17 +213,22 @@ describe('auth-gated endpoints', () => {
 		})
 	})
 
-	test('POST /goto/room/:id synthesizes an instance and honors JoinMode', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/goto/room/42`, {
+	test('POST /goto/room/:id resolves a real room scene from D1', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/goto/room/2`, {
 			method: 'POST',
 			headers: { ...(await bearer()), 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({ JoinMode: '2' }).toString(),
 		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
-			roomInstance: { roomId: number; isPrivate: boolean; name: string }
+			roomInstance: { roomId: number; isPrivate: boolean; name: string; location: string }
 		}
-		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true, name: '42' })
+		expect(body.roomInstance).toMatchObject({
+			roomId: 2,
+			name: 'RecCenter',
+			location: RECCENTER_SCENE,
+			isPrivate: true,
+		})
 	})
 
 	test('POST /matchmake/:room 401s without a token', async () => {
@@ -193,17 +255,22 @@ describe('auth-gated endpoints', () => {
 		})
 	})
 
-	test('POST /matchmake/:id synthesizes an instance and honors JoinMode', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/matchmake/42`, {
+	test('POST /matchmake/:room resolves a room by name from D1', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/RecCenter`, {
 			method: 'POST',
 			headers: { ...(await bearer()), 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({ JoinMode: '2' }).toString(),
 		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
-			roomInstance: { roomId: number; isPrivate: boolean; name: string }
+			roomInstance: { roomId: number; name: string; location: string; isPrivate: boolean }
 		}
-		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true, name: '42' })
+		expect(body.roomInstance).toMatchObject({
+			roomId: 2,
+			name: 'RecCenter',
+			location: RECCENTER_SCENE,
+			isPrivate: true,
+		})
 	})
 
 	test('POST /player/heartbeat 401s without a token', async () => {

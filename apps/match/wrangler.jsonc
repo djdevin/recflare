@@ -18,6 +18,14 @@
 			"id": "9f53f04b7dd244658d59f515a14748b6"
 		}
 	],
+	// Shared rooms DB (created + migrated by the `rooms` worker; bound read-only here).
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "rec-rooms",
+			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5"
+		}
+	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {
