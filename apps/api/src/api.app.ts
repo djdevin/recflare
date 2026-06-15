@@ -12,6 +12,7 @@ import storefrontGiftDrop300 from '../static/storefronts-v3-giftdropstore-300.js
 import { DEFAULT_AVATAR_ITEMS } from './default-avatar-items'
 import { defaultSettings } from './default-settings'
 import { validateAndGetAccountId } from './jwt'
+import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
@@ -67,64 +68,6 @@ function queryIds(c: Context<App>): number[] {
 			.map((s) => Number.parseInt(s.trim(), 10))
 			.filter((n) => !Number.isNaN(n)) ?? []
 	)
-}
-
-/** Unity scene id for the dorm (matches the match worker's instance location). */
-const DORM_SCENE_ID = '76d98498-60a1-430c-ab76-b54a29b7a163'
-
-/**
- * Full room payload (PascalCase), mirroring the C#'s `BuildRoomResponse` /
- * `RoomserverRoomsBulk`. With no Rooms DB, room 1 is the dorm and other ids get
- * a generic published room. The SubRoom carries the UnitySceneId/DataBlob the
- * client needs to load the scene.
- */
-function buildRoomResponse(roomId: number) {
-	const isDorm = roomId === 1
-	return {
-		RoomId: roomId,
-		Name: isDorm ? 'DormRoom' : `Room${roomId}`,
-		Description: isDorm ? 'Your private room' : '',
-		CreatorAccountId: 1,
-		ImageName: 'DefaultRoomImage.jpg',
-		State: 0,
-		Accessibility: 0,
-		SupportsLevelVoting: false,
-		IsRRO: false,
-		IsDorm: isDorm,
-		CloningAllowed: false,
-		SupportsVRLow: true,
-		SupportsQuest2: true,
-		SupportsMobile: true,
-		SupportsScreens: true,
-		SupportsWalkVR: true,
-		SupportsTeleportVR: true,
-		SupportsJuniors: true,
-		MinLevel: 0,
-		WarningMask: 0,
-		CustomWarning: null,
-		DisableMicAutoMute: false,
-		DisableRoomComments: false,
-		EncryptVoiceChat: false,
-		CreatedAt: '2026-01-18T02:31:37.6171131',
-		Stats: { CheerCount: 0, FavoriteCount: 0, VisitorCount: 1, VisitCount: 1 },
-		SubRooms: [
-			{
-				SubRoomId: 1,
-				Name: '',
-				DataBlob: '',
-				IsSandbox: false,
-				MaxPlayers: 4,
-				Accessibility: 0,
-				UnitySceneId: isDorm ? DORM_SCENE_ID : '',
-				DataSavedAt: '2026-01-18T02:31:37.6171131',
-			},
-		],
-		Roles: [],
-		LoadScreens: [],
-		PromoImages: [],
-		PromoExternalContent: [],
-		Tags: [],
-	}
 }
 
 /**
@@ -524,34 +467,39 @@ const app = new Hono<App>({ strict: false })
 	)
 
 	// ---- Room server ----------------------------------------------------------
+	// Room data is read from the shared `rec-rooms` D1 (owned by the rooms worker).
 	// Register specific paths before the `/:id` param route.
-	.get('/roomserver/rooms/bulk', (c) => {
+	.get('/roomserver/rooms/bulk', async (c) => {
 		const idParam = c.req.query('id')
 		const nameParam = c.req.query('name')
 		if (!idParam && !nameParam) {
 			return c.text("Either 'id' or 'name' query parameter is required", 400)
 		}
-		// Synthesize a room per requested id (the client needs SubRooms to load).
-		// TODO: query Rooms + related tables once a DB binding exists.
-		const ids = (idParam ?? '')
-			.split(',')
-			.map((s) => Number.parseInt(s.trim(), 10))
-			.filter((n) => !Number.isNaN(n))
-		return c.json(ids.map(buildRoomResponse))
+		if (idParam) {
+			const ids = idParam
+				.split(',')
+				.map((s) => Number.parseInt(s.trim(), 10))
+				.filter((n) => !Number.isNaN(n))
+			return c.json(await getRoomsByIds(c.env.DB, ids))
+		}
+		const room = await getRoomByName(c.env.DB, nameParam ?? '')
+		return c.json(room ? [room] : [])
 	})
 	// Photon access token + room permissions the client needs to spawn into a room.
 	.get('/roomserver/photon_access_token', (c) => c.json(photonAccessToken()))
 	.get('/roomserver/rooms/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
 	.get('/roomserver/roomsandplaylists/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
-	.get('/roomserver/rooms/createdby/me', (c) => c.json([buildRoomResponse(1)]))
+	.get('/roomserver/rooms/createdby/me', async (c) =>
+		c.json(await getRoomsByCreator(c.env.DB, (await authedId(c)) ?? 1))
+	)
 	.get('/roomserver/rooms/:id/interactionby/me', (c) =>
 		c.json({ Cheered: false, Favorited: false })
 	)
-	.get('/roomserver/rooms/:id', (c) => {
+	.get('/roomserver/rooms/:id', async (c) => {
 		const roomId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(roomId)) return c.notFound()
-		// No Rooms binding → synthesize the room so the client can load it.
-		return c.json(buildRoomResponse(roomId))
+		const room = await getRoomById(c.env.DB, roomId)
+		return room ? c.json(room) : c.notFound()
 	})
 
 export default app

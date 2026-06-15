@@ -1,11 +1,44 @@
+import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../api.app'
 
 import { DEFAULT_AVATAR_ITEMS } from '../../default-avatar-items'
 
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
 const ORIGIN = 'https://api.rec.djdevin.net'
+
+// The /roomserver/rooms/* routes read from the shared rec-rooms D1. Set up the
+// schema (matching the rooms worker's migration) + a couple of rooms for tests.
+const TEST_ROOMS = [
+	{
+		RoomId: 1,
+		Name: 'DormRoom',
+		IsDorm: true,
+		CreatorAccountId: 1,
+		SubRooms: [{ SubRoomId: 1, UnitySceneId: '76d98498-60a1-430c-ab76-b54a29b7a163' }],
+	},
+	{ RoomId: 2, Name: 'RecCenter', IsDorm: false, CreatorAccountId: 1, SubRooms: [{ SubRoomId: 2 }] },
+]
+
+beforeAll(async () => {
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS rooms (
+			data TEXT NOT NULL,
+			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
+			name_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Name'))) VIRTUAL,
+			creator_account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.CreatorAccountId')) VIRTUAL
+		)`
+	).run()
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
+})
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
 // api worker's validation accepts it. Kept inline to avoid a cross-package import.
@@ -251,12 +284,17 @@ describe('room server', () => {
 		expect(res.status).toBe(400)
 	})
 
-	test('GET /roomserver/rooms/bulk with id returns rooms with SubRooms', async () => {
+	test('GET /roomserver/rooms/bulk with id returns rooms from D1', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk?id=1,2`)
 		expect(res.status).toBe(200)
-		const rooms = (await res.json()) as Array<{ RoomId: number; SubRooms: unknown[] }>
-		expect(rooms.map((r) => r.RoomId)).toEqual([1, 2])
-		expect(rooms[0].SubRooms).toHaveLength(1)
+		const rooms = (await res.json()) as Array<{ RoomId: number; Name: string }>
+		expect(rooms.map((r) => r.RoomId).sort((a, b) => a - b)).toEqual([1, 2])
+	})
+
+	test('GET /roomserver/rooms/bulk?name= resolves from D1', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk?name=reccenter`)
+		const rooms = (await res.json()) as Array<{ Name: string }>
+		expect(rooms.map((r) => r.Name)).toEqual(['RecCenter'])
 	})
 
 	test('GET /roomserver/photon_access_token returns permissions + instance id', async () => {
@@ -277,7 +315,7 @@ describe('room server', () => {
 		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
 	})
 
-	test('GET /roomserver/rooms/:id synthesizes a room with a SubRoom', async () => {
+	test('GET /roomserver/rooms/:id returns the room from D1', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/1`)
 		expect(res.status).toBe(200)
 		const room = (await res.json()) as {
@@ -287,6 +325,11 @@ describe('room server', () => {
 		}
 		expect(room).toMatchObject({ RoomId: 1, IsDorm: true })
 		expect(room.SubRooms[0].UnitySceneId).toBe('76d98498-60a1-430c-ab76-b54a29b7a163')
+	})
+
+	test('GET /roomserver/rooms/:id 404s for an unknown room', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/99999`)
+		expect(res.status).toBe(404)
 	})
 
 	test('GET /roomserver/rooms/:id/interactionby/me', async () => {

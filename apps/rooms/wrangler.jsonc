@@ -10,6 +10,16 @@
 			"custom_domain": true
 		}
 	],
+	// Room storage. Create with `wrangler d1 create rec-rooms`, set the id, then
+	// `wrangler d1 migrations apply rec-rooms --remote`.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "rec-rooms",
+			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5",
+			"migrations_dir": "migrations"
+		}
+	],
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {

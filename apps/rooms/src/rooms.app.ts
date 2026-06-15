@@ -3,26 +3,37 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { validateAndGetAccountId } from './jwt'
+import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
+
+import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
- * Ported from the C# `RoomsController`. The C# backs these with EF Core
- * (`AppDbContext`); there's no DB binding yet, so room lookups synthesize the
- * same shape `BuildRoomResponse` produces. Responses are PascalCase — the C#
- * sets `PropertyNamingPolicy = null` and the anonymous response object uses
- * PascalCase member names (see JSON/ownedrooms.json).
+ * Room server. Rooms are stored in D1 as JSON blobs with generated columns for
+ * querying (see rooms-db.ts); the dorm (RoomId 1) is seeded by the migration.
+ * Responses are the stored JSON verbatim (PascalCase, client-facing shape).
  *
- * The class `[Route("rooms")]` prefix maps to this worker's subdomain, so the
- * method routes are served bare (e.g. `/rooms/{id}`, not `/rooms/rooms/{id}`).
+ * The C# `[Route("rooms")]` prefix maps to this worker's subdomain, so method
+ * routes are served bare. The 2023 client also hits several of these without the
+ * `/roomserver` prefix, so both forms are registered.
  */
 
-/**
- * Build the full room payload the C# `BuildRoomResponse` returns. With no DB,
- * room 1 is the dorm (matching JSON/ownedrooms.json) and any other id gets a
- * generic published room so the client can still resolve and load it.
- */
-/** Unity scene id for the dorm (also the matchmake/heartbeat instance location). */
-const DORM_SCENE_ID = '76d98498-60a1-430c-ab76-b54a29b7a163'
+/** Parse the first valid integer id from a comma-separated `id` query param. */
+function firstId(idParam: string): number | undefined {
+	return idParam
+		.split(',')
+		.map((s) => Number.parseInt(s.trim(), 10))
+		.find((n) => !Number.isNaN(n))
+}
+
+/** Parse all valid integer ids from a comma-separated `id` query param. */
+function allIds(idParam: string): number[] {
+	return idParam
+		.split(',')
+		.map((s) => Number.parseInt(s.trim(), 10))
+		.filter((n) => !Number.isNaN(n))
+}
 
 /** Room permissions + (empty) Photon token the client needs to spawn into a room. */
 function photonAccessToken() {
@@ -52,56 +63,16 @@ function photonAccessToken() {
 	}
 }
 
-function buildRoomResponse(roomId: number) {
-	const isDorm = roomId === 1
-	return {
-		RoomId: roomId,
-		Name: isDorm ? 'DormRoom' : `Room${roomId}`,
-		Description: isDorm ? 'Your private room' : '',
-		CreatorAccountId: 1,
-		ImageName: 'DefaultRoomImage.jpg',
-		State: 0,
-		Accessibility: 0,
-		SupportsLevelVoting: false,
-		IsRRO: false,
-		IsDorm: isDorm,
-		CloningAllowed: false,
-		SupportsVRLow: true,
-		SupportsQuest2: true,
-		SupportsMobile: true,
-		SupportsScreens: true,
-		SupportsWalkVR: true,
-		SupportsTeleportVR: true,
-		SupportsJuniors: true,
-		MinLevel: 0,
-		WarningMask: 0,
-		CustomWarning: null,
-		DisableMicAutoMute: false,
-		DisableRoomComments: false,
-		EncryptVoiceChat: false,
-		CreatedAt: '2026-01-18T02:31:37.6171131',
-		Stats: { CheerCount: 0, FavoriteCount: 0, VisitorCount: 1, VisitCount: 1 },
-		// The client needs a SubRoom (UnitySceneId + DataBlob) to load the scene.
-		// The dorm points at the dorm scene; an empty DataBlob loads the default
-		// build. Generic rooms have no known scene yet.
-		SubRooms: [
-			{
-				SubRoomId: 1,
-				Name: '',
-				DataBlob: '',
-				IsSandbox: false,
-				MaxPlayers: 4,
-				Accessibility: 0,
-				UnitySceneId: isDorm ? DORM_SCENE_ID : '',
-				DataSavedAt: '2026-01-18T02:31:37.6171131',
-			},
-		],
-		Roles: [],
-		LoadScreens: [],
-		PromoImages: [],
-		PromoExternalContent: [],
-		Tags: [],
+/** The account whose owned rooms to return: the Bearer token's `sub`, falling
+ * back to account 1 (the stub player) when there's no valid token. */
+async function ownerId(c: Context<App>): Promise<number> {
+	const authHeader = c.req.header('Authorization') ?? ''
+	if (authHeader.toLowerCase().startsWith('bearer ')) {
+		const sub = await validateAndGetAccountId(authHeader.slice('Bearer '.length))
+		const id = sub ? Number.parseInt(sub, 10) : Number.NaN
+		if (!Number.isNaN(id)) return id
 	}
+	return 1
 }
 
 const app = new Hono<App>()
@@ -120,63 +91,55 @@ const app = new Hono<App>()
 
 	.get('/', (c) => c.json({ service: 'rooms', status: 'ok' }))
 
-	// Room lookup by `id` (comma-separated; first match wins) or `name`. The C#
-	// 400s when neither is supplied and returns `{}` when nothing matches.
-	.get('/rooms', (c) => {
+	// Room lookup by `id` (first match wins) or `name`. The C# 400s when neither
+	// is supplied and returns `{}` when nothing matches.
+	.get('/rooms', async (c) => {
 		const idParam = c.req.query('id')
 		const nameParam = c.req.query('name')
 		if (!idParam && !nameParam) {
 			return c.json("Either 'id' or 'name' query parameter is required", 400)
 		}
 		if (idParam) {
-			const firstId = idParam
-				.split(',')
-				.map((s) => Number.parseInt(s.trim(), 10))
-				.find((n) => !Number.isNaN(n))
-			if (firstId === undefined) return c.json({})
-			return c.json(buildRoomResponse(firstId))
+			const id = firstId(idParam)
+			const room = id === undefined ? null : await getRoomById(c.env.DB, id)
+			return c.json(room ?? {})
 		}
-		// Looked up by name — no DB to resolve it, so synthesize a room 1 (dorm).
-		// TODO: resolve the named room once a DB binding exists.
-		return c.json(buildRoomResponse(1))
+		const room = await getRoomByName(c.env.DB, nameParam ?? '')
+		return c.json(room ?? {})
 	})
 
-	// Bulk room lookup by `id` (synthesized per id) or `name`. The client calls
-	// this bare on the rooms host. We have no named-room data, so a name lookup
-	// returns [] — the client treats that as NoSuchRoom (a non-fatal warning),
-	// which is the honest answer since we can't actually host that room.
-	.get('/rooms/bulk', (c) => {
+	// Bulk room lookup by `id` or `name` — returns an array of matched rooms (the
+	// client calls this bare on the rooms host). Rooms not in D1 are simply absent
+	// from the result; the client treats an empty result as NoSuchRoom.
+	.get('/rooms/bulk', async (c) => {
 		const idParam = c.req.query('id')
 		const nameParam = c.req.query('name')
 		if (!idParam && !nameParam) {
 			return c.json("Either 'id' or 'name' query parameter is required", 400)
 		}
 		if (idParam) {
-			const ids = idParam
-				.split(',')
-				.map((s) => Number.parseInt(s.trim(), 10))
-				.filter((n) => !Number.isNaN(n))
-			return c.json(ids.map(buildRoomResponse))
+			return c.json(await getRoomsByIds(c.env.DB, allIds(idParam)))
 		}
-		return c.json([])
+		const room = await getRoomByName(c.env.DB, nameParam ?? '')
+		return c.json(room ? [room] : [])
 	})
 
-	// Single room by id. The C# 404s when the row is missing; with no DB we
-	// synthesize the room so the client can load it (ignores the include/
-	// unityAsset* query params, same as the C#).
-	.get('/rooms/:roomId{[0-9]+}', (c) => {
-		const roomId = Number.parseInt(c.req.param('roomId'), 10)
-		return c.json(buildRoomResponse(roomId))
-	})
+	// Rooms created/owned by the caller (their dorm). The client calls all three.
+	.get('/roomserver/rooms/createdby/me', async (c) =>
+		c.json(await getRoomsByCreator(c.env.DB, await ownerId(c)))
+	)
+	.get('/rooms/ownedby/me', async (c) => c.json(await getRoomsByCreator(c.env.DB, await ownerId(c))))
+	.get('/rooms/createdby/me', async (c) => c.json(await getRoomsByCreator(c.env.DB, await ownerId(c))))
 
-	// Rooms created by the caller. The C# serves JSON/ownedrooms.json (the dorm).
-	.get('/roomserver/rooms/createdby/me', (c) => c.json([buildRoomResponse(1)]))
+	// Single room by id. 404 when the room isn't in D1 (matches the C#). Ignores
+	// the include/unityAsset* query params, same as the C#.
+	.get('/rooms/:roomId{[0-9]+}', async (c) => {
+		const room = await getRoomById(c.env.DB, Number.parseInt(c.req.param('roomId'), 10))
+		return room ? c.json(room) : c.notFound()
+	})
 
 	// Photon access token + room permissions the client needs to spawn into a
-	// room. Without it the player is stuck on a black screen. PhotonAccessToken is
-	// empty (the client uses its baked-in Photon credentials); roomInstanceId is
-	// our constant 1. The client calls it on the rooms host both bare and under
-	// `/roomserver`, so both are registered.
+	// room. The client calls it on the rooms host both bare and under `/roomserver`.
 	.get('/photon_access_token', (c) => c.json(photonAccessToken()))
 	.get('/roomserver/photon_access_token', (c) => c.json(photonAccessToken()))
 
