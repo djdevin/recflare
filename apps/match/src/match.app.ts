@@ -138,6 +138,7 @@ function dormRoomInstance() {
 		eventId: 0,
 		clubId: 0,
 		roomCode: '',
+		photonRegion: 'us',
 		photonRegionId: 'us',
 		photonRoomId: DORM_PHOTON_ROOM_ID,
 		name: 'DormRoom',
@@ -163,6 +164,7 @@ function buildRoomInstance(roomName: string, isPrivate: boolean): RoomInstance {
 		eventId: 0,
 		clubId: 0,
 		roomCode: '',
+		photonRegion: 'us',
 		photonRegionId: 'us',
 		photonRoomId: crypto.randomUUID(),
 		name: roomName,
@@ -189,18 +191,19 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// ---- Player presence -----------------------------------------------------
-	// Login/exclusivelogin: the player isn't in a room yet, so clear any stale
-	// presence (mirrors the C# connect/token removing the player's RoomInstance).
-	// The first heartbeat after this reports roomInstance=null until matchmake.
-	.post('/player/login', async (c) => {
+	// Login/exclusivelogin are no-op acks (matching every reference server). They
+	// MUST NOT touch presence: the client calls exclusivelogin when going online,
+	// and clearing here would wipe the room matchmake just stored → empty KV →
+	// the heartbeat reports no room. Only logout clears presence.
+	.post('/player/login', (c) => c.body(null, 200))
+	.post('/player/exclusivelogin', (c) => c.json({ errorCode: 0 }))
+
+	// Logout: drop the player's presence (they're no longer in a room). Both
+	// reference servers expose this; returns 200.
+	.post('/player/logout', async (c) => {
 		const id = await authedId(c)
 		if (id !== null) await c.env.MATCH_PRESENCE.delete(presenceKey(id))
 		return c.body(null, 200)
-	})
-	.post('/player/exclusivelogin', async (c) => {
-		const id = await authedId(c)
-		if (id !== null) await c.env.MATCH_PRESENCE.delete(presenceKey(id))
-		return c.json({ errorCode: 0 })
 	})
 
 	.get('/player', async (c) => {
@@ -310,6 +313,18 @@ const app = new Hono<App>()
 		const id = await authedId(c)
 		const instance = dormRoomInstance()
 		if (id !== null) await enterRoom(c, id, instance)
+		return c.json({ errorCode: 0, roomInstance: instance })
+	})
+	// The 2023 client uses a two-segment matchmake/room/{roomId}. Synthesize the
+	// room instance and store it as presence.
+	.post('/matchmake/room/:roomId', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const roomId = c.req.param('roomId')
+		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+		const joinMode = typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
+		const instance = roomId === '1' ? dormRoomInstance() : buildRoomInstance(roomId, joinMode === 2)
+		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
 	.post('/matchmake/:room', async (c) => {

@@ -47,6 +47,14 @@ describe('rooms endpoints', () => {
 		expect(res.status).toBe(400)
 	})
 
+	it('GET /roomserver/photon_access_token returns permissions + instance id', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/roomserver/photon_access_token`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { Permissions: unknown[]; RoomInstanceId: number }
+		expect(body.Permissions.length).toBeGreaterThan(0)
+		expect(body.RoomInstanceId).toBe(1)
+	})
+
 	it('GET /roomserver/rooms/createdby/me returns the owned rooms array', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/roomserver/rooms/createdby/me`)
 		expect(res.status).toBe(200)

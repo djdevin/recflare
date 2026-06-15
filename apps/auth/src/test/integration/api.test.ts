@@ -99,6 +99,16 @@ describe('auth worker routes', () => {
 		expect(payload.platform).toBe('Steam')
 	})
 
+	test('POST /cachedlogin/forplatformids returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformids`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'id=76561197971551621&id=76561197976728738',
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('GET /role/developer/:id returns ok', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/role/developer/42`)
 		expect(res.status).toBe(200)

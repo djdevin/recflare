@@ -61,4 +61,11 @@ const app = new Hono<App>()
 	// deserializes this into an object, so it must return `{}` (not `[]`).
 	.get('/subscription/details/:subscription', (c) => c.json({}))
 
+	// The player's clubs that have unread announcements (MyClubsWithUnread-
+	// Announcements). No DB → empty list.
+	.get('/announcements/v2/mine/unread', (c) => c.json([]))
+
+	// The clubs the player is a member of (GetMyMembershipClubs). No DB → empty.
+	.get('/club/mine/member', (c) => c.json([]))
+
 export default app

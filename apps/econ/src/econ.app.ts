@@ -3,6 +3,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import defaultAvatar from '../static/default-avatar.json'
 import defaultAvatarItems from '../static/default-avatar-items.json'
 import myProgress from '../static/my-progress.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
@@ -87,7 +88,17 @@ const app = new Hono<App>()
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		// TODO: load/create the PlayerAvatar for `id` once a DB binding exists.
-		return c.json({ OutfitSelections: '', FaceFeatures: '{}', SkinColor: '', HairColor: '' })
+		// Must return a populated outfit — the client's parser NREs on an empty
+		// OutfitSelections (real RecNet never returns one), so serve a valid default.
+		return c.json(defaultAvatar)
+	})
+
+	// NUX checklist — the client fetches this on the econ host during load. []
+	// with no DB. A 404 here can abort the load orchestration before matchmake.
+	.get('/api/checklist/v1/current', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		return c.json([])
 	})
 
 	// The player's saved outfits. [Authorize]; empty without a DB binding.

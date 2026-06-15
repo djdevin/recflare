@@ -78,6 +78,14 @@ describe('public endpoints', () => {
 		expect(await res.json()).toMatchObject({ AccountId: 99, CheerCredit: 20 })
 	})
 
+	test('GET /api/playerReputation/v2/bulk?id= returns a reputation per id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk?id=1&id=2`)
+		expect(res.status).toBe(200)
+		const reps = (await res.json()) as Array<{ AccountId: number; CheerCredit: number }>
+		expect(reps.map((r) => r.AccountId)).toEqual([1, 2])
+		expect(reps[0]).toMatchObject({ CheerCredit: 20 })
+	})
+
 	test('POST /api/playerReputation/v2/bulk returns a reputation per id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk`, {
 			method: 'POST',
@@ -100,6 +108,14 @@ describe('public endpoints', () => {
 	test('GET /api/storefronts/v1/p2p/betaEnabled returns false', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v1/p2p/betaEnabled`)
 		expect(await res.json()).toBe(false)
+	})
+
+	test('GET /api/players/v2/progression/bulk?id= returns progression per id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/players/v2/progression/bulk?id=1&id=2`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Array<{ PlayerId: number; Level: number }>
+		expect(body.map((p) => p.PlayerId)).toEqual([1, 2])
+		expect(body[0]).toMatchObject({ Level: 1, XP: 0 })
 	})
 
 	test('POST /api/players/v2/progression/bulk returns an array', async () => {
@@ -137,6 +153,26 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({})
 	})
+
+	test('GET /api/inventions/v2/mine returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/mine`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('POST /api/sanitize/v1 echoes the value; isPure reports true', async () => {
+		const san = await exports.default.fetch(`${ORIGIN}/api/sanitize/v1`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ Value: 'hello world' }),
+		})
+		expect(san.status).toBe(200)
+		expect(await san.json()).toBe('hello world')
+
+		const pure = await exports.default.fetch(`${ORIGIN}/api/sanitize/v1/isPure`, { method: 'POST' })
+		expect(pure.status).toBe(200)
+		expect(await pure.json()).toEqual({ IsPure: true })
+	})
 })
 
 describe('auth-gated endpoints', () => {
@@ -172,7 +208,18 @@ describe('auth-gated endpoints', () => {
 
 	test('GET /api/avatar/v2 returns a default avatar', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, { headers: await bearer() })
-		expect(await res.json()).toMatchObject({ FaceFeatures: '{}' })
+		const body = (await res.json()) as { OutfitSelections: string }
+		expect(body.OutfitSelections.length).toBeGreaterThan(0)
+	})
+
+	test('GET /api/checklist/v1/current 401s without a token, returns [] with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
 	})
 })
 
@@ -188,6 +235,19 @@ describe('room server', () => {
 		const rooms = (await res.json()) as Array<{ RoomId: number; SubRooms: unknown[] }>
 		expect(rooms.map((r) => r.RoomId)).toEqual([1, 2])
 		expect(rooms[0].SubRooms).toHaveLength(1)
+	})
+
+	test('GET /roomserver/photon_access_token returns permissions + instance id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/roomserver/photon_access_token`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Permissions: unknown[]
+			PhotonAccessToken: string
+			RoomInstanceId: number
+		}
+		expect(Array.isArray(body.Permissions)).toBe(true)
+		expect(body.Permissions.length).toBeGreaterThan(0)
+		expect(body).toMatchObject({ PhotonAccessToken: '', RoomInstanceId: 1 })
 	})
 
 	test('GET /roomserver/rooms/hot returns an empty result set', async () => {

@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import apiConfigV2 from '../static/api-config-v2.json'
+import defaultAvatar from '../static/default-avatar.json'
 import gameConfigsV1All from '../static/gameconfigs-v1-all.json'
 import storefrontGiftDrop2 from '../static/storefronts-v3-giftdropstore-2.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
@@ -54,6 +55,18 @@ async function parseFormIds(c: Context<App>): Promise<number[]> {
 		.split(',')
 		.map((s) => Number.parseInt(s.trim(), 10))
 		.filter((n) => !Number.isNaN(n))
+}
+
+/** Read integer ids from repeated/comma-separated `id` query params. The 2023
+ * client passes these to the bulk GET endpoints (e.g. `?id=1&id=2`). */
+function queryIds(c: Context<App>): number[] {
+	return (
+		c.req
+			.queries('id')
+			?.flatMap((v) => v.split(','))
+			.map((s) => Number.parseInt(s.trim(), 10))
+			.filter((n) => !Number.isNaN(n)) ?? []
+	)
 }
 
 /** Unity scene id for the dorm (matches the match worker's instance location). */
@@ -111,6 +124,40 @@ function buildRoomResponse(roomId: number) {
 		PromoImages: [],
 		PromoExternalContent: [],
 		Tags: [],
+	}
+}
+
+/**
+ * Photon access-token response (`/roomserver/photon_access_token`). The 2023
+ * client calls this to get its room permissions + the instance id it's spawning
+ * into; a 404 here leaves the player stuck on a black screen. Mirrors the FemRec
+ * reference (`PhotonAccessToken` is empty — the client uses its baked-in Photon
+ * credentials). Our synthesized instances always use roomInstanceId 1.
+ */
+function photonAccessToken() {
+	const perm = (Permission: string, Role: number, Override: boolean) => ({
+		Override,
+		Permission,
+		Role,
+		Type: 0,
+		Value: 'True',
+	})
+	return {
+		Permissions: [
+			perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
+			perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
+			perm('CAN_SAVE_INVENTIONS', 0, true),
+			perm('CAN_SPAWN_INVENTIONS', 0, true),
+			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
+			perm('CAN_USE_MAKER_PEN', 30, false),
+			perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
+			perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
+			perm('CAN_SAVE_INVENTIONS', 30, true),
+			perm('CAN_SPAWN_INVENTIONS', 30, true),
+			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
+		],
+		PhotonAccessToken: '',
+		RoomInstanceId: 1,
 	}
 }
 
@@ -204,6 +251,8 @@ const app = new Hono<App>({ strict: false })
 		const ids = await parseFormIds(c)
 		return c.json(ids.map(defaultReputation))
 	})
+	// The 2023 client calls this as a GET with repeated `id` query params.
+	.get('/api/playerReputation/v2/bulk', (c) => c.json(queryIds(c).map(defaultReputation)))
 	.post('/api/players/v1/progression/bulk', async (c) => {
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
@@ -213,6 +262,11 @@ const app = new Hono<App>({ strict: false })
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
 	})
+	// The 2023 client calls this as a GET with repeated `id` query params (the
+	// FemRec reference). Return a default progression per requested id.
+	.get('/api/players/v2/progression/bulk', (c) =>
+		c.json(queryIds(c).map((id) => ({ PlayerId: id, Level: 1, XP: 0 })))
+	)
 	.post('/api/v1/progression/bulk', async (c) => {
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
@@ -228,21 +282,23 @@ const app = new Hono<App>({ strict: false })
 	.get('/api/avatar/v2', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: load/create PlayerAvatar for `id`.
-		return c.json({ OutfitSelections: '', FaceFeatures: '{}', SkinColor: '', HairColor: '' })
+		// TODO: load/create PlayerAvatar for `id`. Must return a populated outfit —
+		// the client NREs on an empty OutfitSelections — so serve a valid default.
+		return c.json(defaultAvatar)
 	})
 	.post('/api/avatar/v2/set', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const update = await c.req.json<Record<string, unknown>>().catch(() => null)
 		if (update === null) return c.body(null, 400)
-		// TODO: persist; echo the accepted avatar back like the C# does.
+		// TODO: persist; echo the accepted avatar back like the C# does. Fall back to
+		// the valid default avatar fields when the client omits them.
 		return c.json({
 			OwnerAccountId: id,
-			OutfitSelections: update.OutfitSelections ?? '',
-			FaceFeatures: update.FaceFeatures ?? '{}',
-			SkinColor: update.SkinColor ?? '',
-			HairColor: update.HairColor ?? '',
+			OutfitSelections: update.OutfitSelections ?? defaultAvatar.OutfitSelections,
+			FaceFeatures: update.FaceFeatures ?? defaultAvatar.FaceFeatures,
+			SkinColor: update.SkinColor ?? defaultAvatar.SkinColor,
+			HairColor: update.HairColor ?? defaultAvatar.HairColor,
 		})
 	})
 	.get('/api/avatar/v3/saved', async (c) => {
@@ -311,6 +367,24 @@ const app = new Hono<App>({ strict: false })
 	// Voice chat config. Not in CannedNet; the client fetches it to set up voice.
 	// No reference shape, so return an empty object until the client needs fields.
 	.get('/voice/config', (c) => c.json({}))
+
+	// ---- 2023 client loading-path endpoints (from the FemRec reference) --------
+	// NUX checklist + saved inventions — empty lists with no DB.
+	.get('/api/checklist/v1/current', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		return c.json([])
+	})
+	.get('/api/inventions/v2/mine', (c) => c.json([]))
+
+	// Text sanitization (display names, room names, chat). `v1` echoes the input
+	// value back; `isPure` reports the text is clean. The client sanitizes text
+	// during load/display, so a 404 here can stall room entry.
+	.post('/api/sanitize/v1', async (c) => {
+		const body = await c.req.json<{ Value?: unknown }>().catch(() => ({}) as { Value?: unknown })
+		return c.json(typeof body.Value === 'string' ? body.Value : '')
+	})
+	.post('/api/sanitize/v1/isPure', (c) => c.json({ IsPure: true }))
 
 	// ---- Player reporting -----------------------------------------------------
 	.get('/api/PlayerReporting/v1/moderationBlockDetails', (c) =>
@@ -433,6 +507,8 @@ const app = new Hono<App>({ strict: false })
 			.filter((n) => !Number.isNaN(n))
 		return c.json(ids.map(buildRoomResponse))
 	})
+	// Photon access token + room permissions the client needs to spawn into a room.
+	.get('/roomserver/photon_access_token', (c) => c.json(photonAccessToken()))
 	.get('/roomserver/rooms/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
 	.get('/roomserver/roomsandplaylists/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
 	.get('/roomserver/rooms/createdby/me', (c) => c.json([buildRoomResponse(1)]))

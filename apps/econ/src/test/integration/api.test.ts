@@ -72,15 +72,14 @@ describe('econ endpoints', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('GET /api/avatar/v2 returns the default avatar with a valid token', async () => {
+	test('GET /api/avatar/v2 returns a populated default avatar with a valid token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, { headers: await bearer() })
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({
-			OutfitSelections: '',
-			FaceFeatures: '{}',
-			SkinColor: '',
-			HairColor: '',
-		})
+		const body = (await res.json()) as { OutfitSelections: string; FaceFeatures: string }
+		// Must be non-empty — the client's outfit parser NREs on an empty string.
+		expect(body.OutfitSelections.length).toBeGreaterThan(0)
+		expect(body.OutfitSelections).toContain(';')
+		expect(body.FaceFeatures).toContain('eyeId')
 	})
 
 	test('GET /econ/customAvatarItems/v1/owned returns { items: [] } (no auth)', async () => {
@@ -95,6 +94,16 @@ describe('econ endpoints', () => {
 		const body = (await res.json()) as { Objectives: unknown[]; ObjectiveGroups: unknown[] }
 		expect(Array.isArray(body.Objectives)).toBe(true)
 		expect(Array.isArray(body.ObjectiveGroups)).toBe(true)
+	})
+
+	test('GET /api/checklist/v1/current 401s without a token, returns [] with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
 	})
 
 	test('GET /api/avatar/v3/saved 401s without a token, returns [] with one', async () => {

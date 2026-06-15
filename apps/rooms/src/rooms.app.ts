@@ -124,4 +124,35 @@ const app = new Hono<App>()
 	// Rooms created by the caller. The C# serves JSON/ownedrooms.json (the dorm).
 	.get('/roomserver/rooms/createdby/me', (c) => c.json([buildRoomResponse(1)]))
 
+	// Photon access token + room permissions the client needs to spawn into a
+	// room. Without it the player is stuck on a black screen. PhotonAccessToken is
+	// empty (the client uses its baked-in Photon credentials); roomInstanceId is
+	// our constant 1.
+	.get('/roomserver/photon_access_token', (c) => {
+		const perm = (Permission: string, Role: number, Override: boolean) => ({
+			Override,
+			Permission,
+			Role,
+			Type: 0,
+			Value: 'True',
+		})
+		return c.json({
+			Permissions: [
+				perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
+				perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
+				perm('CAN_SAVE_INVENTIONS', 0, true),
+				perm('CAN_SPAWN_INVENTIONS', 0, true),
+				perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
+				perm('CAN_USE_MAKER_PEN', 30, false),
+				perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
+				perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
+				perm('CAN_SAVE_INVENTIONS', 30, true),
+				perm('CAN_SPAWN_INVENTIONS', 30, true),
+				perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
+			],
+			PhotonAccessToken: '',
+			RoomInstanceId: 1,
+		})
+	})
+
 export default app

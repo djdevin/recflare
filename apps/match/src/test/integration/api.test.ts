@@ -85,6 +85,18 @@ describe('public endpoints', () => {
 		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
 	})
 
+	test('POST /matchmake/room/:roomId synthesizes an instance and stores presence', async () => {
+		const headers = await bearer('88')
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/42`, {
+			method: 'POST',
+			headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ JoinMode: '2' }).toString(),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { roomInstance: { roomId: number; isPrivate: boolean } }
+		expect(body.roomInstance).toMatchObject({ roomId: 42, isPrivate: true })
+	})
+
 	test('POST /matchmake/none returns the offline dorm', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/matchmake/none`, { method: 'POST' })
 		expect(res.status).toBe(200)
@@ -244,15 +256,30 @@ describe('auth-gated endpoints', () => {
 		})
 	})
 
-	test('player/login clears presence (back to not-in-a-room)', async () => {
-		const headers = await bearer('9')
+	test('player/logout returns 200 and clears presence', async () => {
+		const headers = await bearer('77')
 		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
-		await exports.default.fetch(`${ORIGIN}/player/login`, { method: 'POST', headers })
+		const out = await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
+		expect(out.status).toBe(200)
 		const hb = (await (
 			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
 		).json()) as { roomInstance: unknown; isOnline: boolean }
 		expect(hb.roomInstance).toBeNull()
 		expect(hb.isOnline).toBe(false)
+	})
+
+	test('login/exclusivelogin do NOT clear presence (only logout does)', async () => {
+		const headers = await bearer('9')
+		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
+		// The client calls exclusivelogin when going online — it must not wipe the
+		// room matchmake just stored.
+		await exports.default.fetch(`${ORIGIN}/player/exclusivelogin`, { method: 'POST', headers })
+		await exports.default.fetch(`${ORIGIN}/player/login`, { method: 'POST', headers })
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
+		).json()) as { roomInstance: { name: string } | null; isOnline: boolean }
+		expect(hb.isOnline).toBe(true)
+		expect(hb.roomInstance?.name).toBe('DormRoom')
 	})
 
 	test('GET /player?id reports stored presence per id', async () => {

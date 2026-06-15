@@ -58,6 +58,10 @@ const app = new Hono<App>()
 		])
 	})
 
+	// Bulk cached-login lookup by platform id (friends resolution). The client
+	// POSTs repeated `id=` params on the auth host; no DB → no matches → [].
+	.post('/cachedlogin/forplatformids', (c) => c.json([]))
+
 	// OAuth token endpoint — accepts a form-urlencoded body and issues a JWT.
 	.post('/connect/token', async (c) => {
 		// The C# reads `grant_type`, `account_id`, `platform_id` and `platform` from

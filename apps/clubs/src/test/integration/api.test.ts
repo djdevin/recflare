@@ -56,6 +56,18 @@ describe('clubs endpoints', () => {
 		expect(await res.json()).toEqual({})
 	})
 
+	test('GET /announcements/v2/mine/unread returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/announcements/v2/mine/unread`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	test('GET /club/mine/member returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/club/mine/member`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('unknown routes 404', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/nope`)
 		expect(res.status).toBe(404)
