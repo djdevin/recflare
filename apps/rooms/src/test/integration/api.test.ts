@@ -110,6 +110,43 @@ describe('rooms endpoints', () => {
 		expect(other).toEqual([])
 	})
 
+	it('GET /rooms/search returns a paginated { Results, TotalResults }', async () => {
+		// Name-term search resolves a known public room.
+		const res = await SELF.fetch(`${ORIGIN}/rooms/search?query=reccenter&skip=0&take=100`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { Results: Array<{ Name: string }>; TotalResults: number }
+		expect(body.TotalResults).toBeGreaterThanOrEqual(1)
+		expect(body.Results.some((r) => r.Name === 'RecCenter')).toBe(true)
+	})
+
+	it('GET /rooms/search excludes dorms and respects pagination shape', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/search?query=dormroom`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { Results: unknown[]; TotalResults: number }
+		// The dorm is non-public/dorm, so a name search for it returns nothing.
+		expect(body).toEqual({ Results: [], TotalResults: 0 })
+	})
+
+	it('GET /rooms/search?query=#tag returns 200 (tag search)', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/search?query=%23Quest+%23recroomoriginal`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { Results: unknown[]; TotalResults: number }
+		expect(Array.isArray(body.Results)).toBe(true)
+		expect(typeof body.TotalResults).toBe('number')
+	})
+
+	it('GET /rooms/search aliases #recroomoriginal to the rro tag', async () => {
+		// Rooms are tagged `rro`, not `recroomoriginal` — the alias bridges them.
+		const aliased = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/search?query=%23recroomoriginal`)
+		).json()) as { TotalResults: number }
+		const direct = (await (await SELF.fetch(`${ORIGIN}/rooms/search?query=%23rro`)).json()) as {
+			TotalResults: number
+		}
+		expect(aliased.TotalResults).toBe(direct.TotalResults)
+		expect(aliased.TotalResults).toBeGreaterThan(0)
+	})
+
 	it('GET /photon_access_token (bare + /roomserver) returns permissions', async () => {
 		for (const path of ['/photon_access_token', '/roomserver/photon_access_token']) {
 			const res = await SELF.fetch(`${ORIGIN}${path}`)

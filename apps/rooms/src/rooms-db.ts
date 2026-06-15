@@ -70,3 +70,54 @@ export async function getRoomsByCreator(db: D1Database, accountId: number): Prom
 		.all<RoomRow>()
 	return parseAll(results)
 }
+
+/**
+ * Search-tag aliases: a queried `#tag` also matches these stored tag names.
+ * The client's pinned filters don't always match how rooms are tagged (e.g. it
+ * searches `recroomoriginal`, but rooms are tagged `rro`).
+ */
+const TAG_ALIASES: Record<string, string[]> = {
+	recroomoriginal: ['rro'],
+}
+
+/** True if the room carries any of the given (lowercased) tags. */
+function roomHasAnyTag(room: Room, tags: Set<string>): boolean {
+	const roomTags = room.Tags
+	if (!Array.isArray(roomTags)) return false
+	return roomTags.some((t) => {
+		const value = (t as Record<string, unknown> | null)?.Tag
+		return typeof value === 'string' && tags.has(value.toLowerCase())
+	})
+}
+
+/**
+ * Search public, non-dorm rooms. The query is split into terms (space/`+`):
+ * `#tag` terms match the room's Tags; plain terms match the room name
+ * (substring). All terms must match. Returns a paginated `{ Results, TotalResults }`.
+ * The dataset is small, so this filters in memory rather than in SQL.
+ */
+export async function searchRooms(
+	db: D1Database,
+	query: string,
+	skip: number,
+	take: number
+): Promise<{ Results: Room[]; TotalResults: number }> {
+	const q = query.trim().toLowerCase()
+	if (q === '') return { Results: [], TotalResults: 0 }
+	const terms = q.split(/[\s+]+/).filter(Boolean)
+
+	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	let rooms = parseAll(results).filter((r) => r.IsDorm !== true && r.Accessibility === 1)
+
+	for (const term of terms) {
+		if (term.startsWith('#')) {
+			const tag = term.slice(1)
+			const accepted = new Set([tag, ...(TAG_ALIASES[tag] ?? [])])
+			rooms = rooms.filter((r) => roomHasAnyTag(r, accepted))
+		} else {
+			rooms = rooms.filter((r) => typeof r.Name === 'string' && r.Name.toLowerCase().includes(term))
+		}
+	}
+
+	return { Results: rooms.slice(skip, skip + take), TotalResults: rooms.length }
+}

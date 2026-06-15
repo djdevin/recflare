@@ -4,7 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
-import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
+import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds, searchRooms } from './rooms-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
@@ -106,6 +106,16 @@ const app = new Hono<App>()
 		}
 		const room = await getRoomByName(c.env.DB, nameParam ?? '')
 		return c.json(room ?? {})
+	})
+
+	// Room search: `query` is space/`+`-separated terms — `#tag` matches room tags,
+	// plain terms match the name. Public, non-dorm rooms only. Paginated via
+	// skip/take. Returns `{ Results, TotalResults }`.
+	.get('/rooms/search', async (c) => {
+		const query = c.req.query('query') ?? ''
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '30', 10) || 30
+		return c.json(await searchRooms(c.env.DB, query, skip, take))
 	})
 
 	// Bulk room lookup by `id` or `name` — returns an array of matched rooms (the
