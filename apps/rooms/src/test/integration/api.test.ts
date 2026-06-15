@@ -55,6 +55,23 @@ describe('rooms endpoints', () => {
 		expect(body.RoomInstanceId).toBe(1)
 	})
 
+	it('GET /rooms/bulk?id= returns an array; ?name= returns []', async () => {
+		const byId = await SELF.fetch(`${ORIGIN}/rooms/bulk?id=1,2`)
+		expect(byId.status).toBe(200)
+		expect(((await byId.json()) as unknown[]).length).toBe(2)
+		const byName = await SELF.fetch(`${ORIGIN}/rooms/bulk?name=RecCenter`)
+		expect(byName.status).toBe(200)
+		expect(await byName.json()).toEqual([])
+	})
+
+	it('GET /photon_access_token (bare) also returns permissions', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/photon_access_token`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { Permissions: unknown[]; RoomInstanceId: number }
+		expect(body.Permissions.length).toBeGreaterThan(0)
+		expect(body.RoomInstanceId).toBe(1)
+	})
+
 	it('GET /roomserver/rooms/createdby/me returns the owned rooms array', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/roomserver/rooms/createdby/me`)
 		expect(res.status).toBe(200)

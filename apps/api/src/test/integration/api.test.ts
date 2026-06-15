@@ -148,6 +148,28 @@ describe('public endpoints', () => {
 		expect(await res.json()).toBe(true)
 	})
 
+	test('GET /api/rooms/v1/filters returns an object with filter arrays', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/rooms/v1/filters`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { PinnedFilters: string[]; PopularFilters: string[] }
+		expect(Array.isArray(body.PinnedFilters)).toBe(true)
+		expect(Array.isArray(body.PopularFilters)).toBe(true)
+	})
+
+	test('GET /api/keepsakes/globalconfig returns the keepsake config', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/keepsakes/globalconfig`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ KeepsakeFeatureEnabled: true })
+	})
+
+	test('GET /api/keepsakes/rooms/:id returns 204; categories returns []', async () => {
+		const room = await exports.default.fetch(`${ORIGIN}/api/keepsakes/rooms/1`)
+		expect(room.status).toBe(204)
+		const cats = await exports.default.fetch(`${ORIGIN}/api/keepsakes/categories`)
+		expect(cats.status).toBe(200)
+		expect(await cats.json()).toEqual([])
+	})
+
 	test('GET /voice/config returns an object', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/voice/config`)
 		expect(res.status).toBe(200)

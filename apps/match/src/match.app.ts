@@ -349,6 +349,10 @@ const app = new Hono<App>()
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
 
+	// Region ping reports — accept-and-ack (the reference returns Ok()).
+	.put('/player/photonregionpings', (c) => c.body(null, 200))
+	.put('/player/gameserverregionpings', (c) => c.body(null, 200))
+
 	// ---- Room instance -------------------------------------------------------
 	.post('/roominstance/:id/reportjoinresult', (c) => c.body(null, 200))
 

@@ -386,6 +386,15 @@ const app = new Hono<App>({ strict: false })
 	})
 	.post('/api/sanitize/v1/isPure', (c) => c.json({ IsPure: true }))
 
+	// Keepsakes (room mementos). Shapes from the 2025 reference; categories isn't
+	// in any reference, so it's stubbed empty. The client fetches these on room
+	// entry — a 404 stalls the load.
+	.get('/api/keepsakes/globalconfig', (c) =>
+		c.json({ KeepsakeFeatureEnabled: true, KeepsakeRoomLimit: 10, SocialXpBoostEnabled: false })
+	)
+	.get('/api/keepsakes/rooms/:roomId', (c) => c.body(null, 204))
+	.get('/api/keepsakes/categories', (c) => c.json([]))
+
 	// ---- Player reporting -----------------------------------------------------
 	.get('/api/PlayerReporting/v1/moderationBlockDetails', (c) =>
 		c.json({
@@ -489,7 +498,30 @@ const app = new Hono<App>({ strict: false })
 	})
 
 	// ---- Rooms ----------------------------------------------------------------
-	.get('/api/rooms/v1/filters', (c) => c.json([])) // TODO: hydrate from JSON/roomfilters.json
+	// Room search filters. The client deserializes this into an object (not an
+	// array) — shape from the 2025 reference.
+	.get('/api/rooms/v1/filters', (c) =>
+		c.json({
+			PinnedFilters: [
+				'recroomoriginal',
+				'community',
+				'featured',
+				'quest',
+				'pvp',
+				'hangout',
+				'game',
+				'art',
+				'store',
+				'tutorial',
+				'fandom',
+				'performance',
+				'action',
+				'horror',
+			],
+			PopularFilters: ['pvp', 'quest', 'game', 'hangout', 'art'],
+			TrendingFilters: ['roleplay', 'nomp', 'rp', 'casual', 'fun', 'action', 'military', 'sports'],
+		})
+	)
 
 	// ---- Room server ----------------------------------------------------------
 	// Register specific paths before the `/:id` param route.

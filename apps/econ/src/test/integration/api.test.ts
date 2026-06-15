@@ -146,6 +146,12 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	test('GET /api/roomkeys/v1/room returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/room?roomId=1`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('GET /api/roomconsumables/v1/roomConsumable/room/:id/me returns []', async () => {
 		const res = await exports.default.fetch(
 			`${ORIGIN}/api/roomconsumables/v1/roomConsumable/room/1/me`

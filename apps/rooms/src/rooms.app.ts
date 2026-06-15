@@ -24,6 +24,34 @@ import type { App } from './context'
 /** Unity scene id for the dorm (also the matchmake/heartbeat instance location). */
 const DORM_SCENE_ID = '76d98498-60a1-430c-ab76-b54a29b7a163'
 
+/** Room permissions + (empty) Photon token the client needs to spawn into a room. */
+function photonAccessToken() {
+	const perm = (Permission: string, Role: number, Override: boolean) => ({
+		Override,
+		Permission,
+		Role,
+		Type: 0,
+		Value: 'True',
+	})
+	return {
+		Permissions: [
+			perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
+			perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
+			perm('CAN_SAVE_INVENTIONS', 0, true),
+			perm('CAN_SPAWN_INVENTIONS', 0, true),
+			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
+			perm('CAN_USE_MAKER_PEN', 30, false),
+			perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
+			perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
+			perm('CAN_SAVE_INVENTIONS', 30, true),
+			perm('CAN_SPAWN_INVENTIONS', 30, true),
+			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
+		],
+		PhotonAccessToken: '',
+		RoomInstanceId: 1,
+	}
+}
+
 function buildRoomResponse(roomId: number) {
 	const isDorm = roomId === 1
 	return {
@@ -113,6 +141,26 @@ const app = new Hono<App>()
 		return c.json(buildRoomResponse(1))
 	})
 
+	// Bulk room lookup by `id` (synthesized per id) or `name`. The client calls
+	// this bare on the rooms host. We have no named-room data, so a name lookup
+	// returns [] — the client treats that as NoSuchRoom (a non-fatal warning),
+	// which is the honest answer since we can't actually host that room.
+	.get('/rooms/bulk', (c) => {
+		const idParam = c.req.query('id')
+		const nameParam = c.req.query('name')
+		if (!idParam && !nameParam) {
+			return c.json("Either 'id' or 'name' query parameter is required", 400)
+		}
+		if (idParam) {
+			const ids = idParam
+				.split(',')
+				.map((s) => Number.parseInt(s.trim(), 10))
+				.filter((n) => !Number.isNaN(n))
+			return c.json(ids.map(buildRoomResponse))
+		}
+		return c.json([])
+	})
+
 	// Single room by id. The C# 404s when the row is missing; with no DB we
 	// synthesize the room so the client can load it (ignores the include/
 	// unityAsset* query params, same as the C#).
@@ -127,32 +175,9 @@ const app = new Hono<App>()
 	// Photon access token + room permissions the client needs to spawn into a
 	// room. Without it the player is stuck on a black screen. PhotonAccessToken is
 	// empty (the client uses its baked-in Photon credentials); roomInstanceId is
-	// our constant 1.
-	.get('/roomserver/photon_access_token', (c) => {
-		const perm = (Permission: string, Role: number, Override: boolean) => ({
-			Override,
-			Permission,
-			Role,
-			Type: 0,
-			Value: 'True',
-		})
-		return c.json({
-			Permissions: [
-				perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
-				perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
-				perm('CAN_SAVE_INVENTIONS', 0, true),
-				perm('CAN_SPAWN_INVENTIONS', 0, true),
-				perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
-				perm('CAN_USE_MAKER_PEN', 30, false),
-				perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
-				perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
-				perm('CAN_SAVE_INVENTIONS', 30, true),
-				perm('CAN_SPAWN_INVENTIONS', 30, true),
-				perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
-			],
-			PhotonAccessToken: '',
-			RoomInstanceId: 1,
-		})
-	})
+	// our constant 1. The client calls it on the rooms host both bare and under
+	// `/roomserver`, so both are registered.
+	.get('/photon_access_token', (c) => c.json(photonAccessToken()))
+	.get('/roomserver/photon_access_token', (c) => c.json(photonAccessToken()))
 
 export default app

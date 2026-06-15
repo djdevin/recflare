@@ -165,6 +165,8 @@ const app = new Hono<App>()
 
 	// The player's room keys. The C# returns "[]".
 	.get('/api/roomkeys/v1/mine', (c) => c.json([]))
+	// Room keys for a given room (client calls this on the econ host). [] with no DB.
+	.get('/api/roomkeys/v1/room', (c) => c.json([]))
 
 	// Subscription lookup. The C# returns both fields null with no auth.
 	.post('/api/CampusCard/v1/UpdateAndGetSubscription', (c) =>

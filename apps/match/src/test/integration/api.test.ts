@@ -118,6 +118,11 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(200)
 	})
 
+	test('PUT /player/photonregionpings returns 200', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/player/photonregionpings`, { method: 'PUT' })
+		expect(res.status).toBe(200)
+	})
+
 	test('POST /roominstance/:id/reportjoinresult returns 200', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/roominstance/5/reportjoinresult`, {
 			method: 'POST',
