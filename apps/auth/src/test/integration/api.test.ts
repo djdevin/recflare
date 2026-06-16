@@ -140,10 +140,11 @@ describe('auth worker routes', () => {
 		const payload = await tokenFor('grant_type=create_account&platform_id=steam-456')
 		const sub = payload.sub as string
 		const presence = await env.MATCH_PRESENCE.get<{
-			roomInstance: { roomId: number; location: string; name: string }
+			roomInstance: { roomInstanceId: number; roomId: number; location: string; name: string }
 		}>(`presence:${sub}`, 'json')
 		expect(presence).not.toBeNull()
 		expect(presence!.roomInstance).toMatchObject({
+			roomInstanceId: -2,
 			roomId: 13,
 			location: ORIENTATION_SCENE,
 			name: '^Orientation',

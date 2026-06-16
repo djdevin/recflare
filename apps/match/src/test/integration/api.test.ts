@@ -154,7 +154,7 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual({ errorCode: 20, roomInstance: null })
 	})
 
-	test('POST /matchmake/none returns the offline dorm', async () => {
+	test('POST /matchmake/none returns the offline dorm when the player has no presence', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/matchmake/none`, { method: 'POST' })
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
@@ -168,6 +168,29 @@ describe('public endpoints', () => {
 			isPrivate: true,
 		})
 		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
+	})
+
+	test('POST /matchmake/none preserves an existing presence (does not warp to the dorm)', async () => {
+		const auth = await bearer('314')
+		// Put the player in a room first (RecCenter), establishing presence.
+		await exports.default.fetch(`${ORIGIN}/matchmake/2`, { method: 'POST', headers: auth })
+		// matchmake/none must return that same room, not force the dorm — this is
+		// what keeps a new player in the solo Orientation room.
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/none`, {
+			method: 'POST',
+			headers: auth,
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			errorCode: number
+			roomInstance: { roomId: number; name: string; location: string }
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).toMatchObject({
+			roomId: 2,
+			name: '^RecCenter',
+			location: RECCENTER_SCENE,
+		})
 	})
 
 	test('PUT /player/statusvisibility returns 200', async () => {
@@ -340,23 +363,13 @@ describe('auth-gated endpoints', () => {
 		})
 	})
 
-	test('player/logout returns 200 and clears presence', async () => {
-		const headers = await bearer('77')
-		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
-		const out = await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
-		expect(out.status).toBe(200)
-		const hb = (await (
-			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
-		).json()) as { roomInstance: unknown; isOnline: boolean }
-		expect(hb.roomInstance).toBeNull()
-		expect(hb.isOnline).toBe(false)
-	})
-
-	test('login/exclusivelogin do NOT clear presence (only logout does)', async () => {
+	test('player/login, exclusivelogin and logout all preserve presence', async () => {
 		const headers = await bearer('9')
 		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
-		// The client calls exclusivelogin when going online — it must not wipe the
-		// room matchmake just stored.
+		// None of these lifecycle calls may wipe presence — the client fires a
+		// spurious logout during the account-creation bootstrap, and exclusivelogin
+		// when going online. Clearing here would bounce the player to the dorm.
+		await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
 		await exports.default.fetch(`${ORIGIN}/player/exclusivelogin`, { method: 'POST', headers })
 		await exports.default.fetch(`${ORIGIN}/player/login`, { method: 'POST', headers })
 		const hb = (await (

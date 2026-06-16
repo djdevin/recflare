@@ -28,6 +28,12 @@ const PLATFORM_TYPES: Record<number, string> = {
 
 /** New players start in the Orientation room (RoomId 13) — the new-user flow. */
 const ORIENTATION_ROOM_ID = 13
+/**
+ * The client loads Orientation locally (no matchmake) and tags its instance with
+ * the sentinel id -2. The heartbeat must echo that exact `roomInstanceId` or the
+ * client treats presence as out-of-sync and bounces the player to the dorm.
+ */
+const ORIENTATION_INSTANCE_ID = -2
 /** Presence TTL (s) — matches the match worker; refreshed by each heartbeat. */
 const PRESENCE_TTL = 900
 
@@ -54,7 +60,7 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
 
 	const roomInstance = {
-		roomInstanceId: ORIENTATION_ROOM_ID,
+		roomInstanceId: ORIENTATION_INSTANCE_ID,
 		roomId: ORIENTATION_ROOM_ID,
 		subRoomId: num(sub?.SubRoomId, 1),
 		roomInstanceType: 0,

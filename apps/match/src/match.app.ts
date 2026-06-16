@@ -245,20 +245,15 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// ---- Player presence -----------------------------------------------------
-	// Login/exclusivelogin are no-op acks (matching every reference server). They
-	// MUST NOT touch presence: the client calls exclusivelogin when going online,
-	// and clearing here would wipe the room matchmake just stored → empty KV →
-	// the heartbeat reports no room. Only logout clears presence.
+	// login/exclusivelogin/logout are all no-op acks and MUST NOT touch presence.
+	// The client fires a spurious `player/logout` during the account-creation
+	// bootstrap (right after create_account seeds the new player into Orientation);
+	// deleting presence here wiped that seed and bounced the player to the dorm.
+	// Presence is overwritten by matchmake/goto and expires on its own TTL, so we
+	// don't need to clear it on these lifecycle calls.
 	.post('/player/login', (c) => c.body(null, 200))
 	.post('/player/exclusivelogin', (c) => c.json({ errorCode: 0 }))
-
-	// Logout: drop the player's presence (they're no longer in a room). Both
-	// reference servers expose this; returns 200.
-	.post('/player/logout', async (c) => {
-		const id = await authedId(c)
-		if (id !== null) await c.env.MATCH_PRESENCE.delete(presenceKey(id))
-		return c.body(null, 200)
-	})
+	.post('/player/logout', (c) => c.body(null, 200))
 
 	.get('/player', async (c) => {
 		// Returns each requested player's presence. The C# reads the `id` query
@@ -368,6 +363,18 @@ const app = new Hono<App>()
 	// isn't swallowed by the auth-gated matchmake handler.
 	.post('/matchmake/none', async (c) => {
 		const id = await authedId(c)
+		// FemRec (our 2023-client target) returns the player's *current* heartbeat
+		// here rather than forcing the dorm (the 2025 server's behavior we'd copied).
+		// Orientation is a solo room the client establishes via matchmake/none; if we
+		// force the dorm, the new player is warped out of Orientation within seconds.
+		// So: preserve existing presence; only fall back to the offline dorm when the
+		// player has none (e.g. the title screen before they've entered any room).
+		if (id !== null) {
+			const presence = await getPresence(c, id)
+			if (presence?.roomInstance) {
+				return c.json({ errorCode: 0, roomInstance: presence.roomInstance })
+			}
+		}
 		const instance = dormRoomInstance()
 		if (id !== null) await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
