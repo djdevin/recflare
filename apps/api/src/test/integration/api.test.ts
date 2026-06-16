@@ -337,3 +337,33 @@ describe('room server', () => {
 		expect(await res.json()).toEqual({ Cheered: false, Favorited: false })
 	})
 })
+
+describe('images', () => {
+	test('POST /api/images/v4/uploadsaved stores the file in R2 and returns its name', async () => {
+		const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])
+		const fd = new FormData()
+		fd.append('image', new File([bytes], 'avatar.png', { type: 'image/png' }))
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
+			method: 'POST',
+			body: fd,
+		})
+		expect(res.status).toBe(200)
+		const { ImageName } = (await res.json()) as { ImageName: string }
+		expect(ImageName).toMatch(/^[0-9a-f]+\.png$/)
+
+		// The object is in the shared bucket under that key.
+		const stored = await env.IMAGES.get(ImageName)
+		expect(stored).not.toBeNull()
+		expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
+	})
+
+	test('POST /api/images/v4/uploadsaved 400s without a file', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'foo=bar',
+		})
+		expect(res.status).toBe(400)
+	})
+})

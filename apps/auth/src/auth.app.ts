@@ -3,6 +3,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { createAccount } from './accounts-db'
 import { generateToken, TOKEN_TTL_SECONDS } from './jwt'
 
 import type { App } from './context'
@@ -23,6 +24,66 @@ const PLATFORM_TYPES: Record<number, string> = {
 	6: 'GooglePlay',
 	7: 'Standalone',
 	8: 'Pico',
+}
+
+/** New players start in the Orientation room (RoomId 13) — the new-user flow. */
+const ORIENTATION_ROOM_ID = 13
+/** Presence TTL (s) — matches the match worker; refreshed by each heartbeat. */
+const PRESENCE_TTL = 900
+
+/**
+ * Seed a freshly created account's match presence to the Orientation room. The
+ * client is placed into Orientation by its new-user flow without a matchmake
+ * call, so the match heartbeat would otherwise report no/stale (dorm) presence
+ * and bounce the player out. We write the Orientation instance (built from the
+ * shared rooms D1, matching the match worker's `roomInstanceFromRoom` shape) so
+ * the heartbeat keeps them there.
+ */
+async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: number): Promise<void> {
+	const row = await env.DB.prepare('SELECT data FROM rooms WHERE room_id = ?1')
+		.bind(ORIENTATION_ROOM_ID)
+		.first<{ data: string }>()
+	if (!row) return
+
+	const room = JSON.parse(row.data) as Record<string, unknown>
+	const subRooms = room.SubRooms
+	const sub = (Array.isArray(subRooms) ? subRooms[0] : undefined) as
+		| Record<string, unknown>
+		| undefined
+	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
+	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
+
+	const roomInstance = {
+		roomInstanceId: ORIENTATION_ROOM_ID,
+		roomId: ORIENTATION_ROOM_ID,
+		subRoomId: num(sub?.SubRoomId, 1),
+		roomInstanceType: 0,
+		location: str(sub?.UnitySceneId),
+		dataBlob: str(sub?.DataBlob),
+		eventId: 0,
+		clubId: 0,
+		roomCode: '',
+		photonRegion: 'us',
+		photonRegionId: 'us',
+		photonRoomId: `rec.${ORIENTATION_ROOM_ID}`,
+		name: `^${str(room.Name, 'Orientation')}`,
+		maxCapacity: num(sub?.MaxPlayers, 4),
+		isFull: false,
+		isPrivate: false,
+		isInProgress: false,
+		EncryptVoiceChat: false,
+	}
+	const presence = {
+		roomInstance,
+		statusVisibility: 0,
+		deviceClass: 0,
+		vrMovementMode: 1,
+		platform: 0,
+		appVersion: '20230302',
+	}
+	await env.MATCH_PRESENCE.put(`presence:${accountId}`, JSON.stringify(presence), {
+		expirationTtl: PRESENCE_TTL,
+	})
 }
 
 const app = new Hono<App>()
@@ -73,21 +134,24 @@ const app = new Hono<App>()
 		const platformInt = typeof body.platform === 'string' ? Number.parseInt(body.platform, 10) : NaN
 		const platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
 
-		// grant_type=create_account mints a brand-new account (the C# persists it
-		// plus a dorm; with no DB we just allocate a random id — the accounts worker
-		// synthesizes the account on demand). Otherwise use the posted account_id,
+		// grant_type=create_account mints + persists a brand-new account (with an
+		// auto-assigned random username — players don't choose one initially). The
+		// token's `sub` is the new account's id. Otherwise use the posted account_id,
 		// falling back to "1" (the cachedlogin stub hands the client account 1).
-		const accountId =
-			grantType === 'create_account'
-				? String(Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000)
-				: typeof body.account_id === 'string' && body.account_id
-					? body.account_id
-					: '1'
+		let accountId: string
+		if (grantType === 'create_account') {
+			const account = await createAccount(c.env.DB, { Platforms: platformInt || 0 })
+			accountId = String(account.AccountId)
+			// Place the new player in Orientation (they don't matchmake into it).
+			await placeNewPlayerInOrientation(c.env, account.AccountId)
+		} else {
+			accountId = typeof body.account_id === 'string' && body.account_id ? body.account_id : '1'
+		}
 
 		const accessToken = await generateToken(accountId, platformId, platform)
 
-		// TODO: once a DB binding exists, create the account + dorm on create_account
-		// and remove any RoomInstance owned by accountId on login.
+		// TODO: also create the player's dorm on create_account, and remove any
+		// RoomInstance owned by accountId on login.
 
 		return c.json({
 			access_token: accessToken,

@@ -5,6 +5,9 @@ export type Env = SharedHonoEnv & {
 	// Shared rooms database (schema/migrations owned by the `rooms` worker). Used
 	// read-only here for the /roomserver/rooms/* endpoints.
 	DB: D1Database
+	// Image bucket (shared with the `img` worker, which serves objects back by
+	// key). Uploaded saved images are written here.
+	IMAGES: R2Bucket
 }
 
 /** Variables can be extended */

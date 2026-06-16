@@ -10,6 +10,15 @@
 			"custom_domain": true
 		}
 	],
+	// Shared D1 database. The `accounts` table schema/migrations are owned by the
+	// `auth` worker; this worker binds it read/write to look up and create accounts.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "rec-rooms",
+			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5"
+		}
+	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {

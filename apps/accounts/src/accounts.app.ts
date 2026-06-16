@@ -3,32 +3,20 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
+import { createAccount, defaultAccount, getAccount, getAccountsByIds } from './accounts-db'
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
- * Ported from the C# `AccountsController`. Endpoints that the C# backs with EF
- * Core (`AppDbContext`) are stubbed here — there's no DB binding yet, so reads
- * return synthesized defaults (the C# fills every field with a fallback anyway)
- * and writes accept-and-ack without persisting. Each stub is marked `TODO`.
+ * Ported from the C# `AccountsController`. Account reads/writes are backed by the
+ * shared `accounts` table in D1 (schema owned by the `auth` worker). Accounts not
+ * in the table fall back to a synthesized default (the C# fills every column with
+ * a fallback anyway). Profile mutations still accept-and-ack (marked `TODO`).
  *
  * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
  */
-
-/** Account shape returned by the public lookup endpoints. */
-interface Account {
-	AccountId: number
-	ProfileImage: string
-	IsJunior: boolean
-	Platforms: number
-	PersonalPronouns: number
-	IdentityFlags: number
-	Username: string
-	DisplayName: string
-	CreatedAt: string
-}
 
 /**
  * Resolve the account id from a Bearer token, mirroring the repeated
@@ -37,7 +25,6 @@ interface Account {
  */
 async function authedId(c: Context<App>): Promise<number | null> {
 	const authHeader = c.req.header('Authorization') ?? ''
-	console.log(authHeader)
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
 
 	const token = authHeader.slice('Bearer '.length)
@@ -58,24 +45,6 @@ async function formField(c: Context<App>, name: string): Promise<string> {
 	const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 	const value = body[name]
 	return typeof value === 'string' ? value : ''
-}
-
-/**
- * Synthesize an `Account` from an id using the same fallbacks the C# applies
- * when a column is null. Stands in for `db.Accounts.FindAsync(id)`.
- */
-function defaultAccount(id: number): Account {
-	return {
-		AccountId: id,
-		ProfileImage: 'DefaultProfileImage.jpg',
-		IsJunior: false,
-		Platforms: 0,
-		PersonalPronouns: 0,
-		IdentityFlags: 0,
-		Username: `Player${id}`,
-		DisplayName: `Player${id}`,
-		CreatedAt: new Date().toISOString(),
-	}
 }
 
 const app = new Hono<App>()
@@ -99,8 +68,8 @@ const app = new Hono<App>()
 	.get('/account/me', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: load the real account; the C# 404s when the row is missing.
-		const account = defaultAccount(id)
+		// Load the stored account, falling back to a synthesized default.
+		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
 		// The C# `SelfAccount` marks `JuniorState` (an enum) and `ParentAccountId`
 		// with `[JsonIgnore(WhenWritingNull)]`, so they're OMITTED when null —
 		// emitting `"juniorState":null` makes the client's enum parser throw
@@ -118,15 +87,18 @@ const app = new Hono<App>()
 
 	// ---- Bulk / single lookup ------------------------------------------------
 	// Register the static `bulk` path before the `/account/:id` param route.
-	.get('/account/bulk', (c) => {
+	.get('/account/bulk', async (c) => {
 		// C# reads repeated `id` query params; also accept a comma-separated list.
-		const ids = c.req
-			.queries('id')
-			?.flatMap((v) => v.split(','))
-			.map((s) => Number.parseInt(s.trim(), 10))
-			.filter((n) => !Number.isNaN(n))
-		// TODO: query Accounts for these ids instead of synthesizing.
-		return c.json((ids ?? []).map(defaultAccount))
+		const ids =
+			c.req
+				.queries('id')
+				?.flatMap((v) => v.split(','))
+				.map((s) => Number.parseInt(s.trim(), 10))
+				.filter((n) => !Number.isNaN(n)) ?? []
+		// Resolve stored accounts, synthesizing a default for any id not in the DB
+		// so every requested id is present in the response (matches the C#).
+		const stored = new Map((await getAccountsByIds(c.env.DB, ids)).map((a) => [a.AccountId, a]))
+		return c.json(ids.map((id) => stored.get(id) ?? defaultAccount(id)))
 	})
 
 	.get('/account/:id/bio', (c) => {
@@ -136,22 +108,26 @@ const app = new Hono<App>()
 		return c.json({ accountId, bio: '' })
 	})
 
-	.get('/account/:id', (c) => {
+	.get('/account/:id', async (c) => {
 		const accountId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(accountId)) return c.body(null, 400)
-		// TODO: load the real account; the C# 404s when the row is missing.
-		return c.json(defaultAccount(accountId))
+		// Load the stored account, falling back to a synthesized default.
+		return c.json((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId))
 	})
 
 	// ---- Create --------------------------------------------------------------
 	.post('/account/create', async (c) => {
 		// Parsed for fidelity; unused until there's a DB to persist CachedLogins.
-		await formField(c, 'platform')
+		const platform = await formField(c, 'platform')
 		await formField(c, 'platformId')
 
-		const accountId = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000
-		const account = defaultAccount(accountId)
-		// TODO: persist the account + a dorm Room/SubRoom once a DB binding exists.
+		// Persist a new account with an auto-assigned random username (players
+		// don't choose one initially).
+		const platforms = Number.parseInt(platform, 10)
+		const account = await createAccount(c.env.DB, {
+			Platforms: Number.isNaN(platforms) ? 0 : platforms,
+		})
+		// TODO: also create a dorm Room/SubRoom for the new account.
 		return c.json({ success: true, value: account })
 	})
 

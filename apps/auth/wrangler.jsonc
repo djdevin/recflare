@@ -10,6 +10,26 @@
 			"custom_domain": true
 		}
 	],
+	// Shared D1 database (also used by the rooms worker). The `auth` worker owns
+	// the `accounts` table; a dedicated migrations_table keeps its migration
+	// history separate from the rooms worker's migrations on the same database.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "rec-rooms",
+			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_auth"
+		}
+	],
+	// Shared match-presence KV (owned by the `match` worker) — used to place new
+	// accounts into the Orientation room on signup.
+	"kv_namespaces": [
+		{
+			"binding": "MATCH_PRESENCE",
+			"id": "9f53f04b7dd244658d59f515a14748b6"
+		}
+	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {

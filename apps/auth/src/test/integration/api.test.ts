@@ -1,9 +1,44 @@
+import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../auth.app'
 
+import { SCHEMA_DDL } from '../../accounts-db'
+
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
 const ORIGIN = 'https://auth.rec.djdevin.net'
+
+// The Orientation room (RoomId 13) new accounts are placed into on signup.
+const ORIENTATION_SCENE = 'c79709d8-a31b-48aa-9eb8-cc31ba9505e8'
+
+// Apply the accounts schema so create_account can persist (mirrors the migration),
+// and seed the Orientation room (owned by the rooms worker) so signup can place
+// the new player there.
+beforeAll(async () => {
+	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS rooms (
+			data TEXT NOT NULL,
+			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL
+		)`
+	).run()
+	await env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+		.bind(
+			JSON.stringify({
+				RoomId: 13,
+				Name: 'Orientation',
+				IsDorm: false,
+				SubRooms: [{ SubRoomId: 23, UnitySceneId: ORIENTATION_SCENE, MaxPlayers: 1 }],
+			})
+		)
+		.run()
+})
 
 /** Decode a JWT payload (no verification) for asserting claims. */
 function decodePayload(token: string): Record<string, unknown> {
@@ -87,11 +122,32 @@ describe('auth worker routes', () => {
 		expect(payload.sub).toBe('1')
 	})
 
-	test('POST /connect/token grant_type=create_account mints a new account id', async () => {
+	test('POST /connect/token grant_type=create_account persists a new account', async () => {
 		const payload = await tokenFor('grant_type=create_account&platform_id=steam-123')
+		// The token's sub is the new account id, allocated above the system accounts.
 		const sub = Number.parseInt(payload.sub as string, 10)
-		expect(sub).toBeGreaterThanOrEqual(10000)
-		expect(sub).toBeLessThanOrEqual(99999)
+		expect(sub).toBeGreaterThanOrEqual(2)
+		// The account exists in the DB with an auto-assigned (non-default) username.
+		const row = await env.DB.prepare('SELECT data FROM accounts WHERE account_id = ?1')
+			.bind(sub)
+			.first<{ data: string }>()
+		expect(row).not.toBeNull()
+		const account = JSON.parse(row!.data) as { Username: string }
+		expect(account.Username).not.toMatch(/^Player\d+$/)
+	})
+
+	test('POST /connect/token create_account seeds the new player into Orientation', async () => {
+		const payload = await tokenFor('grant_type=create_account&platform_id=steam-456')
+		const sub = payload.sub as string
+		const presence = await env.MATCH_PRESENCE.get<{
+			roomInstance: { roomId: number; location: string; name: string }
+		}>(`presence:${sub}`, 'json')
+		expect(presence).not.toBeNull()
+		expect(presence!.roomInstance).toMatchObject({
+			roomId: 13,
+			location: ORIENTATION_SCENE,
+			name: '^Orientation',
+		})
 	})
 
 	test('POST /connect/token maps the platform int to its enum name', async () => {

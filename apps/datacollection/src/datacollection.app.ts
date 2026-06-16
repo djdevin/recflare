@@ -22,16 +22,16 @@ const app = new Hono<App>()
 	.get('/', (c) => c.json({ service: 'datacollection', status: 'ok' }))
 
 	// Telemetry sink. The client POSTs analytics events here; we accept and ack
-	// without persisting (no binding yet). Body shape is unknown/unused.
-	.post('/data/event', (c) => c.body(null, 200))
+	// with an empty JSON object (no persistence — no binding yet).
+	.post('/data/event', (c) => c.json({}))
 
-	// Periodic session heartbeat. Same deal — accept and ack with 200.
-	.post('/data/heartbeat', (c) => c.body(null, 200))
+	// Periodic session heartbeat. Same deal — accept and ack with `{}`.
+	.post('/data/heartbeat', (c) => c.json({}))
 
 	// Analytics identify call (player/device identification). Accept and ack.
-	.post('/identify', (c) => c.body(null, 200))
+	.post('/identify', (c) => c.json({}))
 
 	// Generic analytics HTTP API sink. Accept and ack.
-	.post('/httpapi', (c) => c.body(null, 200))
+	.post('/httpapi', (c) => c.json({}))
 
 export default app

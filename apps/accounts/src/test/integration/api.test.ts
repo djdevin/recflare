@@ -1,9 +1,29 @@
+import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../accounts.app'
 
+import { SCHEMA_DDL } from '../../accounts-db'
+
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
 const ORIGIN = 'https://accounts.rec.djdevin.net'
+
+// Apply the accounts schema + seed the system (uid 0) and Coach (uid 1) accounts
+// into the test D1 (mirrors apps/auth/migrations/0001_accounts.sql).
+beforeAll(async () => {
+	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+	await env.DB.batch([
+		insert.bind(JSON.stringify({ AccountId: 0, Username: 'RecRoom', DisplayName: 'Rec Room' })),
+		insert.bind(JSON.stringify({ AccountId: 1, Username: 'Coach', DisplayName: 'Coach' })),
+	])
+})
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
 // accounts worker's validation accepts it. Kept inline to avoid a cross-package
@@ -62,11 +82,15 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(400)
 	})
 
-	test('GET /account/bulk returns one account per id', async () => {
+	test('GET /account/bulk resolves stored accounts and synthesizes the rest', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/bulk?id=1&id=2,3`)
 		expect(res.status).toBe(200)
-		const accounts = (await res.json()) as Array<{ AccountId: number }>
+		const accounts = (await res.json()) as Array<{ AccountId: number; Username: string }>
+		// Every requested id is present and in order.
 		expect(accounts.map((a) => a.AccountId)).toEqual([1, 2, 3])
+		// id 1 is the seeded Coach account; 2 and 3 fall back to synthesized defaults.
+		expect(accounts[0].Username).toBe('Coach')
+		expect(accounts[1].Username).toBe('Player2')
 	})
 
 	test('GET /account/:id/bio returns an empty bio', async () => {
@@ -74,13 +98,25 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual({ accountId: 7, bio: '' })
 	})
 
-	test('POST /account/create returns a wrapped account', async () => {
+	test('POST /account/create persists a new account with a random username', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/create`, { method: 'POST' })
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as { success: boolean; value: { AccountId: number } }
+		const body = (await res.json()) as {
+			success: boolean
+			value: { AccountId: number; Username: string; DisplayName: string }
+		}
 		expect(body.success).toBe(true)
-		expect(body.value.AccountId).toBeGreaterThanOrEqual(10000)
-		expect(body.value.AccountId).toBeLessThanOrEqual(99999)
+		// Id is allocated above the seeded system accounts (0, 1).
+		expect(body.value.AccountId).toBeGreaterThanOrEqual(2)
+		// Username is auto-assigned (not the synthesized "Player<id>" fallback) and
+		// the display name mirrors it.
+		expect(body.value.Username).not.toMatch(/^Player\d+$/)
+		expect(body.value.Username.length).toBeGreaterThan(0)
+		expect(body.value.DisplayName).toBe(body.value.Username)
+		// It's retrievable afterwards.
+		const lookup = await exports.default.fetch(`${ORIGIN}/account/${body.value.AccountId}`)
+		const found = (await lookup.json()) as { Username: string }
+		expect(found.Username).toBe(body.value.Username)
 	})
 })
 

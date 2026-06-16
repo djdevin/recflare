@@ -431,16 +431,23 @@ const app = new Hono<App>({ strict: false })
 	.get('/api/images/v2/named', (c) => c.json([])) // TODO: hydrate from JSON/namedimages.json
 	.post('/api/images/v4/uploadsaved', async (c) => {
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const file = body.file
-		if (!(file instanceof File)) return c.json({ error: 'No file found in request' }, 400)
+		// The client posts the file as `image`; accept `file` too for safety.
+		const candidate = body.image ?? body.file
+		if (!(candidate instanceof File)) return c.json({ error: 'No file found in request' }, 400)
+		const file = candidate
 
 		const valid = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
 		const dot = file.name.lastIndexOf('.')
 		const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
 		const extension = valid.includes(ext) ? ext : '.png'
 
-		// TODO: persist the upload (R2?). For now just mint a name.
-		return c.json({ ImageName: crypto.randomUUID().replace(/-/g, '') + extension })
+		// Store the upload in the shared image bucket under a random key. The `img`
+		// worker serves it back by that key, which is the returned ImageName.
+		const name = crypto.randomUUID().replace(/-/g, '') + extension
+		await c.env.IMAGES.put(name, await file.arrayBuffer(), {
+			httpMetadata: { contentType: file.type || 'image/png' },
+		})
+		return c.json({ ImageName: name })
 	})
 
 	// ---- Rooms ----------------------------------------------------------------
