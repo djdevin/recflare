@@ -3,7 +3,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { createAccount, defaultAccount, getAccount, getAccountsByIds } from './accounts-db'
+import { createAccount, defaultAccount, getAccount, getAccountsByIds, updateAccount } from './accounts-db'
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
@@ -77,7 +77,6 @@ const app = new Hono<App>()
 		// as null (the C# has no JsonIgnore on those, and they aren't enums).
 		return c.json({
 			...account,
-			ProfileImage: 'hdqeamlcmatc6qzoi2ybgf0ddijjcf.jpg',
 			Email: null,
 			Phone: null,
 			Birthday: null,
@@ -163,7 +162,11 @@ const app = new Hono<App>()
 	.put('/account/me/profileimage', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		await formField(c, 'imageName') // TODO: persist on the account row.
+		const imageName = await formField(c, 'imageName')
+		if (!imageName) return c.body(null, 400)
+		// Persist the new avatar key on the account row (the C# also fires an
+		// AccountUpdate websocket — no notify binding here, so it's omitted).
+		await updateAccount(c.env.DB, id, { ProfileImage: imageName })
 		return c.json({ success: true })
 	})
 

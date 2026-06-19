@@ -170,4 +170,32 @@ describe('auth-gated endpoints', () => {
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ success: true })
 	})
+
+	test('PUT /account/me/profileimage 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/profileimage`, {
+			...form({ imageName: 'abc.jpg' }),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('PUT /account/me/profileimage 400s without an imageName', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/profileimage`, {
+			...form({}),
+			headers: { ...(await bearer('777')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(400)
+	})
+
+	test('PUT /account/me/profileimage persists the avatar on the account', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/profileimage`, {
+			...form({ imageName: 'deadbeef.jpg' }),
+			headers: { ...(await bearer('777')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+
+		// The stored value is returned by the self account (no hardcoded override).
+		const me = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('777') })
+		expect(((await me.json()) as { ProfileImage: string }).ProfileImage).toBe('deadbeef.jpg')
+	})
 })

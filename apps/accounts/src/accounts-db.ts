@@ -99,6 +99,30 @@ export async function getAccountsByIds(db: D1Database, ids: number[]): Promise<A
 }
 
 /**
+ * Merge `overrides` into the account row for `id` and persist it. Reads the
+ * current account (falling back to a synthesized default), applies the
+ * overrides, and writes the whole JSON blob back — inserting the row when the
+ * account isn't in the table yet. Returns the updated account.
+ */
+export async function updateAccount(
+	db: D1Database,
+	id: number,
+	overrides: Partial<Account>
+): Promise<Account> {
+	const current = (await getAccount(db, id)) ?? defaultAccount(id)
+	const updated: Account = { ...current, ...overrides, AccountId: id }
+	const data = JSON.stringify(updated)
+	const res = await db
+		.prepare('UPDATE accounts SET data = ?2 WHERE account_id = ?1')
+		.bind(id, data)
+		.run()
+	if (!res.meta.changes) {
+		await db.prepare('INSERT INTO accounts (data) VALUES (?1)').bind(data).run()
+	}
+	return updated
+}
+
+/**
  * Create and persist a new account. The id is the next free integer (above the
  * seeded system accounts); the username is auto-assigned (players don't choose
  * one initially) and the display name defaults to it.

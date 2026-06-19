@@ -25,6 +25,16 @@ import type { App } from './context'
  * Placeholder responses for file-backed endpoints are marked `TODO: hydrate`.
  */
 
+/** Saved-image categories from the C# `SavedImageType` enum (`imgMeta.savedImageType`). */
+const SavedImageType = {
+	None: 0,
+	ShareCamera: 1,
+	OutfitThumbnail: 2,
+	RoomThumbnail: 3,
+	ProfileThumbnail: 4,
+	InventionThumbnail: 5,
+} as const
+
 /**
  * Resolve the account id from a Bearer token, mirroring the repeated
  * auth-header check in the C#. Returns `null` when the header is missing,
@@ -430,23 +440,50 @@ const app = new Hono<App>({ strict: false })
 	// ---- Images ---------------------------------------------------------------
 	.get('/api/images/v2/named', (c) => c.json([])) // TODO: hydrate from JSON/namedimages.json
 	.post('/api/images/v4/uploadsaved', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 		// The client posts the file as `image`; accept `file` too for safety.
 		const candidate = body.image ?? body.file
 		if (!(candidate instanceof File)) return c.json({ error: 'No file found in request' }, 400)
 		const file = candidate
 
+		// `imgMeta` is a JSON blob describing the upload; its `savedImageType`
+		// decides what (if anything) the image is recorded against. Mirrors the C#
+		// `SavedImageMetaDTO` / `SavedImageType` enum.
+		let savedImageType: number = SavedImageType.None
+		if (typeof body.imgMeta === 'string') {
+			try {
+				const meta = JSON.parse(body.imgMeta) as { savedImageType?: unknown } | null
+				if (meta && typeof meta.savedImageType === 'number') savedImageType = meta.savedImageType
+			} catch {
+				// Malformed imgMeta — treat as an untyped upload (still stored).
+			}
+		}
+
 		const valid = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
 		const dot = file.name.lastIndexOf('.')
 		const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
-		const extension = valid.includes(ext) ? ext : '.png'
+		const extension = valid.includes(ext) ? ext : '.jpg'
 
 		// Store the upload in the shared image bucket under a random key. The `img`
 		// worker serves it back by that key, which is the returned ImageName.
 		const name = crypto.randomUUID().replace(/-/g, '') + extension
 		await c.env.IMAGES.put(name, await file.arrayBuffer(), {
-			httpMetadata: { contentType: file.type || 'image/png' },
+			httpMetadata: { contentType: file.type || 'image/jpeg' },
 		})
+
+		// A profile thumbnail becomes the account's avatar — persist it on the
+		// account row (a JSON blob in the shared accounts table) so it sticks.
+		if (savedImageType === SavedImageType.ProfileThumbnail) {
+			await c.env.DB.prepare(
+				"UPDATE accounts SET data = json_set(data, '$.ProfileImage', ?2) WHERE account_id = ?1"
+			)
+				.bind(id, name)
+				.run()
+		}
+
 		return c.json({ ImageName: name })
 	})
 

@@ -38,6 +38,20 @@ beforeAll(async () => {
 	).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
 	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
+
+	// Accounts table (matching the auth worker's migration) — uploadsaved records
+	// profile thumbnails on the account row. Seed the account the test token (sub
+	// 42) authenticates as.
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS accounts (
+			data TEXT NOT NULL,
+			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.AccountId')) VIRTUAL,
+			username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Username'))) VIRTUAL
+		)`
+	).run()
+	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+		.bind(JSON.stringify({ AccountId: 42, Username: 'Tester', ProfileImage: 'DefaultProfileImage.jpg' }))
+		.run()
 })
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
@@ -346,6 +360,7 @@ describe('images', () => {
 
 		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
 			method: 'POST',
+			headers: await bearer(),
 			body: fd,
 		})
 		expect(res.status).toBe(200)
@@ -358,10 +373,43 @@ describe('images', () => {
 		expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
 	})
 
+	test('POST /api/images/v4/uploadsaved records a profile thumbnail on the account', async () => {
+		const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+		const fd = new FormData()
+		// Type 4 = ProfileThumbnail. The client sends the file as image.dat.
+		fd.append('imgMeta', JSON.stringify({ savedImageType: 4, roomId: -1 }))
+		fd.append('image', new File([bytes], 'image.dat', { type: 'image/jpeg' }))
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
+			method: 'POST',
+			headers: await bearer('42'),
+			body: fd,
+		})
+		expect(res.status).toBe(200)
+		const { ImageName } = (await res.json()) as { ImageName: string }
+		expect(ImageName).toMatch(/^[0-9a-f]+\.jpg$/)
+
+		// The account row now points its ProfileImage at the uploaded key.
+		const row = await env.DB.prepare('SELECT data FROM accounts WHERE account_id = 42').first<{
+			data: string
+		}>()
+		expect(JSON.parse(row!.data).ProfileImage).toBe(ImageName)
+	})
+
+	test('POST /api/images/v4/uploadsaved 401s without a bearer token', async () => {
+		const fd = new FormData()
+		fd.append('image', new File([new Uint8Array([1, 2, 3])], 'avatar.png', { type: 'image/png' }))
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
+			method: 'POST',
+			body: fd,
+		})
+		expect(res.status).toBe(401)
+	})
+
 	test('POST /api/images/v4/uploadsaved 400s without a file', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			headers: { ...(await bearer()), 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: 'foo=bar',
 		})
 		expect(res.status).toBe(400)
