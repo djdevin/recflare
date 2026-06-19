@@ -1,1226 +1,2582 @@
 [
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "5d13a7a2-8213-40e6-90a6-efdd76a3fdcb,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Flowing Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "1d27b674-f9e2-4ffc-9d8c-a58a1be06457,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Afro Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "d84c0ff9-8fbe-4ed8-abf3-7996e81888ab,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Large Afro Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "e5b83dfc-b2e1-4dcb-a4ab-9d3a4c8a34ae,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Long Wavy Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7dd6f7b0-7ba0-429f-a04f-e32d3a79ee61,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Short Wavy Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "eb9611c6-bb50-41a2-93e9-7f959815a846,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Dreads Long Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "1fd69ef8-0b74-4962-af5a-67f0bf0358f2,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Ponytail Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "a12f724f-4a73-4ab8-aad4-6bfc662b4dd6,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Undercut Long Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "0753d7a4-8247-4fca-a6fc-359c26086140,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Fonzie Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "77d3c585-4928-4471-a425-89036efe7299,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Spiky Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "92302d9d-c527-418c-ac5d-1fa869727505,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Part Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "f9dd08f8-16d3-4c39-af4f-89f7bb6e80d3,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Undercut Short Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "b148cb1e-df81-442f-aea6-ab1727aad00e,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Chunky Afro Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "e36bcd98-7e85-43fa-89f8-57e4ec33823a,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Bob with Bangs Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "880a3cc0-7407-4b61-b759-f9dd890fe9e5,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Bob Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "21599b51-c50f-43d8-ac5f-62c30cd02ca5,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Lori Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "193a3bf9-abc0-4d78-8d63-92046908b1c5,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Emo Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "79b90274-6eec-4664-acfb-4a123334661e,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Pig Tails Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "da4e7b34-2095-4a9e-801e-4f409039e0dd,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Buzz Cut Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9d9fadb6-97eb-480e-a224-4e0179082071,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Meatball Buns Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "d8280c0c-d803-4513-be10-a0ba96d8821e,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Flowhawk Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "e286863c-2967-4d00-b837-b49487b9484a,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Fauxhawk Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2cb4f372-3372-4583-8b57-c4e3988e3c28,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Punky Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Cat-Eye Glasses (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Glasses (Teal)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "8d10cc78-6b00-45f3-affb-205e9cc5b03f,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Beard (Close)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "cc96f8a5-bc5b-4f89-83b7-ecd53905ada7,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Beard (Thick)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "c6c08eb5-381a-4193-9722-80da95d62abe,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Business Tie (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "4d507dfa-4a99-4ac0-8537-229e9dc0eb4a,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room Tank Top (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room Shirt (Crew Neck, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,95e4cc30-cb68-473d-a395-feadf5b51512,0440f08f-ef1d-49d8-942b-523056e8bb45,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room T-Shirt (Crew Neck, Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Plaid, Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "T-Shirt",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "8aa79563-ace1-4ba7-ad0c-f3210a78142f,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room Shirt (V-Neck, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "8aa79563-ace1-4ba7-ad0c-f3210a78142f,95e4cc30-cb68-473d-a395-feadf5b51512,05f0ee6e-c824-470e-9178-5ed576c6fe0c,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room T-Shirt (V-Neck, Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "21caa68e-c3fa-474c-af5e-af1e742b7a60,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tennis Skirt (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "21caa68e-c3fa-474c-af5e-af1e742b7a60,c5deba2a-6e35-4b13-8e94-8ba5457f39df,b75ef67d-00c3-4ac1-9b72-212032460294,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tennis Skirt (Yellow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "21caa68e-c3fa-474c-af5e-af1e742b7a60,758752bd-db2f-43d2-b580-55b3e1efffd5,b75ef67d-00c3-4ac1-9b72-212032460294,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tennis Skirt (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Zipper Dress (Yellow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "71921831-ba6f-408b-a00e-2fd97663636f,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wrist Tape (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,55901f12-d5b5-4fa8-b4c8-e479689ee39d,f600037d-c9c0-43fa-b45b-02f456f9dd5f,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Denim)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,bf82f2f6-9af8-431e-a296-0890dea48ba7,d015cae7-a905-49e4-8823-6dec069689a6,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Argyle)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,EfdMcnfHt0mr0PQ_maaYOg,DRJcNhkqvkKFEaZpOguR6w,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Flowers, Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,6d703981-2734-4c45-8983-cdd5f328902f,a0271cd0-e172-4d3f-aa2f-9806f21a82d2,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Camo)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,5c4a2b35-0e1c-44de-8c3a-96d4a6458b1b,9c03f381-7357-4d0f-8cda-8737d4c43d25,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Rainbow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,d2a692e6-e1a9-4cfe-8154-10b52be7f8c8,",
-		"PlatformMask": -1,
-		"FriendlyName": "Jersey (Orange)",
-		"Tooltip": "",
-		"Rarity": 10
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,ad61c418-6d77-4a99-8ac5-9f10f5a3d42f,b292eb4b-07e3-4a48-99b5-3c6587a1e02e,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Dots)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,48abd952-214f-48b2-a8f1-1146f6f69aa2,b78008e8-abbd-4ece-be34-9a911f721fcc,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Zebra)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,7d8e55fe-3c34-4b4b-9753-0021f6cc6454,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Cream)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,018a5c07-e956-457d-a540-a5e2cd68da09,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Orange, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,cbe29e9f-f2ac-47fb-97e1-8bad16abb89d,018a5c07-e956-457d-a540-a5e2cd68da09,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Pink, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,dee70c38-7a99-4c2b-9181-665f1bf75aca,018a5c07-e956-457d-a540-a5e2cd68da09,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Blue, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,6dd95046-acf8-42fe-ab78-80a334096a9d,56a92c8d-af53-413e-929e-4a9a3cfad780,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Red, White, Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,cbe29e9f-f2ac-47fb-97e1-8bad16abb89d,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Pink)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "fcfcaf63-deb4-45f7-b711-c051c9ea45cb,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Top Bun Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Blazer (Blue, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,6f2e74bf-1e95-463d-97db-d5d1a53b2c28,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
-		"PlatformMask": -1,
-		"FriendlyName": "Blazer (Black, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,9374bf66-2ee5-493b-8439-efce4b201904,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
-		"PlatformMask": -1,
-		"FriendlyName": "Blazer (Grey, Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,272fe8eb-5061-4729-a7a8-414ff667a82f,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
-		"PlatformMask": -1,
-		"FriendlyName": "Blazer (Grey, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,0ffad843-d6c9-425a-8686-7217009c867e,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
-		"PlatformMask": -1,
-		"FriendlyName": "Blazer (Green, Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,e0397982-c2c2-4733-9a40-46e18675b5af,dafa658e-753b-46cb-bd85-85c1de5e6ea7,",
-		"PlatformMask": -1,
-		"FriendlyName": "Button Top (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Button Top (Pink)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,49f5864f-9d40-497c-88c8-e87f64d41d74,dafa658e-753b-46cb-bd85-85c1de5e6ea7,",
-		"PlatformMask": -1,
-		"FriendlyName": "Button Top (Tan)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,c5deba2a-6e35-4b13-8e94-8ba5457f39df,dafa658e-753b-46cb-bd85-85c1de5e6ea7,",
-		"PlatformMask": -1,
-		"FriendlyName": "Button Top (Yellow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,f750de46-3758-4f7d-9709-0a84b1027009,2c8924aa-68f8-4912-9759-18992f72f08a,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Dress (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,d66aa400-aa5a-4539-a25d-5f8ce94dc281,2c8924aa-68f8-4912-9759-18992f72f08a,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Dress (Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,6564acf1-4d70-4f92-92ac-08e2b76dbb6b,2c8924aa-68f8-4912-9759-18992f72f08a,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Dress (Purple)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Dress (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "241506f6-bf88-4b46-b5fe-513a225421f4,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Half Up Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,d6edbc00-3c1d-4f49-8412-3ef8c7c5f4c2,cf119781-5bd9-4b85-9a0b-12e82e988c23,",
-		"PlatformMask": -1,
-		"FriendlyName": "Long Scarf (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,6d703981-2734-4c45-8983-cdd5f328902f,cfabdefe-0890-436e-b2a3-b5c712e22955,",
-		"PlatformMask": -1,
-		"FriendlyName": "Zipper Dress (Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,830be2fa-60a5-48cc-931f-34b670eae4bd,cfabdefe-0890-436e-b2a3-b5c712e22955,",
-		"PlatformMask": -1,
-		"FriendlyName": "Zipper Dress (Purple)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,bbfa08e3-8e6b-4e0f-b264-1b398d7cd44a,cfabdefe-0890-436e-b2a3-b5c712e22955,",
-		"PlatformMask": -1,
-		"FriendlyName": "Zipper Dress (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,484b6c13-af22-4ad5-8c43-34c0de095d49,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Light Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,f8b0cfe8-e129-4578-8bb5-f60af5d38599,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,67bcca75-4ab1-4964-8688-9908c464d355,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Gold)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Tank Top (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,5c4a2b35-0e1c-44de-8c3a-96d4a6458b1b,cf119781-5bd9-4b85-9a0b-12e82e988c23,",
-		"PlatformMask": -1,
-		"FriendlyName": "Long Scarf (Purple)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,6dd95046-acf8-42fe-ab78-80a334096a9d,cf119781-5bd9-4b85-9a0b-12e82e988c23,",
-		"PlatformMask": -1,
-		"FriendlyName": "Long Scarf (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,f8b0cfe8-e129-4578-8bb5-f60af5d38599,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,67bcca75-4ab1-4964-8688-9908c464d355,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Yellow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "24a240f4-1574-420b-b898-a7e91f170759,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Back Bun Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "c45ed7b8-99bd-4a4b-a9ff-e16edf5d7a18,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "High Pony Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,484b6c13-af22-4ad5-8c43-34c0de095d49,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (Light Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,67bcca75-4ab1-4964-8688-9908c464d355,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Baseball Cap (Yellow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "896c2491-2f96-4986-9cbd-b3b31ef5d8c5,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Equestrian Coat (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "896c2491-2f96-4986-9cbd-b3b31ef5d8c5,55901f12-d5b5-4fa8-b4c8-e479689ee39d,d344b8cc-85a8-4ace-9f92-38c84f396e99,",
-		"PlatformMask": -1,
-		"FriendlyName": "Equestrian Coat (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "896c2491-2f96-4986-9cbd-b3b31ef5d8c5,4828b50c-95b6-466a-bb25-514891d78202,d344b8cc-85a8-4ace-9f92-38c84f396e99,",
-		"PlatformMask": -1,
-		"FriendlyName": "Equestrian Coat (Grey)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "896c2491-2f96-4986-9cbd-b3b31ef5d8c5,d6823e01-69f0-4f85-b94a-74894356a2cf,d344b8cc-85a8-4ace-9f92-38c84f396e99,",
-		"PlatformMask": -1,
-		"FriendlyName": "Equestrian Coat (Maroon)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "09177621-9ecd-4f6a-b6a5-64490139141d,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Flat Top Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "95ab7a7c-c35d-4da5-9955-0921064470b6,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Gekko Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,0ecb8a2a-cffc-47db-aeda-fb0684aef1e5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Grey)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,484b6c13-af22-4ad5-8c43-34c0de095d49,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Light Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,cbe29e9f-f2ac-47fb-97e1-8bad16abb89d,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Pink)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,8377ab96-c908-457f-9fee-b784c9a759f3,018a5c07-e956-457d-a540-a5e2cd68da09,",
-		"PlatformMask": -1,
-		"FriendlyName": "Headband (Red, White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "62ce4109-8dee-4895-bf1b-bfa143db4c7e,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Slim Blazer (Teal)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "62ce4109-8dee-4895-bf1b-bfa143db4c7e,cd5d7285-202d-42d0-b93f-04245875793e,0f36bb97-c61b-4281-929f-ff1d0d11be86,",
-		"PlatformMask": -1,
-		"FriendlyName": "Slim Blazer (Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "62ce4109-8dee-4895-bf1b-bfa143db4c7e,ad61c418-6d77-4a99-8ac5-9f10f5a3d42f,0f36bb97-c61b-4281-929f-ff1d0d11be86,",
-		"PlatformMask": -1,
-		"FriendlyName": "Slim Blazer (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "8b9f1413-e786-4a30-946c-9292f207875a,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Pulp Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "5cd08cfb-c729-4c30-96d9-6a99bb934d91,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room Sash",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "1a71064b-794f-40fa-9109-8ad36602b6e1,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Shagg Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,761a3193-60f0-4190-80c7-285b8192e794,91a451c1-b285-4c48-b14d-59ded8cc006f,",
-		"PlatformMask": -1,
-		"FriendlyName": "Stoll Dress (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,a819f49b-6c7a-49d3-9e6a-d9d79ef5019f,91a451c1-b285-4c48-b14d-59ded8cc006f,",
-		"PlatformMask": -1,
-		"FriendlyName": "Stoll Dress (Green)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,64850553-cdfe-455a-ac00-dafbe63d613e,91a451c1-b285-4c48-b14d-59ded8cc006f,",
-		"PlatformMask": -1,
-		"FriendlyName": "Stoll Dress (Orange)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Stoll Dress (Pink)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "71921831-ba6f-408b-a00e-2fd97663636f,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wrist Tape (Black)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "71921831-ba6f-408b-a00e-2fd97663636f,7d8e55fe-3c34-4b4b-9753-0021f6cc6454,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wrist Tape (Cream)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,0ecb8a2a-cffc-47db-aeda-fb0684aef1e5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Grey)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,7d8e55fe-3c34-4b4b-9753-0021f6cc6454,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
-		"PlatformMask": -1,
-		"FriendlyName": "Wristbands (Cream)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Long Scarf (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,0iSsaY-HgkmLaRHCn5vEdw,PioQ0o3yP0a6szPZ4EKs2A,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Blue)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,jGj28vhq8EGwP2RuM074aQ,PioQ0o3yP0a6szPZ4EKs2A,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Yellow)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,kmj5zOjcwku_WWKroCeiVQ,PioQ0o3yP0a6szPZ4EKs2A,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Pink)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,FAviMCQ_EE2Mpt6QPo5OEw,PioQ0o3yP0a6szPZ4EKs2A,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (Red)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,MFrcSQ1DYUm8imvy4ypgvw,PioQ0o3yP0a6szPZ4EKs2A,",
-		"PlatformMask": -1,
-		"FriendlyName": "Collared Shirt (White)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,05ac07e1-67f0-486c-abf5-a62866475abb,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
-		"PlatformMask": -1,
-		"FriendlyName": "Blazer (Black, Cream)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "0088603e-ec3b-4478-8694-e6fb1989b3f2,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Angled Bob Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "ffea7a65-613f-4835-921e-6dd15f357b7e,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Long Bangs Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "45f5e714-8a5f-4385-a97f-675066167011,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Seventies Stache",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9bf5d259-7774-4cbe-a90f-7f188cc0dce7,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Thick Goatee",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "a6cbfe76-534a-4655-a8a8-3fed13d001c7,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Bald Top Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "CTcrvbo3OEepIV4oW8bx4w,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Receding Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "-twtjyBdQ02EAdOfBGTiEw,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Van Dyke Beard",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "45eaab67-19c2-4601-8f80-3565a4dceba4,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Pompadour Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "c855dcc3-96cb-470d-b159-d37a025a47d1,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Dutch Braid Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "d7730a9e-78a1-4356-bc09-6b066615850b,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Afro Updo Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "8c35c804-e8d5-49d2-8d5a-ea19fb70bfa6,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Pencil Bun Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "5beeb4c4-f276-4eae-87aa-9302e45b05b7,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Cornrows Hair",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,sxUE0iOSZEmezm54T7xI3Q,tlpa7195x0CkmSjpR1RArQ,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room Hoodie - Pride (Rainbow Pride)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "fe15ca53-c5b8-4acf-9309-ff3f4e610fc9,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Winged Hat - Pride (Rainbow Pride)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,D_Xmo0rOzkS-kgq1CYXt3g,tnCJp2eDI0SwjVfJMhk3LQ,",
-		"PlatformMask": -1,
-		"FriendlyName": "Rec Room Hoodie - Pride (Trans Pride)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "fe15ca53-c5b8-4acf-9309-ff3f4e610fc9,knXPidb-Rkayfc3kSHfZeQ,1yMyo6oTjU-VAygoeWaohQ,",
-		"PlatformMask": -1,
-		"FriendlyName": "Winged Hat - Pride (Trans Pride)",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "88b6ddeb-a455-460d-91d9-a4569ef6903c,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Square Earrings ",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "0abb6b08-20ce-444f-879e-0d1344df096c,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Round Earrings",
-		"Tooltip": "",
-		"Rarity": 0
-	},
-	{
-		"AvatarItemType": 0,
-		"AvatarItemDesc": "9b5bde11-7408-4798-9fcb-c7ec175444df,,,",
-		"PlatformMask": -1,
-		"FriendlyName": "Hoop Earrings",
-		"Tooltip": "",
-		"Rarity": 0
-	}
+  {
+    "AvatarItemDesc": "0088603e-ec3b-4478-8694-e6fb1989b3f2,,,",
+    "AvatarItemId": 620,
+    "AvatarItemType": 0,
+    "FriendlyName": "Angled Bob Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "04e348b7-107f-47b4-9331-ae3b9fa184ca,,,",
+    "AvatarItemId": 1980,
+    "AvatarItemType": 0,
+    "FriendlyName": "Braided Bun Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,,,",
+    "AvatarItemId": 1004,
+    "AvatarItemType": 0,
+    "FriendlyName": "Cat-Eye Glasses (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,cypMpMaVeUuRjm4FLH4czQ,PIjEKhXiCUqtA8FBhLBcmA,",
+    "AvatarItemId": 1883,
+    "AvatarItemType": 0,
+    "FriendlyName": "Cat-Eye Glasses (Teal)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,LTXy6g4xe0abuFzOLpVDUg,PIjEKhXiCUqtA8FBhLBcmA,",
+    "AvatarItemId": 1881,
+    "AvatarItemType": 0,
+    "FriendlyName": "Cat-Eye Glasses (Dark Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,tMsCUhDslkmdNBfogeSz7w,PIjEKhXiCUqtA8FBhLBcmA,",
+    "AvatarItemId": 1884,
+    "AvatarItemType": 0,
+    "FriendlyName": "Cat-Eye Glasses (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,whWKAUSGp0qprsJomq9Nwg,PIjEKhXiCUqtA8FBhLBcmA,",
+    "AvatarItemId": 1882,
+    "AvatarItemType": 0,
+    "FriendlyName": "Cat-Eye Glasses (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,",
+    "AvatarItemId": 2337,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (Beige)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,_T4zEki_wk-UIPdhSaBr_Q",
+    "AvatarItemId": 2341,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,5z3jZhYvq0CGmdJ9IcUUsg",
+    "AvatarItemId": 2340,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (Brown)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,EgEoJzG7A0aJ92qfInbX7g",
+    "AvatarItemId": 2342,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,NETGR8iysUyxcZM_oGmrwQ",
+    "AvatarItemId": 2344,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,OlfQDuz1NUOr88AL2n0jXg",
+    "AvatarItemId": 2343,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,VudVdOAjZUibHmtFeNkvSw",
+    "AvatarItemId": 2339,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "0753d7a4-8247-4fca-a6fc-359c26086140,,,",
+    "AvatarItemId": 993,
+    "AvatarItemType": 0,
+    "FriendlyName": "Fonzie Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "09177621-9ecd-4f6a-b6a5-64490139141d,,,",
+    "AvatarItemId": 81,
+    "AvatarItemType": 0,
+    "FriendlyName": "Flat Top Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "0abb6b08-20ce-444f-879e-0d1344df096c,,,",
+    "AvatarItemId": 1620,
+    "AvatarItemType": 0,
+    "FriendlyName": "Round Earrings",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "0d1ae26e-aaa4-4914-ad70-c9ab8cfabc61,,,",
+    "AvatarItemId": 1979,
+    "AvatarItemType": 0,
+    "FriendlyName": "Box Braids with Cuff Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,,,",
+    "AvatarItemId": 1740,
+    "AvatarItemType": 0,
+    "FriendlyName": "Basic Belt (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,6fmUy748hU2dgwgaijSkUA,rL9p5JY83Eyxj00Dieg7oA,",
+    "AvatarItemId": 1739,
+    "AvatarItemType": 0,
+    "FriendlyName": "Basic Belt (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,buuNFd8sK0eap78TL1gMNQ,-UFHTNvJs0CGDStb0PFkbQ,",
+    "AvatarItemId": 1741,
+    "AvatarItemType": 0,
+    "FriendlyName": "Basic Belt (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,dBR1uNgk206eVoWntVzVAg,rL9p5JY83Eyxj00Dieg7oA,",
+    "AvatarItemId": 1738,
+    "AvatarItemType": 0,
+    "FriendlyName": "Basic Belt (Brown)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,LIgagNf4gk68EYQdlDruxg,rL9p5JY83Eyxj00Dieg7oA,",
+    "AvatarItemId": 1736,
+    "AvatarItemType": 0,
+    "FriendlyName": "Basic Belt (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,zPGCmxM_b0yTt7tqMaomcw,rL9p5JY83Eyxj00Dieg7oA,",
+    "AvatarItemId": 1737,
+    "AvatarItemType": 0,
+    "FriendlyName": "Basic Belt (Tan)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,,,",
+    "AvatarItemId": 25,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 983,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,484b6c13-af22-4ad5-8c43-34c0de095d49,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 29,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (Light Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 31,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,67bcca75-4ab1-4964-8688-9908c464d355,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 30,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,724c79a3-822c-422f-9462-a5374ee0211c,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 26,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (White))",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 669,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 670,
+    "AvatarItemType": 0,
+    "FriendlyName": "Baseball Cap (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "193a3bf9-abc0-4d78-8d63-92046908b1c5,,,",
+    "AvatarItemId": 991,
+    "AvatarItemType": 0,
+    "FriendlyName": "Emo Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "1940c740-695d-4481-a802-bb11b6561635,",
+    "AvatarItemId": 2116,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Untucked Tee",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "1a71064b-794f-40fa-9109-8ad36602b6e1,,,",
+    "AvatarItemId": 95,
+    "AvatarItemType": 0,
+    "FriendlyName": "Shagg Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "1d27b674-f9e2-4ffc-9d8c-a58a1be06457,,,",
+    "AvatarItemId": 986,
+    "AvatarItemType": 0,
+    "FriendlyName": "Afro Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "1fd69ef8-0b74-4962-af5a-67f0bf0358f2,,,",
+    "AvatarItemId": 998,
+    "AvatarItemType": 0,
+    "FriendlyName": "Ponytail Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "21599b51-c50f-43d8-ac5f-62c30cd02ca5,,,",
+    "AvatarItemId": 994,
+    "AvatarItemType": 0,
+    "FriendlyName": "Lori Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "21caa68e-c3fa-474c-af5e-af1e742b7a60,,,",
+    "AvatarItemId": 1021,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tennis Skirt (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "21caa68e-c3fa-474c-af5e-af1e742b7a60,758752bd-db2f-43d2-b580-55b3e1efffd5,b75ef67d-00c3-4ac1-9b72-212032460294,",
+    "AvatarItemId": 682,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tennis Skirt (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "21caa68e-c3fa-474c-af5e-af1e742b7a60,c5deba2a-6e35-4b13-8e94-8ba5457f39df,b75ef67d-00c3-4ac1-9b72-212032460294,",
+    "AvatarItemId": 681,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tennis Skirt (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,,,",
+    "AvatarItemId": 1022,
+    "AvatarItemType": 0,
+    "FriendlyName": "Zipper Dress (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,6d703981-2734-4c45-8983-cdd5f328902f,cfabdefe-0890-436e-b2a3-b5c712e22955,",
+    "AvatarItemId": 255,
+    "AvatarItemType": 0,
+    "FriendlyName": "Zipper Dress (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,830be2fa-60a5-48cc-931f-34b670eae4bd,cfabdefe-0890-436e-b2a3-b5c712e22955,",
+    "AvatarItemId": 254,
+    "AvatarItemType": 0,
+    "FriendlyName": "Zipper Dress (Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2296ed0d-df56-4d46-b33a-aae9230a47fc,bbfa08e3-8e6b-4e0f-b264-1b398d7cd44a,cfabdefe-0890-436e-b2a3-b5c712e22955,",
+    "AvatarItemId": 253,
+    "AvatarItemType": 0,
+    "FriendlyName": "Zipper Dress (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,",
+    "AvatarItemId": 2345,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Halo (Turquoise)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,0p_eXn2gXUKrshSEmrQx6Q",
+    "AvatarItemId": 2350,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Halo (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,3cPbhpDX-EqDQy6eN1E5Ug",
+    "AvatarItemId": 2346,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Halo (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,fAmEEm6ziUO2ZXTscQWtSg",
+    "AvatarItemId": 2351,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Halo (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,gEuE-X67b0-q5C0Tv11_nA",
+    "AvatarItemId": 2348,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Halo (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,gk_mQ-jsakmxhZYYNlRl_w",
+    "AvatarItemId": 2349,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Halo (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "241506f6-bf88-4b46-b5fe-513a225421f4,,,",
+    "AvatarItemId": 417,
+    "AvatarItemType": 0,
+    "FriendlyName": "Half Up Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "24a240f4-1574-420b-b898-a7e91f170759,,,",
+    "AvatarItemId": 582,
+    "AvatarItemType": 0,
+    "FriendlyName": "Back Bun Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2822aa50-4344-434d-b46f-fd9443f865b9,,,",
+    "AvatarItemId": 1981,
+    "AvatarItemType": 0,
+    "FriendlyName": "Curly Bob Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2cb4f372-3372-4583-8b57-c4e3988e3c28,,,",
+    "AvatarItemId": 999,
+    "AvatarItemType": 0,
+    "FriendlyName": "Punky Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,,,",
+    "AvatarItemId": 1009,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Plaid, Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,0iSsaY-HgkmLaRHCn5vEdw,PioQ0o3yP0a6szPZ4EKs2A,",
+    "AvatarItemId": 1014,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,55901f12-d5b5-4fa8-b4c8-e479689ee39d,f600037d-c9c0-43fa-b45b-02f456f9dd5f,",
+    "AvatarItemId": 674,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Denim)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,bf82f2f6-9af8-431e-a296-0890dea48ba7,d015cae7-a905-49e4-8823-6dec069689a6,",
+    "AvatarItemId": 672,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Argyle)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,EfdMcnfHt0mr0PQ_maaYOg,DRJcNhkqvkKFEaZpOguR6w,",
+    "AvatarItemId": 1016,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Flowers, Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,FAviMCQ_EE2Mpt6QPo5OEw,PioQ0o3yP0a6szPZ4EKs2A,",
+    "AvatarItemId": 1015,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,jGj28vhq8EGwP2RuM074aQ,PioQ0o3yP0a6szPZ4EKs2A,",
+    "AvatarItemId": 1012,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,kmj5zOjcwku_WWKroCeiVQ,PioQ0o3yP0a6szPZ4EKs2A,",
+    "AvatarItemId": 1011,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e59d8d0-91a0-4449-bfdc-a5d663fd9343,MFrcSQ1DYUm8imvy4ypgvw,PioQ0o3yP0a6szPZ4EKs2A,",
+    "AvatarItemId": 1013,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Shirt (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e7cbdb0-cf22-4938-964f-acca57d221b7,",
+    "AvatarItemId": 2878,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (BTE Earmold - Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e7cbdb0-cf22-4938-964f-acca57d221b7,aEsXeTI_SEOclbm82n17tg",
+    "AvatarItemId": 2880,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (BTE Earmold - Gray)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "2e7cbdb0-cf22-4938-964f-acca57d221b7,pZDvYABTN06KdJ5Ck60XLA",
+    "AvatarItemId": 2879,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (BTE Earmold - Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "36b2ccf4-4f42-4dc4-aeaf-f3d10b2a6d30,,,",
+    "AvatarItemId": 1982,
+    "AvatarItemType": 0,
+    "FriendlyName": "Etched Fade Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "37f7b94a-92ba-4f5e-b94c-de00acfa4722,,,",
+    "AvatarItemId": 1983,
+    "AvatarItemType": 0,
+    "FriendlyName": "Etched Flattop Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,,,",
+    "AvatarItemId": 6,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,0ecb8a2a-cffc-47db-aeda-fb0684aef1e5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 11,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Grey)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 663,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,484b6c13-af22-4ad5-8c43-34c0de095d49,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 12,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Light Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,018a5c07-e956-457d-a540-a5e2cd68da09,",
+    "AvatarItemId": 667,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Orange, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 13,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,67bcca75-4ab1-4964-8688-9908c464d355,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 16,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,6dd95046-acf8-42fe-ab78-80a334096a9d,56a92c8d-af53-413e-929e-4a9a3cfad780,",
+    "AvatarItemId": 668,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Red, White, Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,7d8e55fe-3c34-4b4b-9753-0021f6cc6454,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 664,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Cream)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,8377ab96-c908-457f-9fee-b784c9a759f3,018a5c07-e956-457d-a540-a5e2cd68da09,",
+    "AvatarItemId": 20,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Red, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 7,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,cbe29e9f-f2ac-47fb-97e1-8bad16abb89d,018a5c07-e956-457d-a540-a5e2cd68da09,",
+    "AvatarItemId": 666,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Pink, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,cbe29e9f-f2ac-47fb-97e1-8bad16abb89d,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 14,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,dee70c38-7a99-4c2b-9181-665f1bf75aca,018a5c07-e956-457d-a540-a5e2cd68da09,",
+    "AvatarItemId": 665,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Blue, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 15,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "40528de7-38a3-4a7c-8f93-6d3bfa5573f2,f8b0cfe8-e129-4578-8bb5-f60af5d38599,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 10,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headband (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "45eaab67-19c2-4601-8f80-3565a4dceba4,,,",
+    "AvatarItemId": 1199,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pompadour Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "45f5e714-8a5f-4385-a97f-675066167011,,,",
+    "AvatarItemId": 112,
+    "AvatarItemType": 0,
+    "FriendlyName": "Seventies Stache",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "48fdfbc6-fca4-424c-aa57-3fcea41e23dc,,,",
+    "AvatarItemId": 1742,
+    "AvatarItemType": 0,
+    "FriendlyName": "Leather Necklace (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "48fdfbc6-fca4-424c-aa57-3fcea41e23dc,gsHBUqA1gE2XNTPA3VvBLQ,FwjsTo0nb0uNU6l8XvllNA,",
+    "AvatarItemId": 1745,
+    "AvatarItemType": 0,
+    "FriendlyName": "Leather Necklace (Brown)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "48fdfbc6-fca4-424c-aa57-3fcea41e23dc,JUQn0_PLIkytCrkAg0FflQ,FwjsTo0nb0uNU6l8XvllNA,",
+    "AvatarItemId": 1744,
+    "AvatarItemType": 0,
+    "FriendlyName": "Leather Necklace (Tan)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "4d507dfa-4a99-4ac0-8537-229e9dc0eb4a,,,",
+    "AvatarItemId": 1017,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Tank Top (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "4eaaad39-aa44-4791-8b67-2eafa8305850,,,",
+    "AvatarItemId": 1977,
+    "AvatarItemType": 0,
+    "FriendlyName": "Afro Puffs Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "5beeb4c4-f276-4eae-87aa-9302e45b05b7,,,",
+    "AvatarItemId": 1480,
+    "AvatarItemType": 0,
+    "FriendlyName": "Cornrows Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "5cd08cfb-c729-4c30-96d9-6a99bb934d91,,,",
+    "AvatarItemId": 124,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Sash",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "62ce4109-8dee-4895-bf1b-bfa143db4c7e,,,",
+    "AvatarItemId": 149,
+    "AvatarItemType": 0,
+    "FriendlyName": "Slim Blazer (Teal)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "62ce4109-8dee-4895-bf1b-bfa143db4c7e,ad61c418-6d77-4a99-8ac5-9f10f5a3d42f,0f36bb97-c61b-4281-929f-ff1d0d11be86,",
+    "AvatarItemId": 468,
+    "AvatarItemType": 0,
+    "FriendlyName": "Slim Blazer (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "62ce4109-8dee-4895-bf1b-bfa143db4c7e,cd5d7285-202d-42d0-b93f-04245875793e,0f36bb97-c61b-4281-929f-ff1d0d11be86,",
+    "AvatarItemId": 469,
+    "AvatarItemType": 0,
+    "FriendlyName": "Slim Blazer (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,,,",
+    "AvatarItemId": 131,
+    "AvatarItemType": 0,
+    "FriendlyName": "Long Scarf (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,5c4a2b35-0e1c-44de-8c3a-96d4a6458b1b,cf119781-5bd9-4b85-9a0b-12e82e988c23,",
+    "AvatarItemId": 461,
+    "AvatarItemType": 0,
+    "FriendlyName": "Long Scarf (Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,6dd95046-acf8-42fe-ab78-80a334096a9d,cf119781-5bd9-4b85-9a0b-12e82e988c23,",
+    "AvatarItemId": 460,
+    "AvatarItemType": 0,
+    "FriendlyName": "Long Scarf (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6b9e022c-0b68-48fd-8eca-da8573c18900,d6edbc00-3c1d-4f49-8412-3ef8c7c5f4c2,cf119781-5bd9-4b85-9a0b-12e82e988c23,",
+    "AvatarItemId": 459,
+    "AvatarItemType": 0,
+    "FriendlyName": "Long Scarf (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,,,",
+    "AvatarItemId": 193,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Dress (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,6564acf1-4d70-4f92-92ac-08e2b76dbb6b,2c8924aa-68f8-4912-9759-18992f72f08a,",
+    "AvatarItemId": 196,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Dress (Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,d66aa400-aa5a-4539-a25d-5f8ce94dc281,2c8924aa-68f8-4912-9759-18992f72f08a,",
+    "AvatarItemId": 195,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Dress (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6d815b35-6f68-4ed4-817d-70f141e1a571,f750de46-3758-4f7d-9709-0a84b1027009,2c8924aa-68f8-4912-9759-18992f72f08a,",
+    "AvatarItemId": 194,
+    "AvatarItemType": 0,
+    "FriendlyName": "Collared Dress (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "6e48363d-cc62-40a8-87f9-a69fae90c002,,,",
+    "AvatarItemId": 1978,
+    "AvatarItemType": 0,
+    "FriendlyName": "Box Braid Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "71921831-ba6f-408b-a00e-2fd97663636f,,,",
+    "AvatarItemId": 1024,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wrist Tape (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "71921831-ba6f-408b-a00e-2fd97663636f,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 297,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wrist Tape (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "71921831-ba6f-408b-a00e-2fd97663636f,7d8e55fe-3c34-4b4b-9753-0021f6cc6454,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 296,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wrist Tape (Cream)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "77d3c585-4928-4471-a425-89036efe7299,,,",
+    "AvatarItemId": 1001,
+    "AvatarItemType": 0,
+    "FriendlyName": "Spiky Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "79b90274-6eec-4664-acfb-4a123334661e,,,",
+    "AvatarItemId": 997,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pig Tails Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,,,",
+    "AvatarItemId": 1020,
+    "AvatarItemType": 0,
+    "FriendlyName": "T-Shirt",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 230,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,48abd952-214f-48b2-a8f1-1146f6f69aa2,b78008e8-abbd-4ece-be34-9a911f721fcc,",
+    "AvatarItemId": 677,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Zebra)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 227,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,5c4a2b35-0e1c-44de-8c3a-96d4a6458b1b,9c03f381-7357-4d0f-8cda-8737d4c43d25,",
+    "AvatarItemId": 679,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Rainbow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,6d703981-2734-4c45-8983-cdd5f328902f,a0271cd0-e172-4d3f-aa2f-9806f21a82d2,",
+    "AvatarItemId": 676,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Camo)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 228,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,ad61c418-6d77-4a99-8ac5-9f10f5a3d42f,b292eb4b-07e3-4a48-99b5-3c6587a1e02e,",
+    "AvatarItemId": 678,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Dots)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7b857a8c-92ad-4028-a2c2-b3c20cdab5f2,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 229,
+    "AvatarItemType": 0,
+    "FriendlyName": "Tank Top (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "7dd6f7b0-7ba0-429f-a04f-e32d3a79ee61,,,",
+    "AvatarItemId": 585,
+    "AvatarItemType": 0,
+    "FriendlyName": "Short Wavy Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "849cabc9-db40-4448-b923-defe4e700072",
+    "AvatarItemId": 5954,
+    "AvatarItemType": 0,
+    "FriendlyName": "Bride of Frank Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,,,",
+    "AvatarItemId": 198,
+    "AvatarItemType": 0,
+    "FriendlyName": "Stoll Dress (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,64850553-cdfe-455a-ac00-dafbe63d613e,91a451c1-b285-4c48-b14d-59ded8cc006f,",
+    "AvatarItemId": 199,
+    "AvatarItemType": 0,
+    "FriendlyName": "Stoll Dress (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,761a3193-60f0-4190-80c7-285b8192e794,91a451c1-b285-4c48-b14d-59ded8cc006f,",
+    "AvatarItemId": 200,
+    "AvatarItemType": 0,
+    "FriendlyName": "Stoll Dress (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "84cd594c-1cd8-4b4d-8409-85c8fd5fb02a,a819f49b-6c7a-49d3-9e6a-d9d79ef5019f,91a451c1-b285-4c48-b14d-59ded8cc006f,",
+    "AvatarItemId": 201,
+    "AvatarItemType": 0,
+    "FriendlyName": "Stoll Dress (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "880a3cc0-7407-4b61-b759-f9dd890fe9e5,,,",
+    "AvatarItemId": 987,
+    "AvatarItemType": 0,
+    "FriendlyName": "Bob Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "88b6ddeb-a455-460d-91d9-a4569ef6903c,,,",
+    "AvatarItemId": 1621,
+    "AvatarItemType": 0,
+    "FriendlyName": "Square Earrings ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "8aa79563-ace1-4ba7-ad0c-f3210a78142f,,,",
+    "AvatarItemId": 1018,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Shirt (V-Neck, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "8aa79563-ace1-4ba7-ad0c-f3210a78142f,95e4cc30-cb68-473d-a395-feadf5b51512,05f0ee6e-c824-470e-9178-5ed576c6fe0c,",
+    "AvatarItemId": 675,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room T-Shirt (V-Neck, Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "8b9f1413-e786-4a30-946c-9292f207875a,,,",
+    "AvatarItemId": 91,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pulp Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "8c35c804-e8d5-49d2-8d5a-ea19fb70bfa6,,,",
+    "AvatarItemId": 1478,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pencil Bun Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "8d10cc78-6b00-45f3-affb-205e9cc5b03f,,,",
+    "AvatarItemId": 1006,
+    "AvatarItemType": 0,
+    "FriendlyName": "Beard (Close)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "92302d9d-c527-418c-ac5d-1fa869727505,,,",
+    "AvatarItemId": 996,
+    "AvatarItemType": 0,
+    "FriendlyName": "Part Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "95ab7a7c-c35d-4da5-9955-0921064470b6,,,",
+    "AvatarItemId": 83,
+    "AvatarItemType": 0,
+    "FriendlyName": "Gekko Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9b5bde11-7408-4798-9fcb-c7ec175444df,,,",
+    "AvatarItemId": 1619,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hoop Earrings",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9bf5d259-7774-4cbe-a90f-7f188cc0dce7,,,",
+    "AvatarItemId": 361,
+    "AvatarItemType": 0,
+    "FriendlyName": "Thick Goatee",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9bf75b23-84e9-436b-bbb8-4180ccd86b94,,,",
+    "AvatarItemId": 1985,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wolf Cut Hair) ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9c20fdd5-acf1-426c-b85a-2220ceee9472,,,",
+    "AvatarItemId": 1987,
+    "AvatarItemType": 0,
+    "FriendlyName": "Short Curly Twists Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,,,",
+    "AvatarItemId": 150,
+    "AvatarItemType": 0,
+    "FriendlyName": "Button Top (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,49f5864f-9d40-497c-88c8-e87f64d41d74,dafa658e-753b-46cb-bd85-85c1de5e6ea7,",
+    "AvatarItemId": 151,
+    "AvatarItemType": 0,
+    "FriendlyName": "Button Top (Tan)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,c5deba2a-6e35-4b13-8e94-8ba5457f39df,dafa658e-753b-46cb-bd85-85c1de5e6ea7,",
+    "AvatarItemId": 153,
+    "AvatarItemType": 0,
+    "FriendlyName": "Button Top (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9c8fc7f0-8f99-4aad-a34f-8d979f6ae352,e0397982-c2c2-4733-9a40-46e18675b5af,dafa658e-753b-46cb-bd85-85c1de5e6ea7,",
+    "AvatarItemId": 152,
+    "AvatarItemType": 0,
+    "FriendlyName": "Button Top (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9d9fadb6-97eb-480e-a224-4e0179082071,,,",
+    "AvatarItemId": 995,
+    "AvatarItemType": 0,
+    "FriendlyName": "Meatball Buns Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,",
+    "AvatarItemId": 2328,
+    "AvatarItemType": 0,
+    "FriendlyName": "Brimless Cap (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,hgLq0WyUAUSl2sboUrpTKQ",
+    "AvatarItemId": 2330,
+    "AvatarItemType": 0,
+    "FriendlyName": "Brimless Cap (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,JzLPlVNG20G9mxG_4PF8Fg",
+    "AvatarItemId": 2332,
+    "AvatarItemType": 0,
+    "FriendlyName": "Brimless Cap (Navy)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,M5uFQQpoQE-5CKMJnDv_LA",
+    "AvatarItemId": 2331,
+    "AvatarItemType": 0,
+    "FriendlyName": "Brimless Cap (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,VuMDnpnK50mzgUMwJ4F6Jw",
+    "AvatarItemId": 2333,
+    "AvatarItemType": 0,
+    "FriendlyName": "Brimless Cap (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,",
+    "AvatarItemId": 2359,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Wrap (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,0zldWzi4H0OQwsWPt6gl-w",
+    "AvatarItemId": 2364,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Wrap (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,a0A1q_e1q06qquiu2KaZhA",
+    "AvatarItemId": 2361,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Wrap (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,M_BhFve7SkC7IJoymLiCLg",
+    "AvatarItemId": 2363,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Wrap (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,rwESUxIrQEKA2hdQpcaPaA",
+    "AvatarItemId": 2362,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Wrap (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a12f724f-4a73-4ab8-aad4-6bfc662b4dd6,,,",
+    "AvatarItemId": 1002,
+    "AvatarItemType": 0,
+    "FriendlyName": "Undercut Long Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a52353bf-8693-45fb-a04a-19cf62a06482",
+    "AvatarItemId": 5955,
+    "AvatarItemType": 0,
+    "FriendlyName": "Curlers Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "a6cbfe76-534a-4655-a8a8-3fed13d001c7,,,",
+    "AvatarItemId": 726,
+    "AvatarItemType": 0,
+    "FriendlyName": "Bald Top Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b148cb1e-df81-442f-aea6-ab1727aad00e,,,",
+    "AvatarItemId": 990,
+    "AvatarItemType": 0,
+    "FriendlyName": "Chunky Afro Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,,,",
+    "AvatarItemId": 1772,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Black) ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,Aex0Zh1RQ0u9oTDFF1cFIg,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1781,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,El0s9F6cfkywcKOkqwbJtQ,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1779,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Grey)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,J9cK9BKtHUinG-DwAoPi3g,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1774,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Dreen)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,N0fBxjrCekO-HUqmc3MufQ,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1775,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,oNoEl-nDqk-HLsfz1538oA,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1776,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,pQ_3mZI7yEaxMw9n_Fr4Sg,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1778,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,TpFWTdEW2kqtpvc0sPv-dw,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1777,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,-VF3K4miGE28LxMgqVehRQ,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1773,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,vxZVeH2b_E6XlqyqCW0hBA,_o3mI1mjE02vekPVyJg8Aw,",
+    "AvatarItemId": 1780,
+    "AvatarItemType": 0,
+    "FriendlyName": "Pocket Tee (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,3a1oW3_MY0e4lDN2V1X4ig,za8Mz14Ww0KtC6wavUPXdg,",
+    "AvatarItemId": 1771,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Nonbinary Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,9jB8U3yxjE6hanEZgMdvtA",
+    "AvatarItemId": 2202,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - AAPI (AAPI Heritage Month)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,D_Xmo0rOzkS-kgq1CYXt3g,tnCJp2eDI0SwjVfJMhk3LQ,",
+    "AvatarItemId": 1458,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Trans Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,DIeasJUIj0KNetAzPzuIrg,o3Q2gADhh06dgaipkkdMsA,",
+    "AvatarItemId": 1757,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Bi Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,EkA09Hj2m0u3c5STynn3Bw",
+    "AvatarItemId": 2887,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - ANAM (Autism & Neurodiversity Awareness Month)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,G6Udm6kMdE28vmRY5KPanA,Fw79pqDPP0C8H07AnTY-Vg,",
+    "AvatarItemId": 1756,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Lesbian Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,MfF0wizDjUa7RUE-AVJpvA",
+    "AvatarItemId": 2194,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Intersex Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,PIwziHk1BUuYkAf6kuK6wA",
+    "AvatarItemId": 2059,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - BHM (Black History Month)\t",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,PRLBrEEZhUumm3VnYVJP6Q",
+    "AvatarItemId": 2192,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Aromantic Pride)\t",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,sf962XJ0tkis0svkMkZCXQ,4bI7QRvdnEansPkwx8Di9A,",
+    "AvatarItemId": 1791,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Pan Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,sxUE0iOSZEmezm54T7xI3Q,tlpa7195x0CkmSjpR1RArQ,",
+    "AvatarItemId": 1457,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Rainbow Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,tm7Cnd3LzkqWHA1JMrgoeA,nbLr3c3lOkiWhNg9IYbt6Q,",
+    "AvatarItemId": 1770,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Ace Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,Xt3Ndm8mC0qsLClPIbgwUw",
+    "AvatarItemId": 2193,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Hoodie - Pride (Genderfluid Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b8e485d4-b5c2-480e-908c-d9b500375759,",
+    "AvatarItemId": 2881,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (Cochlear Implant - Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b8e485d4-b5c2-480e-908c-d9b500375759,7ZRNVpxhWk-j8R3oj0oVXg",
+    "AvatarItemId": 2883,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (Cochlear Implant - Gray)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "b8e485d4-b5c2-480e-908c-d9b500375759,8WJI7RAuaEy4KvQiQhoKBw",
+    "AvatarItemId": 2882,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (Cochlear Implant - Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,",
+    "AvatarItemId": 2352,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Twist (Beige)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,irw2uj4c2Eil0ndPCTqodQ",
+    "AvatarItemId": 2355,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Twist (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,pPZ3sDw3B06mKiYsAiAt9w",
+    "AvatarItemId": 2358,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Twist (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,sO8e2epLrUud243Xi9odXg",
+    "AvatarItemId": 2357,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Twist (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,s-QTVT5eTECKHL9FnHFCAQ",
+    "AvatarItemId": 2354,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Twist (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,UnHAtXkd2kCdamzw6B3Mvg",
+    "AvatarItemId": 2356,
+    "AvatarItemType": 0,
+    "FriendlyName": "Head Scarf Twist (Turquoise)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c45ed7b8-99bd-4a4b-a9ff-e16edf5d7a18,,,",
+    "AvatarItemId": 583,
+    "AvatarItemType": 0,
+    "FriendlyName": "High Pony Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c6c08eb5-381a-4193-9722-80da95d62abe,,,",
+    "AvatarItemId": 1008,
+    "AvatarItemType": 0,
+    "FriendlyName": "Business Tie (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,,,",
+    "AvatarItemId": 1005,
+    "AvatarItemType": 0,
+    "FriendlyName": "Glasses (Teal)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,5H0I1anlkkuUYIM28_ZOlA,l_iJLV14q0eNgOsOI1u0pw,",
+    "AvatarItemId": 1879,
+    "AvatarItemType": 0,
+    "FriendlyName": "Glasses (Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,9tZq7Xvfj0WhhLBAuAacxA,l_iJLV14q0eNgOsOI1u0pw,",
+    "AvatarItemId": 1878,
+    "AvatarItemType": 0,
+    "FriendlyName": "Glasses (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,BqNgpjP7a0qmm3I3DNbKLA,l_iJLV14q0eNgOsOI1u0pw,",
+    "AvatarItemId": 1880,
+    "AvatarItemType": 0,
+    "FriendlyName": "Glasses (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "c855dcc3-96cb-470d-b159-d37a025a47d1,,,",
+    "AvatarItemId": 1200,
+    "AvatarItemType": 0,
+    "FriendlyName": "Dutch Braid Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "cc96f8a5-bc5b-4f89-83b7-ecd53905ada7,,,",
+    "AvatarItemId": 1007,
+    "AvatarItemType": 0,
+    "FriendlyName": "Beard (Thick)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "CTcrvbo3OEepIV4oW8bx4w,,,",
+    "AvatarItemId": 727,
+    "AvatarItemType": 0,
+    "FriendlyName": "Receding Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,,,",
+    "AvatarItemId": 1019,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room Shirt (Crew Neck, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,941c046e-4e95-49f8-a7d7-19071fcc3c94,0440f08f-ef1d-49d8-942b-523056e8bb45,703ff56b-560d-4ff4-8c63-d195e879a328",
+    "AvatarItemId": 571,
+    "AvatarItemType": 0,
+    "FriendlyName": "Alpaca Shirt",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": -1,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,95e4cc30-cb68-473d-a395-feadf5b51512,0440f08f-ef1d-49d8-942b-523056e8bb45,",
+    "AvatarItemId": 1749,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room T-Shirt (Crew Neck, Orange)\t",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,95e4cc30-cb68-473d-a395-feadf5b51512,0440f08f-ef1d-49d8-942b-523056e8bb45,0c496f32-0011-4c4d-9778-59446f70c032",
+    "AvatarItemId": 565,
+    "AvatarItemType": 0,
+    "FriendlyName": "Rec Room T-Shirt (Crew Neck, Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,3JrW3FFUvEe6HZ9VjOVjMw,ynPJe7asTk-x_GtcEBQbgA,",
+    "AvatarItemId": 1971,
+    "AvatarItemType": 0,
+    "FriendlyName": "Sweat Suit (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,jeEWPFvzaEGmXaUrxTFvwg,ynPJe7asTk-x_GtcEBQbgA,",
+    "AvatarItemId": 1974,
+    "AvatarItemType": 0,
+    "FriendlyName": "Sweat Suit (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,NjCLn5A5h0-V8jB72etCNQ,ynPJe7asTk-x_GtcEBQbgA,",
+    "AvatarItemId": 1973,
+    "AvatarItemType": 0,
+    "FriendlyName": "Sweat Suit (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,OT5APcpbpEiMNNah8n4Txw,ynPJe7asTk-x_GtcEBQbgA,",
+    "AvatarItemId": 1972,
+    "AvatarItemType": 0,
+    "FriendlyName": "Sweat Suit (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,t2fOeVWloUOKDlIaf4Sxnw,ynPJe7asTk-x_GtcEBQbgA,",
+    "AvatarItemId": 1970,
+    "AvatarItemType": 0,
+    "FriendlyName": "Sweat Suit (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d7730a9e-78a1-4356-bc09-6b066615850b,,,",
+    "AvatarItemId": 1477,
+    "AvatarItemType": 0,
+    "FriendlyName": "Afro Updo Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d8280c0c-d803-4513-be10-a0ba96d8821e,,,",
+    "AvatarItemId": 1000,
+    "AvatarItemType": 0,
+    "FriendlyName": "Flowhawk Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "d84c0ff9-8fbe-4ed8-abf3-7996e81888ab,,,",
+    "AvatarItemId": 556,
+    "AvatarItemType": 0,
+    "FriendlyName": "Large Afro Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "da4e7b34-2095-4a9e-801e-4f409039e0dd,,,",
+    "AvatarItemId": 989,
+    "AvatarItemType": 0,
+    "FriendlyName": "Buzz Cut Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,,,",
+    "AvatarItemId": 143,
+    "AvatarItemType": 0,
+    "FriendlyName": "Blazer (Blue, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,05ac07e1-67f0-486c-abf5-a62866475abb,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
+    "AvatarItemId": 144,
+    "AvatarItemType": 0,
+    "FriendlyName": "Blazer (Black, Cream)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,0ffad843-d6c9-425a-8686-7217009c867e,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
+    "AvatarItemId": 148,
+    "AvatarItemType": 0,
+    "FriendlyName": "Blazer (Green, Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,272fe8eb-5061-4729-a7a8-414ff667a82f,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
+    "AvatarItemId": 145,
+    "AvatarItemType": 0,
+    "FriendlyName": "Blazer (Grey, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,6f2e74bf-1e95-463d-97db-d5d1a53b2c28,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
+    "AvatarItemId": 147,
+    "AvatarItemType": 0,
+    "FriendlyName": "Blazer (Black, White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "de0ac50d-2adb-4114-bd2e-68953b13d706,9374bf66-2ee5-493b-8439-efce4b201904,be2b9293-1d3c-4b1c-b4c5-fad3ab16cf54,",
+    "AvatarItemId": 146,
+    "AvatarItemType": 0,
+    "FriendlyName": "Blazer (Grey, Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "e286863c-2967-4d00-b837-b49487b9484a,,,",
+    "AvatarItemId": 992,
+    "AvatarItemType": 0,
+    "FriendlyName": "Fauxhawk Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "e36bcd98-7e85-43fa-89f8-57e4ec33823a,,,",
+    "AvatarItemId": 988,
+    "AvatarItemType": 0,
+    "FriendlyName": "Bob with Bangs Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "e5b83dfc-b2e1-4dcb-a4ab-9d3a4c8a34ae,,,",
+    "AvatarItemId": 584,
+    "AvatarItemType": 0,
+    "FriendlyName": "Long Wavy Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ea254491-116c-41c4-a9ca-1fa1fca76374,",
+    "AvatarItemId": 2875,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (BTE - Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ea254491-116c-41c4-a9ca-1fa1fca76374,1n-ekJos-EeViiz_zG4jEg",
+    "AvatarItemId": 2876,
+    "AvatarItemType": 0,
+    "FriendlyName": "Hearing Aids (BTE - Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "eb9611c6-bb50-41a2-93e9-7f959815a846,,,",
+    "AvatarItemId": 587,
+    "AvatarItemType": 0,
+    "FriendlyName": "Dreads Long Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ec474314-fd79-441d-852b-d8999274fe57,,,",
+    "AvatarItemId": 1986,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wavy Middle Part Hair ",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,,,",
+    "AvatarItemId": 1023,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,0ecb8a2a-cffc-47db-aeda-fb0684aef1e5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 288,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Grey)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,1b1d08f2-12ca-43dd-a44f-ea2820b919b4,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 684,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Black)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,484b6c13-af22-4ad5-8c43-34c0de095d49,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 289,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Light Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,51ef8d39-2b94-4f9e-9620-07b6b0a913a5,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 685,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Orange)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,5rLtRfNWO0qT7X-0sJkUXg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1859,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Lime)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,67bcca75-4ab1-4964-8688-9908c464d355,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 287,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Gold)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,7d8e55fe-3c34-4b4b-9753-0021f6cc6454,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 292,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Cream)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,8377ab96-c908-457f-9fee-b784c9a759f3,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 683,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Ai85jH88H06ze74VdWolfw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1863,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Pure Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,cbe29e9f-f2ac-47fb-97e1-8bad16abb89d,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 687,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,dee70c38-7a99-4c2b-9181-665f1bf75aca,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 686,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Dg3DxHr8GU2e190TGveXqw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1858,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Baby Pink)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,DiJGFIO-5Ue8rkEhvF5-Mg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1860,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Sienna)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,f8b0cfe8-e129-4578-8bb5-f60af5d38599,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 294,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,fWxn_AarpESryNA9UN8wvA,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1857,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Teal)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,M0nOQl44DkG_GjTXzAEQCQ,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1862,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Yellow)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,NRjJuinZ4ki8qaEPvP84tw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1864,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Mint)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,sEKIlMfbJ0eED6VtcXcQrw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1856,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Army Green)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Sg5yKkqJEEulQeUvRhFgJg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1861,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Prussian Blue)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,x3kGXCD0UEWkjfXqu_kuxg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1855,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Z2L6AqDdcUqxiN1mVw-X9g,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+    "AvatarItemId": 1865,
+    "AvatarItemType": 0,
+    "FriendlyName": "Wristbands (Light Purple)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "edc7888c-dc42-48ab-8815-884d227760af,,,",
+    "AvatarItemId": 1984,
+    "AvatarItemType": 0,
+    "FriendlyName": "Short Locs Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "f9dd08f8-16d3-4c39-af4f-89f7bb6e80d3,,,",
+    "AvatarItemId": 1003,
+    "AvatarItemType": 0,
+    "FriendlyName": "Undercut Short Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "fcfcaf63-deb4-45f7-b711-c051c9ea45cb,,,",
+    "AvatarItemId": 390,
+    "AvatarItemType": 0,
+    "FriendlyName": "Top Bun Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "fe15ca53-c5b8-4acf-9309-ff3f4e610fc9,,,",
+    "AvatarItemId": 1459,
+    "AvatarItemType": 0,
+    "FriendlyName": "Winged Hat - Pride (Rainbow Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "fe15ca53-c5b8-4acf-9309-ff3f4e610fc9,knXPidb-Rkayfc3kSHfZeQ,1yMyo6oTjU-VAygoeWaohQ,",
+    "AvatarItemId": 1460,
+    "AvatarItemType": 0,
+    "FriendlyName": "Winged Hat - Pride (Trans Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "feb8b50b-d3da-4e45-b4d0-69aeeb5cfeb3,",
+    "AvatarItemId": 2334,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headdress (White)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "feb8b50b-d3da-4e45-b4d0-69aeeb5cfeb3,1WBsT99QM0anps6ZoWE59Q",
+    "AvatarItemId": 2336,
+    "AvatarItemType": 0,
+    "FriendlyName": "Headdress (Red)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ffdda4d3-a768-4335-a883-aa3f9dc897bf,",
+    "AvatarItemId": 2995,
+    "AvatarItemType": 0,
+    "FriendlyName": "Trihawk Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "ffea7a65-613f-4835-921e-6dd15f357b7e,,,",
+    "AvatarItemId": 621,
+    "AvatarItemType": 0,
+    "FriendlyName": "Long Bangs Hair",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "oYvOo47DJE-DEPlpn5xNUw,whs9olNz9Uani7Gou31mvw,y6aASPUwDkas0W5Yl27ydQ,",
+    "AvatarItemId": 1450,
+    "AvatarItemType": 0,
+    "FriendlyName": "Belt Bag (Rainbow Pride)",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  },
+  {
+    "AvatarItemDesc": "-twtjyBdQ02EAdOfBGTiEw,,,",
+    "AvatarItemId": 728,
+    "AvatarItemType": 0,
+    "FriendlyName": "Van Dyke Beard",
+    "IsBaseAvatarItem": false,
+    "PlatformMask": -1,
+    "Rarity": 0,
+    "ToolTip": ""
+  }
 ]

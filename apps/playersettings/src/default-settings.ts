@@ -1,22 +1,17 @@
 /**
- * Default player settings seeded on a player's first read. Based on the C#
- * `PlayerSettingsController.GetPlayerSettings`, but the onboarding/progress flags
- * are reset to a *fresh* player — the C# values were copied from an already-
- * onboarded account, which made new accounts skip Orientation (the client saw
- * OOBE/tutorials as complete and warped them to the dorm within seconds).
- * Ordered; written to KV the first time a player has no stored settings.
+ * Default player settings seeded on a player's first read, ported verbatim from
+ * the C# `PlayerSettingsController.GetPlayerSettings`. Ordered; written to KV the
+ * first time a player has no stored settings.
  */
 export const DEFAULT_SETTINGS: Array<{ Key: string; Value: string }> = [
-	// 0 = no OOBE steps done, so the new-user Orientation flow runs.
-	{ Key: 'Recroom.OOBE', Value: '0' },
+	{ Key: 'Recroom.OOBE', Value: '77' },
 	{
 		Key: 'SplitTestAssignedSegments',
 		Value:
 			'1|{"SplitTesting+PhotonMaxDatagrams_2021_01_11":"Off","SplitTesting+Curated_Rooms_2020_08_06":"Off","SplitTesting+RoomRecommendationsType_2020_08_14":"Aug14MinVisitors35000"}',
 	},
-	{ Key: 'PlayerSessionCount', Value: '0' },
-	// 0 = no tutorials completed (fresh player).
-	{ Key: 'TUTORIAL_COMPLETE_MASK', Value: '0' },
+	{ Key: 'PlayerSessionCount', Value: '13' },
+	{ Key: 'TUTORIAL_COMPLETE_MASK', Value: '11' },
 	{ Key: 'BACKPACK_FAVORITE_TOOL', Value: '1' },
 	{ Key: 'VoiceChat', Value: '2' },
 	{ Key: 'VRAUTOSPRINT', Value: '1' },

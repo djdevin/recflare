@@ -66,13 +66,12 @@ describe('playersettings endpoints', () => {
 		const settings = (await res.json()) as Array<{ PlayerId: number; Key: string; Value: string }>
 		expect(settings.length).toBeGreaterThan(0)
 		expect(settings.every((s) => s.PlayerId === 100)).toBe(true)
-		// Fresh-player onboarding defaults so the new-user Orientation flow runs.
-		expect(settings.find((s) => s.Key === 'Recroom.OOBE')?.Value).toBe('0')
-		expect(settings.find((s) => s.Key === 'TUTORIAL_COMPLETE_MASK')?.Value).toBe('0')
+		expect(settings.find((s) => s.Key === 'Recroom.OOBE')?.Value).toBe('77')
+		expect(settings.find((s) => s.Key === 'PlayerSessionCount')?.Value).toBe('13')
 
 		// Defaults were persisted to KV.
 		const stored = await env.PLAYER_SETTINGS.get<Record<string, string>>('player:100', 'json')
-		expect(stored?.['Recroom.OOBE']).toBe('0')
+		expect(stored?.['Recroom.OOBE']).toBe('77')
 	})
 
 	it('GET /playersettings reflects a value written by PUT', async () => {
