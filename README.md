@@ -193,21 +193,15 @@ wrangler d1 create recflare
 ```
 
 Then apply the schema. The `rooms` and `auth` workers own the migrations under
-their `apps/<worker>/migrations/` directories. Remote operations need the real id
-in the config (the committed file only has the `"local"` placeholder), so splice
-it in the same way the deploy does — from each owning worker, with `RECFLARE_D1`
-exported:
+their `apps/<worker>/migrations/` directories. `just migrate` applies them to the
+remote database (splicing `RECFLARE_D1` into the `"local"` placeholder the same way
+`just deploy` does, so you don't edit any config):
 
 ```bash
-cd apps/rooms   # then repeat for apps/auth
-sed -E "s/\"database_id\": *\"local\"/\"database_id\": \"$RECFLARE_D1\"/" \
-  wrangler.jsonc >wrangler.generated.jsonc
-wrangler d1 migrations apply recflare --remote --config wrangler.generated.jsonc
-rm wrangler.generated.jsonc
+just migrate                 # migrate every worker that owns migrations
+just migrate -F rooms        # or scope to one worker
+just migrate -- --local      # target the local dev db instead of remote
 ```
-
-For the local dev database no id is needed — it uses the `"local"` placeholder
-directly: `wrangler d1 migrations apply recflare --local`.
 
 _KV — two namespaces_ (`RECFLARE_MATCH_PRESENCE` for `match`/`auth`,
 `RECFLARE_PLAYER_SETTINGS` for `playersettings`):

@@ -41,6 +41,13 @@
 			"env": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
 			"outputLogs": "new-only"
 		},
+		// Apply D1 migrations. Only workers that own migrations define a `migrate`
+		// script, so `turbo migrate` runs just those. No build needed.
+		"migrate": {
+			"cache": false,
+			"env": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
+			"outputLogs": "new-only"
+		},
 		// build:wrangler isn't used much, but can be useful for debugging
 		"build:wrangler": {
 			"dependsOn": ["build", "topo"],
