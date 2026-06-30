@@ -1,48 +1,112 @@
-# Workers Monorepo Template
+# RecFlare
 
-This template provides a fully featured monorepo for managing multiple Cloudflare Workers.
+RecFlare is an implementation of RecNet — the Rec Room backend — built on
+Cloudflare Workers. It implements the network services the Rec Room client talks
+to — accounts, auth, rooms, matchmaking, economy, chat, notifications, and more —
+each as an independent Worker on its own subdomain.
 
-## Why a Monorepo?
+> **Disclaimer:** This is an unofficial, fan-made project for preservation and
+> experimentation. It is not affiliated with, endorsed by, or connected to Rec
+> Room Inc. "Rec Room" is a trademark of its respective owner.
 
-Managing multiple related services (like Cloudflare Workers) in separate repositories can become complex. A monorepo approach offers several advantages:
+## Client
 
-- **Simplified dependency management** - `pnpm workspaces` allow you to manage dependencies across all your workers and shared packages from a single place. The tool `syncpack` (configured via `.syncpackrc.cjs`) help keep versions consistent.
-- **Code sharing and reuse** - Easily create and share common logic, types, and utilities between workers by placing them in the `packages/` directory. Changes to shared code are immediately available to all consumers.
-- **Atomic commits** - Changes affecting multiple workers or shared libraries can be committed together, making the history easier to understand and reducing the risk of inconsistencies.
-- **Consistent tooling** - Apply the same build, test, linting, and formatting configurations (e.g., via Turborepo in `turbo.json` and shared configs in `packages/`) across all projects, ensuring consistent tooling and code quality across Workers.
-- **Streamlined CI/CD** - A single pipeline (like the ones in `.github/workflows/`) can build, test, and deploy all Workers, simplifying the release process.
-- **Easier refactoring** - Refactoring code that spans multiple workers or shared packages is significantly easier within a single repository.
+RecFlare is compatible with the
+[CannedNet client](https://github.com/CannedNet/CannedNet) and the build of Rec
+Room with manifest `7859140924515540835`. Other client or game versions expect
+different endpoints and response shapes and are not supported.
 
-## Quick Start
+## How it works
 
-You can bootstrap a new monorepo using this template by running:
+The Rec Room client discovers every service by fetching an _endpoints document_
+from the name-server (`ns`) worker at the apex domain. That document maps each
+service to a host like `https://api.<your-domain>`. Every service runs as a
+separate Cloudflare Worker attached to its own subdomain, so the client's traffic
+fans out across the workers in `apps/`.
 
-```bash
-npm create workers-monorepo@latest
-```
+Authentication is a Bearer-JWT flow: the `auth` worker issues tokens from
+`/connect/token` and owns the shared `accounts` table; every other worker
+validates that token on its auth-gated routes. New players are placed into the
+Orientation room on first login.
+
+State is persisted with Cloudflare's storage primitives — D1 (SQLite) for
+accounts and rooms, KV for per-player settings and presence, R2 for images and
+CDN binaries, and a Durable Object for the real-time notifications hub. Endpoints
+that aren't backed by storage yet return sensible defaults and are marked
+`TODO`.
+
+## Services
+
+These are every RecNet service the client discovers, taken from the
+service-discovery map in [`apps/ns/src/endpoints.ts`](apps/ns/src/endpoints.ts).
+Each is reached at `https://<subdomain>.<your-domain>`. Services with a worker in
+`apps/` are implemented here; the rest are advertised in the endpoints document
+but not yet backed by a Worker.
+
+| Service                 | Subdomain               | Worker             | Notes                                                              |
+| ----------------------- | ----------------------- | ------------------ | ----------------------------------------------------------------- |
+| Accounts                | `accounts`              | `accounts`         | Player accounts & profile reads/writes (D1)                       |
+| AI                      | `ai`                    | —                  | Not yet implemented                                               |
+| API                     | `api`                   | `api`              | Core Game API — config, social, avatar, rooms, image uploads (D1, R2) |
+| Auth                    | `auth`                  | `auth`             | OAuth token issuance (`/connect/token`); owns the accounts table (D1, KV) |
+| BugReporting            | `bugreporting`          | —                  | Not yet implemented                                               |
+| Cards                   | `cards`                 | —                  | Not yet implemented                                               |
+| CDN                     | `cdn`                   | `cdn`              | Binary CDN — signature blobs & room build data (R2)               |
+| Chat                    | `chat`                  | `chat`             | Chat service                                                      |
+| Clubs                   | `clubs`                 | `clubs`            | Clubs                                                             |
+| CMS                     | `cms`                   | —                  | Not yet implemented                                               |
+| Commerce                | `commerce`              | `commerce`         | Store / purchase endpoints                                        |
+| Data                    | `data`                  | —                  | Not yet implemented                                               |
+| DataCollection          | `datacollection`        | `datacollection`   | Client telemetry / analytics sink                                 |
+| Discovery               | `discovery`             | —                  | Not yet implemented                                               |
+| Econ                    | `econ`                  | `econ`             | Economy & avatar endpoints (separate from `api`)                 |
+| GameLogs                | `gamelogs`              | —                  | Not yet implemented                                               |
+| Geo                     | `geo`                   | —                  | Not yet implemented                                               |
+| Images                  | `img`                   | `img`              | Image storage & signed delivery (R2)                             |
+| Leaderboard             | `leaderboard`           | —                  | Not yet implemented                                               |
+| Link                    | `link`                  | —                  | Not yet implemented                                               |
+| Lists                   | `lists`                 | —                  | Not yet implemented                                               |
+| Matchmaking             | `match`                 | `match`            | Matchmaking & per-player presence (D1, KV)                       |
+| Moderation              | `api`                   | `api`              | Served by the `api` worker (shares the API host)                 |
+| Notifications           | `notify`                | `notify`           | Real-time notifications over SignalR/WebSockets (Durable Object) |
+| PlatformNotifications   | `platformnotifications` | —                  | Not yet implemented                                               |
+| PlayerSettings          | `playersettings`        | `playersettings`   | Per-player settings (KV)                                         |
+| RoomComments            | `roomcomments`          | —                  | Not yet implemented                                               |
+| RoomieIntegrations      | `roomieintegrations`    | —                  | Not yet implemented                                               |
+| Rooms                   | `rooms`                 | `rooms`            | Room storage & queries; seeds the Dorm & Orientation rooms (D1) |
+| Storage                 | `storage`               | —                  | Not yet implemented                                               |
+| Strings                 | `strings`               | —                  | Not yet implemented                                               |
+| StringsCDN              | `strings-cdn`           | —                  | Not yet implemented                                               |
+| Studio                  | `studio`                | —                  | Not yet implemented                                               |
+| Thorn                   | `thorn`                 | —                  | Not yet implemented                                               |
+| Videos                  | `videos`                | —                  | Not yet implemented                                               |
+| WWW                     | `www`                   | —                  | Website host (not a Worker)                                       |
+
+The `ns` worker itself serves this discovery document at the apex/`ns` host and
+isn't listed within it. Each implemented worker has its own `README.md` under
+`apps/<name>/` documenting its routes.
 
 ## Prerequisites
 
 - node.js v22 or later
 - pnpm v10 or later
 - bun 1.2 or later
-- rg (ripgrep) - optional, but recommended for shell formatting
-- shfmt - optional, but recommended for shell formatting
-- mise - optional, but recommended for tool management
+- A Cloudflare account with a zone (domain) you control, for deploying
+- shfmt / rg (ripgrep) — optional, recommended for shell formatting
+- mise — optional, recommended for tool management
 
 ## Getting Started
 
-**Install Dependencies:**
+**Install dependencies:**
 
 ```bash
 just install
 ```
 
-**Configure Environment:**
+**Configure your domain:**
 
-Copy the example config and set your base domain. `env.json` is the single
-source of truth for service hostnames; it is gitignored, so each clone needs its
-own copy.
+`env.json` is the single source of truth for your base domain; it is gitignored,
+so each clone needs its own copy.
 
 ```bash
 cp env.example.json env.json
@@ -57,83 +121,62 @@ runtime. Nothing in version control is rewritten; committed `wrangler.jsonc`
 files have no routes, and per-app subdomain overrides live under `subdomains` in
 `env.json`.
 
-**Run Development Server:**
+**Run the development server:**
 
 ```bash
 just dev
 ```
 
-**Create a New Worker:**
-
-Use the built-in generator to scaffold a new Cloudflare Workers application:
-
-```bash
-just new-worker
-```
-
-This will guide you throught he setup process of creating a new application within the `apps/` directory.
-
-**Deploy all Workers:**
+**Deploy all workers:**
 
 ```bash
 just deploy
 ```
 
-Note: This will also deploy the example application in `apps/example-worker-echoback`. If you don't want to deploy that Worker, simply remove the deploy script from [apps/example/workers/echoback/package.json](apps/example-worker-echoback/package.json).
+Deploying requires `wrangler` to be authenticated against your Cloudflare
+account (`wrangler login`, or `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
+in the environment). Storage resources (D1 databases, KV namespaces, R2 buckets)
+must be created and their ids set in each worker's `wrangler.jsonc` — see the
+inline comments in those files for the exact `wrangler` commands.
 
 ## Repository Structure
 
-This monorepo is organized as follows:
-
-- `apps/` - Contains individual Cloudflare Worker applications. Each subdirectory is typically a deployable unit.
-  - `example-worker-echoback` - An example worker demonstrating basic functionality.
-- `packages/` - Shared libraries, utilities, and configurations used across multiple applications.
-- `packages/tools/` - A package containing various scripts and a CLI for developing the monorepo.
-  - Each Workers application's package.json scripts point to scripts within `packages/tools/bin/`. This makes it easier to keep scripts consistent across Workers.
-- `turbo/` - Contains `turbo gen` templates
-  - `fetch-worker`: A basic Cloudflare Worker template.
-  - `fetch-worker-vite`: A Cloudflare Worker template using Vite for bundling and development.
-- `Justfile` - Defines convenient aliases for common development tasks.
-- `pnpm-workspace.yaml` - Defines the pnpm workspace structure.
-- `turbo.json` - Configures Turborepo build and task execution.
-- `.syncpackrc.cjs` - Configures `syncpack` for managing and synchronizing dependency versions across packages in the monorepo.
-  - The included configuration ensures that dependencies are all kept in sync and use a pinned version so that we can choose when to update dependencies.
+- `apps/` - The service workers, one deployable Worker per subdirectory. Each has
+  its own `README.md`, `wrangler.jsonc`, `src/`, and tests.
+- `packages/` - Shared libraries and configuration used across the workers.
+  - `@repo/hono-helpers` - Hono framework utilities (logging, error handling).
+  - `@repo/tools` - The `runx` CLI and the `bin/` scripts each worker's
+    package.json delegates to, so build/test/deploy stays consistent.
+  - `@repo/typescript-config`, `@repo/oxlint-config` - Shared TS and lint config.
+- `turbo/generators/` - `turbo gen` templates for scaffolding new workers/packages.
+- `Justfile` - Convenient aliases for common development tasks.
+- `pnpm-workspace.yaml` - pnpm workspace definition.
+- `turbo.jsonc` - Turborepo task graph and caching.
+- `.syncpackrc.cjs` - Keeps dependency versions consistent across packages.
 
 ## Available Commands
 
-This repository uses a `Justfile` to provide easy access to common commands. You can explore all available commands by running `just --list`.
+This repository uses a `Justfile`. Run `just` (or `just --list`) to see every
+command. Some key ones:
 
-Here are some key commands:
-
-- `just` - Show a list of available commands.
 - `just install` - Install all dependencies.
-- `just dev` - Start development server (context-aware: runs `bun runx dev`).
-- `just build` - Build all workers (runs `bun turbo build`).
-- `just test` - Run tests (runs `bun vitest`).
-- `just check` - Check code quality: deps, lint, types, format (runs `bun runx check`).
-- `just fix` - Fix code issues: deps, lint, format, workers-types (runs `bun runx fix`).
-- `just preview` - Run Workers in preview mode.
-- `just deploy` - Deploy workers (runs `bun turbo deploy`).
-- `just cs` - Create a new changeset for versioning.
+- `just dev` - Start the dev server (context-aware: runs `bun runx dev`).
+- `just build` - Build all workers.
+- `just test` - Run tests (vitest).
+- `just check` - Check code quality: deps, lint, types, format.
+- `just fix` - Fix code issues: deps, lint, format, workers-types.
+- `just deploy` - Deploy all workers to your domain.
+- `just new-worker` (alias: `just gen`) - Scaffold a new service worker.
+- `just new-package` - Scaffold a new shared package.
+- `just cs` - Create a changeset for versioning.
 - `just update deps` - Update dependencies across the monorepo with syncpack.
-- `just update pnpm` - Update pnpm version.
-- `just update turbo` - Update turbo version.
-- `just new-worker` (alias: `just gen`) - Generate a new Cloudflare Worker.
-- `just new-package` - Generate a new package for sharing code.
 
-For a complete list of available commands, run `just` or see the [Justfile](./Justfile) for more details.
+For a single worker, scope with turbo, e.g. `bun turbo -F api dev`,
+`bun turbo -F api test`, or `bun turbo -F api deploy`.
 
-## GitHub Actions
+## Why a monorepo?
 
-This repository includes GitHub Actions workflows defined in the `.github/workflows` directory:
-
-- **`branches.yml` (Branches Workflow):**
-  - Triggered on pushes to any branch _except_ `main`.
-  - Installs dependencies with pnpm.
-  - Runs checks/tests (`bun runx ci check`)
-
-- **`release.yml` (Release Workflow):**
-  - Triggered on pushes to the `main` branch.
-  - Contains two jobs:
-    - `test-and-deploy`: Installs dependencies, runs checks/tests (`bun turbo check:ci`), and then deploys all workers (`bun turbo deploy`). This step requires the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to be configured in your repository's GitHub secrets.
-    - `create-release-pr`: Uses [Changesets](https://github.com/changesets/changesets) to create a pull request that compiles changelogs and bumps package versions. This PR is primarily for documentation and versioning, as deployment happens directly on merge to `main`.
+The services share types, auth logic, and tooling, so keeping them in one repo
+keeps those in sync: `pnpm` workspaces share dependencies, `@repo/` packages
+share code, Turborepo runs build/test/lint with a single cached task graph, and
+cross-service changes land in one atomic commit.
