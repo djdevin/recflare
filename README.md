@@ -210,7 +210,6 @@ command. Some key ones:
 - `just deploy` - Deploy all workers to your domain.
 - `just new-worker` (alias: `just gen`) - Scaffold a new service worker.
 - `just new-package` - Scaffold a new shared package.
-- `just cs` - Create a changeset for versioning.
 - `just update deps` - Update dependencies across the monorepo with syncpack.
 
 For a single worker, scope with -F, e.g. `just deploy -F playersettings`.

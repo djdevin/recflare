@@ -75,11 +75,6 @@ deploy *args:
 #       GENERATOR COMMANDS        #
 # =============================== #
 
-# Create changeset
-[group('3. generator')]
-cs:
-  bun run-changeset-new
-
 [group('3. generator')]
 [positional-arguments]
 gen *args:

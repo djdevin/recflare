@@ -16,7 +16,6 @@
 - `just update deps` (alias: `just up deps`) - Update dependencies across the monorepo
 - `just update pnpm` - Update pnpm version
 - `just update turbo` - Update turbo version
-- `just cs` - Create a changeset for versioning
 - `bun turbo -F worker-name dev` - Start specific worker
 - `bun turbo -F worker-name test` - Test specific worker
 - `bun turbo -F worker-name deploy` - Deploy specific worker
