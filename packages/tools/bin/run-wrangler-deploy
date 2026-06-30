@@ -5,21 +5,31 @@ set -eu
 NAME=$(jq -r '.name' package.json)
 VERSION=$(get-version)
 
-# Resolve the base domain (and this worker's subdomain) from the gitignored
-# env.json at the repo root, then deploy onto the custom domain via `--domain`.
-# This keeps the real domain out of versioned files — committed wrangler.jsonc
-# has no routes, and the base domain is passed as the DOMAIN var at runtime.
-ROOT=$(git rev-parse --show-toplevel)
-ENV_JSON="$ROOT/env.json"
-if [ ! -f "$ENV_JSON" ]; then
-	echo "error: $ENV_JSON not found — copy env.example.json and set your domain" >&2
-	exit 1
+# Resolve the base domain (and this worker's subdomain), then deploy onto the
+# custom domain via `--domain`. This keeps the real domain out of versioned files
+# — committed wrangler.jsonc has no routes, and the base domain is passed as the
+# DOMAIN var at runtime.
+#
+# Source order: the RECFLARE_DOMAIN env var wins (handy for CI secrets), else the
+# gitignored env.json at the repo root. Per-app subdomain overrides come from
+# RECFLARE_SUBDOMAINS (a JSON object) or env.json's "subdomains".
+if [ -n "${RECFLARE_DOMAIN:-}" ]; then
+	DOMAIN="$RECFLARE_DOMAIN"
+	SUBDOMAINS_JSON=${RECFLARE_SUBDOMAINS:-}
+	[ -n "$SUBDOMAINS_JSON" ] || SUBDOMAINS_JSON='{}'
+else
+	ENV_JSON="$(git rev-parse --show-toplevel)/env.json"
+	if [ ! -f "$ENV_JSON" ]; then
+		echo "error: set RECFLARE_DOMAIN or create $ENV_JSON (copy env.example.json)" >&2
+		exit 1
+	fi
+	DOMAIN=$(jq -r '.domain' "$ENV_JSON")
+	SUBDOMAINS_JSON=$(jq -c '.subdomains // {}' "$ENV_JSON")
 fi
 
 DIR=$(basename "$PWD")
-DOMAIN=$(jq -r '.domain' "$ENV_JSON")
 # Per-app subdomain override, falling back to the worker's directory name.
-SUBDOMAIN=$(jq -r --arg d "$DIR" '.subdomains[$d] // $d' "$ENV_JSON")
+SUBDOMAIN=$(printf '%s' "$SUBDOMAINS_JSON" | jq -r --arg d "$DIR" '.[$d] // $d')
 HOST="$SUBDOMAIN.$DOMAIN"
 
 # Deploy with wrangler using the extracted values as binding variables
