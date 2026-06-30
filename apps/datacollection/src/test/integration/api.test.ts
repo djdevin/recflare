@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import '../../datacollection.app'
 
-const ORIGIN = 'https://datacollection.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 describe('datacollection endpoints', () => {
 	it('GET / reports service status', async () => {

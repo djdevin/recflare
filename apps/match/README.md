@@ -1,8 +1,7 @@
 # match
 
-Matchmaking Worker served at `match.rec.djdevin.net`. A Hono app ported from the
-C# `MatchmakingController`. EF Core (`AppDbContext`) queries are stubbed for now
-— no real bindings yet.
+Matchmaking Worker served on the `match` subdomain. A Hono app for matchmaking.
+Database queries are stubbed for now — no real bindings yet.
 
 ## Behavior
 
@@ -10,7 +9,7 @@ C# `MatchmakingController`. EF Core (`AppDbContext`) queries are stubbed for now
   Bearer JWT issued by the `auth` worker (same dev secret, see `src/jwt.ts`) and
   401 when it's missing/invalid.
 - **`GET /player`** always returns the inlined `JSON/getplayer.json` default
-  (the C# fell back to that file when the account/room instance wasn't found).
+  (falls back to that file when the account/room instance isn't found).
 - **`POST /goto/none`** returns the static offline-dorm instance with a fresh
   `photonRoomId`.
 - **`POST /goto/room/:room`** synthesizes the room-instance response (no Rooms
@@ -19,7 +18,7 @@ C# `MatchmakingController`. EF Core (`AppDbContext`) queries are stubbed for now
 - **`POST /player/heartbeat`** echoes the posted heartbeat fields; `roomInstance`
   is always null and `isOnline` false until there's a DB binding.
 - **`/player/login`, `/player/statusvisibility`, `/roominstance/:id/reportjoinresult`**
-  return empty 200s, as in the source.
+  return empty 200s.
 
 ## TODO before production
 

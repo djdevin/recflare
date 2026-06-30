@@ -1,5 +1,5 @@
 /**
- * Minimal HS256 JWT validation, mirroring the C# `JwtTokenService.ValidateAndGetAccountId`.
+ * Minimal HS256 JWT validation.
  *
  * Uses the same placeholder dev secret as the `auth` worker (`apps/auth/src/jwt.ts`).
  * Swap both for a shared secret binding before this is used for anything real.

@@ -10,7 +10,7 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
-const ORIGIN = 'https://match.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 // Matchmaking into a room resolves its real scene from the shared rec-rooms D1.
 // Seed the schema + a couple of rooms (matching the rooms worker's migration).

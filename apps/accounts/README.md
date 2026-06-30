@@ -1,16 +1,15 @@
 # accounts
 
-Accounts Worker served at `accounts.rec.djdevin.net`. A Hono app ported from the
-C# `AccountsController`. EF Core (`AppDbContext`) queries are stubbed for now —
-no real bindings yet.
+Accounts Worker served on the `accounts` subdomain. A Hono app for accounts.
+Database queries are stubbed for now — no real bindings yet.
 
 ## Behavior
 
 - **Auth-gated routes** validate the Bearer JWT issued by the `auth` worker
   (same dev secret, see `src/jwt.ts`) and 401 when it's missing/invalid.
-- **DB-backed reads** return synthesized default accounts. The C# already fills
-  every column with a fallback (`Player{id}`, `DefaultProfileImage.jpg`, etc.),
-  so the stubs return those defaults rather than 404ing on a missing row.
+- **DB-backed reads** return synthesized default accounts. Every column gets a
+  fallback (`Player{id}`, `DefaultProfileImage.jpg`, etc.), so the stubs return
+  those defaults rather than 404ing on a missing row.
 - **DB-backed writes** (`create`, the `PUT /account/me/*` mutations) accept the
   request and ack without persisting. `create` mints a random account id and
   returns it wrapped in the RecNet result envelope `{ success, value }`.

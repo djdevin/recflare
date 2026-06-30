@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import '../../chat.app'
 
-const ORIGIN = 'https://chat.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 describe('chat endpoints', () => {
 	it('GET / reports service status', async () => {

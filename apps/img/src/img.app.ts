@@ -29,7 +29,7 @@ function getSigningKey(env: Env): Promise<CryptoKey | null> {
 	return signingKey
 }
 
-/** RSA-SHA1 sign the bytes, base64-encoded — matches the C# `Signatures.Sign`. */
+/** RSA-SHA1 sign the bytes, base64-encoded. */
 async function signImage(env: Env, bytes: ArrayBuffer): Promise<string | null> {
 	const key = await getSigningKey(env)
 	if (!key) return null
@@ -60,8 +60,8 @@ const app = new Hono<App>()
 	// objects. Supports conditional requests via If-None-Match.
 	//
 	// When the client appends `?sig=p1`, the response body is RSA-SHA1 signed and
-	// the signature returned in a `Content-Signature` header (mirrors the C#
-	// ImageController). Signing requires the full body, so the object is buffered.
+	// the signature returned in a `Content-Signature` header. Signing requires the
+	// full body, so the object is buffered.
 	.get('/:key{.+}', async (c) => {
 		const key = c.req.param('key')
 		if (key.includes('..')) return c.body(null, 400)

@@ -12,7 +12,7 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
-const ORIGIN = 'https://accounts.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 // Apply the accounts schema + seed the system (uid 0) and Coach (uid 1) accounts
 // into the test D1 (mirrors apps/auth/migrations/0001_accounts.sql).

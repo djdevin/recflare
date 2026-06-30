@@ -59,8 +59,8 @@ const app = new Hono<App>()
 	// Default-unlocked avatar items, served from the bundled static JSON.
 	.get('/api/avatar/v1/defaultunlocked', (c) => c.json(defaultAvatarItems))
 
-	// Default base avatar items. The C# reads the same JSON/defaultAvatarItems.json
-	// file as defaultunlocked, so it returns the identical catalog.
+	// Default base avatar items. Reads the same source file as defaultunlocked,
+	// so it returns the identical catalog.
 	.get('/api/avatar/v1/defaultbaseavataritems', (c) => c.json(defaultAvatarItems))
 
 	// The player's avatar items — owned items concatenated with the default
@@ -72,18 +72,18 @@ const app = new Hono<App>()
 		return c.json(defaultAvatarItems)
 	})
 
-	// The player's owned custom avatar items. No auth in the C#, which returns
-	// `{ items: [] }`. The client downloads these when custom-item creation is
+	// The player's owned custom avatar items. No auth; returns `{ items: [] }`.
+	// The client downloads these when custom-item creation is
 	// allowed; a 404 here surfaces as "Failed to download unlocked avatar items".
 	.get('/econ/customAvatarItems/v1/owned', (c) => c.json({ items: [] }))
 
-	// The player's objectives progress. The C# serves a static JSON file
-	// (JSON/tempmyprogress.json) verbatim with no auth — same default for everyone
-	// until there's a DB binding to track per-player progress.
+	// The player's objectives progress. Serves a static JSON file verbatim with
+	// no auth — same default for everyone until there's a DB binding to track
+	// per-player progress.
 	.get('/api/objectives/v1/myprogress', (c) => c.json(myProgress))
 
 	// The player's avatar. No DB binding yet, so it always returns the default
-	// the C# seeds for a player with no PlayerAvatar row.
+	// for a player with no PlayerAvatar row.
 	.get('/api/avatar/v2', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
@@ -117,18 +117,18 @@ const app = new Hono<App>()
 		return c.json([])
 	})
 
-	// Unlocked equipment. The C# returns "[]" with no auth.
+	// Unlocked equipment. Returns "[]" with no auth.
 	.get('/api/equipment/v2/getUnlocked', (c) => c.json([]))
 
-	// Not in CannedNet — room consumables/currencies for a given room. Stubbed
-	// as empty lists so the client doesn't 404.
+	// Room consumables/currencies for a given room. Stubbed as empty lists so the
+	// client doesn't 404.
 	.get('/api/roomconsumables/v1/roomConsumable/room/:roomId', (c) => c.json([]))
 	.get('/api/roomconsumables/v1/roomConsumable/room/:roomId/me', (c) => c.json([]))
 	.get('/api/roomcurrencies/v1/currencies', (c) => c.json([]))
 	.get('/api/roomcurrencies/v1/getAllBalances', (c) => c.json([]))
 
-	// Persist player settings. [Authorize]; the C# replaces the player's settings
-	// and returns Ok(). No DB binding yet, so accept-and-ack.
+	// Persist player settings. [Authorize]; would replace the player's settings.
+	// No DB binding yet, so accept-and-ack.
 	.post('/api/settings/v2/set', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
@@ -152,23 +152,23 @@ const app = new Hono<App>()
 		return c.json([])
 	})
 
-	// Gift-drop storefront. The C# falls back to JSON/storefront3.json when no
-	// storefront row exists; that's the bundled static catalog here.
+	// Gift-drop storefront. Falls back to the bundled static catalog when no
+	// storefront row exists.
 	.get('/api/storefronts/v3/giftdropstore/3', (c) => c.json(storefrontGiftDrop3))
 
-	// Current weekly challenge. Served from the bundled static JSON (the C#'s
-	// JSON/weeklychallenge.json) until per-rotation challenge data is wired up.
+	// Current weekly challenge. Served from the bundled static JSON until
+	// per-rotation challenge data is wired up.
 	.get('/api/challenge/v2/getCurrent', (c) => c.json(weeklyChallenge))
 
-	// Pending game rewards. The C# returns "[]".
+	// Pending game rewards. Returns "[]".
 	.get('/api/gamerewards/v1/pending', (c) => c.json([]))
 
-	// The player's room keys. The C# returns "[]".
+	// The player's room keys. Returns "[]".
 	.get('/api/roomkeys/v1/mine', (c) => c.json([]))
 	// Room keys for a given room (client calls this on the econ host). [] with no DB.
 	.get('/api/roomkeys/v1/room', (c) => c.json([]))
 
-	// Subscription lookup. The C# returns both fields null with no auth.
+	// Subscription lookup. Returns both fields null with no auth.
 	.post('/api/CampusCard/v1/UpdateAndGetSubscription', (c) =>
 		c.json({ subscription: null, platformAccountSubscribedPlayerId: null })
 	)

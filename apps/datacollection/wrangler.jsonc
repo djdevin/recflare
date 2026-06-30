@@ -6,7 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
 		{
-			"pattern": "datacollection.rec.djdevin.net",
+			"pattern": "datacollection.rec.example.com",
 			"custom_domain": true
 		}
 	],

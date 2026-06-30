@@ -369,5 +369,5 @@
 		"MicSpamSamplePercentageForForceMuteToEnd": 0.2,
 		"MicSpamWarningStateVolumeMultiplier": 0.25
 	},
-	"ShareBaseUrl": "https://www.rec.djdevin.net/{0}"
+	"ShareBaseUrl": "https://www.rec.example.com/{0}"
 }

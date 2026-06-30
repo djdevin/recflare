@@ -38,6 +38,22 @@ npm create workers-monorepo@latest
 just install
 ```
 
+**Configure Environment:**
+
+Copy the example config and set your base domain. `env.json` is the single
+source of truth for service hostnames; it is gitignored, so each clone needs its
+own copy.
+
+```bash
+cp env.example.json env.json
+# edit env.json and set "domain" to your domain
+just sync
+```
+
+`just sync` regenerates the derived config (wrangler route patterns, the `ns`
+service-discovery document, and the api share-link base URL) from `env.json`.
+Re-run it whenever you change `env.json`.
+
 **Run Development Server:**
 
 ```bash

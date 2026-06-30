@@ -2,17 +2,16 @@ import { exports } from 'cloudflare:workers'
 import { describe, expect, test } from 'vitest'
 
 import '../../ns.app'
+import endpoints from '../../../static/endpoints.json'
 
-const ORIGIN = 'https://ns.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 describe('ns endpoints', () => {
 	test('GET / returns the endpoints document', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/`)
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as Record<string, string>
-		expect(body.API).toBe('https://api.rec.djdevin.net')
-		expect(body.Notifications).toBe('https://notify.rec.djdevin.net')
-		expect(body.Econ).toBe('https://econ.rec.djdevin.net')
+		const body = await res.json()
+		expect(body).toEqual(endpoints)
 	})
 
 	test('unknown path returns 404', async () => {

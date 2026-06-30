@@ -1,6 +1,6 @@
 /**
- * Default player settings, ported from the inline defaults in the C#
- * `GET /api/settings/v2`. The C# seeds these when a player has no stored settings.
+ * Default player settings for `GET /api/settings/v2`, seeded when a player has
+ * no stored settings.
  */
 export interface PlayerSetting {
 	PlayerId: number

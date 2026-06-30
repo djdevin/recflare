@@ -12,7 +12,7 @@ import type { App } from './context'
 const TOKEN_SCOPE =
 	'offline_access profile rn rn.accounts rn.accounts.gc rn.api rn.chat rn.clubs rn.commerce rn.match.read rn.match.write rn.notify rn.rooms rn.storage'
 
-/** C# `PlatformType` enum names by value, used for the token's `platform` claim. */
+/** Platform-type enum names by value, used for the token's `platform` claim. */
 const PLATFORM_TYPES: Record<number, string> = {
 	[-1]: 'All',
 	0: 'Steam',
@@ -131,8 +131,8 @@ const app = new Hono<App>()
 
 	// OAuth token endpoint — accepts a form-urlencoded body and issues a JWT.
 	.post('/connect/token', async (c) => {
-		// The C# reads `grant_type`, `account_id`, `platform_id` and `platform` from
-		// the form body.
+		// Reads `grant_type`, `account_id`, `platform_id` and `platform` from the
+		// form body.
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 		const grantType = typeof body.grant_type === 'string' ? body.grant_type : ''
 		const platformId = typeof body.platform_id === 'string' ? body.platform_id : ''
@@ -169,7 +169,7 @@ const app = new Hono<App>()
 		})
 	})
 
-	// Developer role lookup. Not implemented in the C# source either.
+	// Developer role lookup. Not implemented yet.
 	.get('/role/developer/:id', (c) => {
 		const { id } = c.req.param()
 		logger.info('developer role lookup', { id })

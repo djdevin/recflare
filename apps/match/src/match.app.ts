@@ -11,17 +11,16 @@ import type { App } from './context'
 import type { Room } from './rooms-db'
 
 /**
- * Ported from the C# `MatchmakingController`. Endpoints the C# backs with EF Core
- * (`AppDbContext`) are stubbed here — there's no DB binding yet, so room/player
- * lookups fall back to the same defaults the C# uses when nothing is found.
+ * The matchmaking surface. Database-backed endpoints are stubbed here — there's
+ * no DB binding yet, so room/player lookups fall back to default values when
+ * nothing is found.
  *
  * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
  */
 
 /**
- * Default `/player` payload. The C# serves this from `JSON/getplayer.json`
- * whenever the `id` is missing/invalid or the account isn't found; Workers have
- * no filesystem so it's inlined here.
+ * Default `/player` payload, served whenever the `id` is missing/invalid or the
+ * account isn't found. Inlined here (Workers have no filesystem).
  */
 const DEFAULT_GET_PLAYER = [
 	{
@@ -48,7 +47,7 @@ interface HeartbeatRequest {
 
 /**
  * Resolve the account id from a Bearer token, mirroring the repeated
- * auth-header check in the C#. Returns `null` when the header is missing,
+ * auth-header check. Returns `null` when the header is missing,
  * the token is invalid, or the `sub` claim isn't an integer.
  */
 async function authedId(c: Context<App>): Promise<number | null> {
@@ -89,10 +88,9 @@ interface Presence {
 const PRESENCE_TTL = 900
 
 /**
- * Game build version reported in presence. Like the reference servers (FemRec
- * `ServerConfig.GameVersion`, 2025 `HeartbeatDB`), this is a server-side
- * constant — the client doesn't supply it, and an empty value breaks the
- * client's presence/version handling. Matches our target 2023 client build.
+ * Game build version reported in presence. This is a server-side constant — the
+ * client doesn't supply it, and an empty value breaks the client's
+ * presence/version handling. Matches our target 2023 client build.
  */
 const GAME_VERSION = '20230302'
 
@@ -256,8 +254,8 @@ const app = new Hono<App>()
 	.post('/player/logout', (c) => c.body(null, 200))
 
 	.get('/player', async (c) => {
-		// Returns each requested player's presence. The C# reads the `id` query
-		// param(s); with none it serves the static getplayer.json default.
+		// Returns each requested player's presence. Reads the `id` query param(s);
+		// with none it serves the static getplayer.json default.
 		const ids = c.req
 			.queries('id')
 			?.flatMap((v) => v.split(','))
@@ -363,8 +361,7 @@ const app = new Hono<App>()
 	// isn't swallowed by the auth-gated matchmake handler.
 	.post('/matchmake/none', async (c) => {
 		const id = await authedId(c)
-		// FemRec (our 2023-client target) returns the player's *current* heartbeat
-		// here rather than forcing the dorm (the 2025 server's behavior we'd copied).
+		// Return the player's *current* heartbeat here rather than forcing the dorm.
 		// Orientation is a solo room the client establishes via matchmake/none; if we
 		// force the dorm, the new player is warped out of Orientation within seconds.
 		// So: preserve existing presence; only fall back to the offline dorm when the
@@ -396,7 +393,7 @@ const app = new Hono<App>()
 
 		const room = c.req.param('room')
 		const joinMode = await readJoinMode(c)
-		// The C# dorm check here is "dorm" (goto/room uses "dormroom").
+		// The dorm check here is "dorm" (goto/room uses "dormroom").
 		const instance =
 			room.toLowerCase() === 'dorm'
 				? dormRoomInstance()

@@ -1,6 +1,6 @@
 /**
- * Default avatar items, ported verbatim from the inline list in the C#
- * `GET /api/avatar/v4/items`. Stored as `[AvatarItemDesc, FriendlyName, Rarity?]`
+ * Default avatar items for `GET /api/avatar/v4/items`.
+ * Stored as `[AvatarItemDesc, FriendlyName, Rarity?]`
  * tuples — every entry shares `AvatarItemType: 0`, `PlatformMask: -1`, `Tooltip: ""`,
  * and `Rarity` defaults to `0`.
  */

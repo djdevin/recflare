@@ -21,7 +21,7 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE INDEX IF NOT EXISTS idx_accounts_username_lower ON accounts (username_lower)`,
 ]
 
-/** Client-facing account shape (PascalCase, matches the C# `Account`). */
+/** Client-facing account shape (PascalCase, as the client expects). */
 export interface Account {
 	AccountId: number
 	Username: string
@@ -61,7 +61,7 @@ export function randomUsername(): string {
 }
 
 /**
- * Build a full account object from an id, applying the C# fallbacks for any
+ * Build a full account object from an id, applying default fallbacks for any
  * column the caller doesn't override. Used both to synthesize accounts that
  * aren't in the DB and as the base for a freshly created account.
  */

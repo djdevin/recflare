@@ -6,7 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
 		{
-			"pattern": "rooms.rec.djdevin.net",
+			"pattern": "rooms.rec.example.com",
 			"custom_domain": true
 		}
 	],

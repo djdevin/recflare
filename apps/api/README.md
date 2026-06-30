@@ -1,14 +1,14 @@
 # api
 
-Game API Worker served at `api.rec.djdevin.net`. A Hono app ported from the C#
-`APIController`. EF Core (`AppDbContext`) queries and on-disk JSON files are
-stubbed for now — no real bindings yet.
+Game API Worker served on the `api` subdomain. A Hono app serving the game's
+API surface. Database-backed queries and on-disk JSON files are stubbed for now
+— no real bindings yet.
 
 ## Behavior
 
 - **Auth-gated routes** validate the Bearer JWT issued by the `auth` worker
   (same dev secret, see `src/jwt.ts`) and 401 when it's missing/invalid.
-- **Static data** that was inline in the C# is ported faithfully:
+- **Static data** is served verbatim:
   - `src/default-avatar-items.ts` → `GET /api/avatar/v4/items`
   - `src/default-settings.ts` → `GET /api/settings/v2`
 - **DB-backed reads** return empty collections / not-found.

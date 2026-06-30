@@ -100,6 +100,13 @@ new-package *args:
 update *args:
   bun runx update "$@"
 
+# Sync generated config (wrangler routes, etc.) from env.json
+[group('4. utility')]
+[positional-arguments]
+[no-cd]
+sync *args:
+  bun runx sync "$@"
+
 # CLI in packages/tools for running commands in the repo.
 [group('4. utility')]
 [positional-arguments]

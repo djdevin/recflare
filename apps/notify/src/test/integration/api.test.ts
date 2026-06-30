@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import '../../notify.app'
 
-const ORIGIN = 'https://notify.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 const RS = '\u001e'
 
 interface HubRecord {
@@ -58,7 +58,7 @@ async function connect(
 		})
 	}
 
-	// Handshake, then the C# OnConnect callback.
+	// Handshake, then the OnConnect callback.
 	ws.send(`{"protocol":"json","version":1}${RS}`)
 	await waitFor((r) => r.type === 1 && r.target === 'OnConnect')
 

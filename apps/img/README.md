@@ -1,6 +1,6 @@
 # img
 
-Image-delivery worker served at `img.rec.djdevin.net`.
+Image-delivery worker served on the `img` subdomain.
 
 Images are stored as objects in the **`rec-img` R2 bucket** and streamed back by
 key:
@@ -12,8 +12,8 @@ key:
   conditional requests via `If-None-Match` (returns `304`). Missing keys `404`.
 - `GET /<key>?sig=p1` — same, but the response body is RSA-SHA1 signed and the
   signature returned in a `Content-Signature: key-id=KEY:RSA:p1.rec.net; data=<base64>`
-  header (mirrors the C# `ImageController` / `Signatures`). The client uses this
-  to verify image integrity. Signing buffers the whole object.
+  header. The client uses this to verify image integrity. Signing buffers the
+  whole object.
 
 The bucket is bound in the Worker as `env.IMAGES` (see `wrangler.jsonc`).
 

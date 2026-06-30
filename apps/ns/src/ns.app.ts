@@ -8,9 +8,10 @@ import endpoints from '../static/endpoints.json'
 import type { App } from './context'
 
 /**
- * Name-server / service-discovery worker served at the apex `rec.djdevin.net`.
+ * Name-server / service-discovery worker served at the apex domain.
  * Returns the endpoints document the game client fetches to discover every
- * service host. Static for now — this will be generated dynamically later.
+ * service host. Generated from `env.json` by `runx sync` — run it after
+ * changing the domain (see `apps/ns/static/endpoints.json`).
  */
 const app = new Hono<App>()
 	.use(

@@ -9,8 +9,8 @@ import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
- * Ported from the C# `ClubsController`. The only endpoint is `[Authorize]` and
- * then returns `Results.NotFound()` unconditionally — no DB binding involved.
+ * The only endpoint is auth-gated and returns 404 unconditionally — no DB
+ * binding involved.
  */
 
 /**
@@ -43,22 +43,22 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	// [Authorize] → 401 without a valid token. The C# returns NotFound here, but
-	// the client treats that 404 as an error, so we return an empty object stub.
+	// Auth-gated → 401 without a valid token. A bare 404 here makes the client
+	// treat it as an error, so we return an empty object stub.
 	.get('/club/home/me', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)
 		return c.json({})
 	})
 
-	// Not present in CannedNet — a real Rec Room client endpoint the C# never
-	// implemented. The client calls it on the clubs host at /subscription/mine/member
-	// (no /club prefix) and sends no auth header, so it isn't gated. Returns an
-	// empty array = no club subscription memberships (the client chokes on null).
+	// A real Rec Room client endpoint with no backing implementation yet. The
+	// client calls it on the clubs host at /subscription/mine/member (no /club
+	// prefix) and sends no auth header, so it isn't gated. Returns an empty
+	// array = no club subscription memberships (the client chokes on null).
 	.get('/subscription/mine/member', (c) => c.json([]))
 
-	// Details for a given subscription. Also not in CannedNet; the client
-	// deserializes this into an object, so it must return `{}` (not `[]`).
+	// Details for a given subscription. The client deserializes this into an
+	// object, so it must return `{}` (not `[]`).
 	.get('/subscription/details/:subscription', (c) => c.json({}))
 
 	// The player's clubs that have unread announcements (MyClubsWithUnread-

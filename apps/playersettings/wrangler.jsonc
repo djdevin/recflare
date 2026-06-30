@@ -6,7 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
 		{
-			"pattern": "playersettings.rec.djdevin.net",
+			"pattern": "playersettings.rec.example.com",
 			"custom_domain": true
 		}
 	],

@@ -9,7 +9,7 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
-const ORIGIN = 'https://img.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 // A tiny valid JPEG magic-number blob — enough to assert round-tripping.
 const IMAGE_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46])

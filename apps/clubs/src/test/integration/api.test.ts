@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import '../../clubs.app'
 
-const ORIGIN = 'https://clubs.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 // Mint a token the way the `auth` worker does, using the same dev secret.
 const DEV_SECRET = 'dev-insecure-signing-key-change-me'

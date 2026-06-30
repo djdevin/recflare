@@ -10,7 +10,7 @@ import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
- * Resolve the account id from a Bearer token (the C# action is `[Authorize]`).
+ * Resolve the account id from a Bearer token (the route is auth-gated).
  * Returns `null` when the header is missing, the token is invalid, or the `sub`
  * claim isn't an integer.
  */
@@ -32,9 +32,8 @@ function unauthorized(c: Context<App>) {
 }
 
 /**
- * Pull `{ key, value }` pairs out of a PUT body. Mirrors the C#: a
- * form-urlencoded `key`/`value`, or a JSON body (single object or array).
- * Entries with an empty key are dropped.
+ * Pull `{ key, value }` pairs out of a PUT body: a form-urlencoded `key`/`value`,
+ * or a JSON body (single object or array). Entries with an empty key are dropped.
  */
 async function parseSettings(c: Context<App>): Promise<Array<{ key: string; value: string }>> {
 	const contentType = c.req.header('content-type') ?? ''
@@ -84,7 +83,7 @@ const app = new Hono<App>()
 	.get('/', (c) => c.json({ service: 'playersettings', status: 'ok' }))
 
 	// The authenticated player's settings as `{ PlayerId, Key, Value }`. Reads
-	// the per-player KV map; seeds (and persists) the C# defaults on first read.
+	// the per-player KV map; seeds (and persists) the defaults on first read.
 	.get('/playersettings', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
@@ -100,7 +99,7 @@ const app = new Hono<App>()
 	})
 
 	// Upsert player settings into KV, keyed by the authenticated player id.
-	// The C# replaces the player's entire set; we merge so individual key PUTs
+	// A full replace would overwrite the player's entire set; we merge so individual key PUTs
 	// (e.g. `key=PlayerSessionCount&value=1`) don't wipe the rest.
 	.put('/playersettings', async (c) => {
 		const id = await authedId(c)

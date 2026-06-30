@@ -12,7 +12,7 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
-const ORIGIN = 'https://auth.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 // The Orientation room (RoomId 13) new accounts are placed into on signup.
 const ORIENTATION_SCENE = 'c79709d8-a31b-48aa-9eb8-cc31ba9505e8'
@@ -63,7 +63,7 @@ describe('auth worker routes', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/eac/challenge`)
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toContain('text/plain')
-		// Matches the C#'s JSON/eacchallenge.txt content (BOM is stripped on read).
+		// EAC challenge content (BOM is stripped on read).
 		expect(await res.text()).toBe('"AA=="')
 	})
 

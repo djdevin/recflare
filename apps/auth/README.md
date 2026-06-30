@@ -1,8 +1,8 @@
 # auth
 
-Auth Worker served at `auth.rec.djdevin.net`. A Hono app ported from the C#
-`AuthController`. Binding-dependent behavior (EF Core `AppDbContext` queries) is
-stubbed for now — no real KV/D1/DO bindings yet.
+Auth Worker served on the `auth` subdomain. A Hono app handling authentication.
+Binding-dependent behavior (database queries) is stubbed for now — no real
+KV/D1/DO bindings yet.
 
 ## Routes
 
@@ -21,4 +21,4 @@ stubbed for now — no real KV/D1/DO bindings yet.
   filesystem) — replace `EAC_CHALLENGE` with the real challenge text.
 - `/cachedlogin/...` and the `RoomInstance` cleanup in `/connect/token` need a DB
   binding to be implemented.
-- `/role/developer/:id` is a stub, matching the C# `// TODO: implement`.
+- `/role/developer/:id` is a stub (`// TODO: implement`).

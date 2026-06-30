@@ -10,7 +10,7 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
-const ORIGIN = 'https://cdn.rec.djdevin.net'
+const ORIGIN = 'https://example.com'
 
 // Mint a token the way the `auth` worker does, using the same dev secret.
 const DEV_SECRET = 'dev-insecure-signing-key-change-me'

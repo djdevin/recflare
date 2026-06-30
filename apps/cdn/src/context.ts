@@ -3,8 +3,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 
 export type Env = SharedHonoEnv & {
 	// R2 bucket holding CDN binaries: signature blobs under `sigs/<name>` and
-	// room build data under `room/<name>` (mirrors the C#'s Sigs/ and
-	// Data/DataBlobs/ directories).
+	// room build data under `room/<name>`.
 	CDN_ASSETS: R2Bucket
 }
 

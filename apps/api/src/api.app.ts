@@ -18,8 +18,8 @@ import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
- * Ported from the C# `APIController`. Endpoints that the C# backs with EF Core
- * (`AppDbContext`) or on-disk JSON files are stubbed here — no bindings yet.
+ * The Game API surface. Endpoints that would be backed by a database or on-disk
+ * JSON files are stubbed here — no bindings yet.
  * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
  *
  * Placeholder responses for file-backed endpoints are marked `TODO: hydrate`.
@@ -37,7 +37,7 @@ const SavedImageType = {
 
 /**
  * Resolve the account id from a Bearer token, mirroring the repeated
- * auth-header check in the C#. Returns `null` when the header is missing,
+ * auth-header check. Returns `null` when the header is missing,
  * the token is invalid, or the `sub` claim isn't an integer.
  */
 async function authedId(c: Context<App>): Promise<number | null> {
@@ -57,7 +57,7 @@ function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
 }
 
-/** Mirror of the C# `ParseFormIds` helper — reads the `Ids` form field. */
+/** Reads the `Ids` form field into a list of integer ids. */
 async function parseFormIds(c: Context<App>): Promise<number[]> {
 	const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 	const ids = body.Ids
@@ -83,9 +83,9 @@ function queryIds(c: Context<App>): number[] {
 /**
  * Photon access-token response (`/roomserver/photon_access_token`). The 2023
  * client calls this to get its room permissions + the instance id it's spawning
- * into; a 404 here leaves the player stuck on a black screen. Mirrors the FemRec
- * reference (`PhotonAccessToken` is empty — the client uses its baked-in Photon
- * credentials). Our synthesized instances always use roomInstanceId 1.
+ * into; a 404 here leaves the player stuck on a black screen. `PhotonAccessToken`
+ * is empty — the client uses its baked-in Photon credentials. Our synthesized
+ * instances always use roomInstanceId 1.
  */
 function photonAccessToken() {
 	const perm = (Permission: string, Role: number, Override: boolean) => ({
@@ -114,7 +114,7 @@ function photonAccessToken() {
 	}
 }
 
-/** Default reputation for an account — the fallback the C# fills with no DB. */
+/** Default reputation for an account — the fallback used with no DB. */
 function defaultReputation(id: number) {
 	return {
 		AccountId: id,
@@ -198,8 +198,8 @@ const app = new Hono<App>({ strict: false })
 		return c.json({ PlayerId: id, Level: 1, XP: 0 })
 	})
 	.post('/api/playerReputation/v1/bulk', (c) => c.json([])) // TODO: hydrate from JSON/bulkprogression.json
-	// Synthesize a default reputation per requested id (the C#'s intended
-	// behavior; its DB-less fallback reads a static JSON file instead).
+	// Synthesize a default reputation per requested id (the intended behavior;
+	// the DB-less fallback reads a static JSON file instead).
 	.post('/api/playerReputation/v2/bulk', async (c) => {
 		const ids = await parseFormIds(c)
 		return c.json(ids.map(defaultReputation))
@@ -210,13 +210,13 @@ const app = new Hono<App>({ strict: false })
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
 	})
-	// C# v2 is identical to v1 — same ParseFormIds + PlayerProgressions query.
+	// v2 is identical to v1 — same form-id parse + PlayerProgressions query.
 	.post('/api/players/v2/progression/bulk', async (c) => {
 		await parseFormIds(c) // TODO: query PlayerProgressions for these ids
 		return c.json([])
 	})
-	// The 2023 client calls this as a GET with repeated `id` query params (the
-	// FemRec reference). Return a default progression per requested id.
+	// The 2023 client calls this as a GET with repeated `id` query params.
+	// Return a default progression per requested id.
 	.get('/api/players/v2/progression/bulk', (c) =>
 		c.json(queryIds(c).map((id) => ({ PlayerId: id, Level: 1, XP: 0 })))
 	)
@@ -244,8 +244,8 @@ const app = new Hono<App>({ strict: false })
 		if (id === null) return unauthorized(c)
 		const update = await c.req.json<Record<string, unknown>>().catch(() => null)
 		if (update === null) return c.body(null, 400)
-		// TODO: persist; echo the accepted avatar back like the C# does. Fall back to
-		// the valid default avatar fields when the client omits them.
+		// TODO: persist; echo the accepted avatar back. Fall back to the valid
+		// default avatar fields when the client omits them.
 		return c.json({
 			OwnerAccountId: id,
 			OutfitSelections: update.OutfitSelections ?? defaultAvatar.OutfitSelections,
@@ -274,7 +274,7 @@ const app = new Hono<App>({ strict: false })
 		const message = typeof body.Message === 'string' ? body.Message : ''
 		const xp = typeof body.Xp === 'string' ? Number.parseInt(body.Xp, 10) || 0 : 0
 
-		// No EarnableRewards binding → always fall back to a token gift (C# branch).
+		// No EarnableRewards binding → always fall back to a token gift.
 		const tokenAmounts = [10, 25, 50, 100, 250, 500]
 		const currency = tokenAmounts[Math.floor(Math.random() * tokenAmounts.length)]
 
@@ -310,18 +310,18 @@ const app = new Hono<App>({ strict: false })
 		return c.json({ success: false, error: 'Gift not found' }, 404)
 	})
 
-	// Custom avatar item gates. None of these are in CannedNet — they're real Rec
-	// Room client endpoints the C# never implemented. Each returns a bare JSON
-	// boolean; we enable them. Flip to `false` to disable the corresponding flow.
+	// Custom avatar item gates — real Rec Room client endpoints with no backing
+	// implementation yet. Each returns a bare JSON boolean; we enable them. Flip
+	// to `false` to disable the corresponding flow.
 	.get('/api/customAvatarItems/v1/isCreationAllowedForAccount', (c) => c.json(true))
 	.get('/api/customAvatarItems/v1/isCreationEnabled', (c) => c.json(true))
 	.get('/api/customAvatarItems/v1/isRenderingEnabled', (c) => c.json(true))
 
-	// Voice chat config. Not in CannedNet; the client fetches it to set up voice.
+	// Voice chat config. The client fetches it to set up voice.
 	// No reference shape, so return an empty object until the client needs fields.
 	.get('/voice/config', (c) => c.json({}))
 
-	// ---- 2023 client loading-path endpoints (from the FemRec reference) --------
+	// ---- 2023 client loading-path endpoints ------------------------------------
 	// NUX checklist + saved inventions — empty lists with no DB.
 	.get('/api/checklist/v1/current', async (c) => {
 		const id = await authedId(c)
@@ -367,7 +367,7 @@ const app = new Hono<App>({ strict: false })
 	.get('/api/settings/v2', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: load stored settings; seed defaults on first access like the C#.
+		// TODO: load stored settings; seed defaults on first access.
 		return c.json(defaultSettings(id))
 	})
 	.post('/api/settings/v2/set', async (c) => {
@@ -426,7 +426,7 @@ const app = new Hono<App>({ strict: false })
 		return c.json([]) // TODO: query PlayerBios
 	})
 	.post('/api/accounts/v1/forplatformids', async (c) => {
-		await parseFormIds(c) // C# reads `Ids` then looks up CachedLogins
+		await parseFormIds(c) // reads `Ids` then looks up CachedLogins
 		return c.json([])
 	})
 

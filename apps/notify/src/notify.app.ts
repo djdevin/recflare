@@ -8,15 +8,14 @@ import { NotificationsHub } from './notifications-hub'
 import type { App } from './context'
 
 /**
- * Ported from the C# `NotifyController`, which maps a SignalR hub at `/hub/v1`
- * (see `NotificationsHub` / `NotificationService`). The hub itself — WebSocket
- * transport, the SignalR JSON Hub Protocol, and the shared connection state —
+ * Maps a SignalR hub at `/hub/v1`. The hub itself — WebSocket transport, the
+ * SignalR JSON Hub Protocol, and the shared connection state —
  * lives in the `NotificationsHub` Durable Object; this worker handles the
  * SignalR negotiate handshake, forwards the WebSocket upgrade to the DO, and
  * exposes internal send/broadcast endpoints for other workers.
  */
 
-/** The hub state is global in the C# (static dictionaries) → one DO instance. */
+/** The hub state is global → one DO instance. */
 const HUB_INSTANCE = 'global'
 
 const app = new Hono<App>()
@@ -57,8 +56,8 @@ const app = new Hono<App>()
 	})
 
 	// ---- Internal service-to-service send/broadcast --------------------------
-	// Lets other workers push notifications, the way the C# controllers called
-	// the shared NotificationService. TODO: protect these before production.
+	// Lets other workers push notifications through the shared hub.
+	// TODO: protect these before production.
 	.post('/internal/notify', async (c) => {
 		const body = await c.req
 			.json<{ playerId?: number; notificationType?: number; data?: Record<string, unknown> }>()

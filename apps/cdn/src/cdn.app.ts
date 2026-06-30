@@ -10,9 +10,9 @@ import type { Context } from 'hono'
 import type { App, Env } from './context'
 
 /**
- * Ported from the C# `CDNController`. The class `[Route("cdn")]` prefix maps to
- * this worker's subdomain, so method routes are served bare. File-backed routes
- * (`sigs`, `upload`) have no storage binding yet and are stubbed.
+ * CDN routes. The `cdn` prefix maps to this worker's subdomain, so method routes
+ * are served bare. File-backed routes (`sigs`, `upload`) have no storage binding
+ * yet and are stubbed.
  */
 
 /**
@@ -46,9 +46,8 @@ function parseRange(header: string | undefined): R2Range | undefined {
 }
 
 /**
- * Stream a binary asset from the CDN R2 bucket as application/octet-stream
- * (matching the C#'s `Results.File(..., "application/octet-stream")`, which also
- * honors Range requests). The C# 404s when the file is missing; so do we.
+ * Stream a binary asset from the CDN R2 bucket as application/octet-stream,
+ * honoring Range requests. 404s when the file is missing.
  * Supports conditional GET and byte-range requests (206) — large-file
  * downloaders fetch in ranges, and a 200 where a 206 is expected corrupts the
  * reassembled file (e.g. EAC "Signatures don't match").
@@ -110,19 +109,18 @@ const app = new Hono<App>()
 
 	.get('/', (c) => c.json({ service: 'cdn', status: 'ok' }))
 
-	// Loading-screen tips. The C# serves JSON/loadingscreentipdata.json; bundled
-	// here as static JSON.
+	// Loading-screen tips, bundled here as static JSON.
 	.get('/config/LoadingScreenTipData', (c) => c.json(loadingScreenTipData))
 
-	// Signature blobs by name (C#: Sigs/ directory). Streamed from R2 under the
-	// `sigs/` key prefix; 404 when missing.
+	// Signature blobs by name. Streamed from R2 under the `sigs/` key prefix;
+	// 404 when missing.
 	.get('/sigs/:sigName', (c) => serveAsset(c, `sigs/${c.req.param('sigName')}`))
 
-	// Room build data by name (C#: Data/DataBlobs/). The client fetches this for
-	// a SubRoom's DataBlob to load the room. Streamed from R2 under `room/`.
+	// Room build data by name. The client fetches this for a SubRoom's DataBlob to
+	// load the room. Streamed from R2 under `room/`.
 	.get('/room/:dataBlob', (c) => serveAsset(c, `room/${c.req.param('dataBlob')}`))
 
-	// Image upload. [Authorize] in the C#; returns the saved filename. No storage
+	// Image upload. Auth-gated; returns the saved filename. No storage
 	// binding yet, so we accept the file and return a synthesized filename without
 	// persisting it. TODO: write to an R2 bucket like the `img` worker.
 	.post('/upload', async (c) => {

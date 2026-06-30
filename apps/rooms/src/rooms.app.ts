@@ -23,7 +23,7 @@ import type { App } from './context'
  * querying (see rooms-db.ts); the dorm (RoomId 1) is seeded by the migration.
  * Responses are the stored JSON verbatim (PascalCase, client-facing shape).
  *
- * The C# `[Route("rooms")]` prefix maps to this worker's subdomain, so method
+ * The `rooms` prefix maps to this worker's subdomain, so method
  * routes are served bare. The 2023 client also hits several of these without the
  * `/roomserver` prefix, so both forms are registered.
  */
@@ -100,8 +100,8 @@ const app = new Hono<App>()
 
 	.get('/', (c) => c.json({ service: 'rooms', status: 'ok' }))
 
-	// Room lookup by `id` (first match wins) or `name`. The C# 400s when neither
-	// is supplied and returns `{}` when nothing matches.
+	// Room lookup by `id` (first match wins) or `name`. 400s when neither is
+	// supplied and returns `{}` when nothing matches.
 	.get('/rooms', async (c) => {
 		const idParam = c.req.query('id')
 		const nameParam = c.req.query('name')
@@ -162,7 +162,7 @@ const app = new Hono<App>()
 	})
 
 	// Toggle the player's cheer/favorite on a room. Both are PUTs that flip the
-	// stored flag and return the updated interaction (matches the C#).
+	// stored flag and return the updated interaction.
 	.put('/rooms/:roomId{[0-9]+}/interactionby/me/cheer', async (c) => {
 		const interaction = await toggleCheer(
 			c.env.DB,
@@ -180,8 +180,8 @@ const app = new Hono<App>()
 		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
 	})
 
-	// Single room by id. 404 when the room isn't in D1 (matches the C#). Ignores
-	// the include/unityAsset* query params, same as the C#.
+	// Single room by id. 404 when the room isn't in D1. Ignores the
+	// include/unityAsset* query params.
 	.get('/rooms/:roomId{[0-9]+}', async (c) => {
 		const room = await getRoomById(c.env.DB, Number.parseInt(c.req.param('roomId'), 10))
 		return room ? c.json(room) : c.notFound()

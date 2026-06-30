@@ -1,10 +1,9 @@
 # chat
 
-Chat worker served at `chat.rec.djdevin.net`.
+Chat worker served on the `chat` subdomain.
 
 - `GET /` — service status `{ "service": "chat", "status": "ok" }`.
-- `GET /thread` — chat threads. No DB binding yet, so returns `[]` (matching the
-  C# `ChatController.Get`).
+- `GET /thread` — chat threads. No DB binding yet, so returns `[]`.
 
 ## Development
 

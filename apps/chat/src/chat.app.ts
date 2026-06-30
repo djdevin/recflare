@@ -21,7 +21,7 @@ const app = new Hono<App>()
 
 	.get('/', (c) => c.json({ service: 'chat', status: 'ok' }))
 
-	// Chat threads. No DB binding yet — the C# `ChatController.Get` returns `[]`.
+	// Chat threads. No DB binding yet — returns `[]`.
 	.get('/thread', (c) => c.json([]))
 
 export default app

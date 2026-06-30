@@ -10,17 +10,17 @@ import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
- * Ported from the C# `AccountsController`. Account reads/writes are backed by the
- * shared `accounts` table in D1 (schema owned by the `auth` worker). Accounts not
- * in the table fall back to a synthesized default (the C# fills every column with
- * a fallback anyway). Profile mutations still accept-and-ack (marked `TODO`).
+ * Account reads/writes are backed by the shared `accounts` table in D1 (schema
+ * owned by the `auth` worker). Accounts not in the table fall back to a
+ * synthesized default (every column has a fallback anyway). Profile mutations
+ * still accept-and-ack (marked `TODO`).
  *
  * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
  */
 
 /**
  * Resolve the account id from a Bearer token, mirroring the repeated
- * auth-header check in the C#. Returns `null` when the header is missing,
+ * auth-header check. Returns `null` when the header is missing,
  * the token is invalid, or the `sub` claim isn't an integer.
  */
 async function authedId(c: Context<App>): Promise<number | null> {
@@ -61,7 +61,7 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	// Root health check (the C# source returned a placeholder string here).
+	// Root health check.
 	.get('/', (c) => c.json({ service: 'accounts', status: 'ok' }))
 
 	// ---- Self account --------------------------------------------------------
@@ -70,11 +70,10 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		// Load the stored account, falling back to a synthesized default.
 		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
-		// The C# `SelfAccount` marks `JuniorState` (an enum) and `ParentAccountId`
-		// with `[JsonIgnore(WhenWritingNull)]`, so they're OMITTED when null —
+		// `JuniorState` (an enum) and `ParentAccountId` are OMITTED when null —
 		// emitting `"juniorState":null` makes the client's enum parser throw
 		// ("Can't parse JSON to Enum format"). `Email`/`Phone`/`Birthday` are kept
-		// as null (the C# has no JsonIgnore on those, and they aren't enums).
+		// as null (they aren't enums, so null is fine).
 		return c.json({
 			...account,
 			Email: null,
@@ -87,7 +86,7 @@ const app = new Hono<App>()
 	// ---- Bulk / single lookup ------------------------------------------------
 	// Register the static `bulk` path before the `/account/:id` param route.
 	.get('/account/bulk', async (c) => {
-		// C# reads repeated `id` query params; also accept a comma-separated list.
+		// Reads repeated `id` query params; also accept a comma-separated list.
 		const ids =
 			c.req
 				.queries('id')
@@ -95,7 +94,7 @@ const app = new Hono<App>()
 				.map((s) => Number.parseInt(s.trim(), 10))
 				.filter((n) => !Number.isNaN(n)) ?? []
 		// Resolve stored accounts, synthesizing a default for any id not in the DB
-		// so every requested id is present in the response (matches the C#).
+		// so every requested id is present in the response.
 		const stored = new Map((await getAccountsByIds(c.env.DB, ids)).map((a) => [a.AccountId, a]))
 		return c.json(ids.map((id) => stored.get(id) ?? defaultAccount(id)))
 	})

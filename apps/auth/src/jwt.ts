@@ -1,12 +1,12 @@
 /**
- * Minimal HS256 JWT generation, mirroring the C# `JwtTokenService.GenerateToken`.
+ * Minimal HS256 JWT generation.
  *
  * No real signing-key binding yet — uses a placeholder dev secret. Swap this for
  * a secret binding (e.g. `c.env.JWT_SECRET`) before this is used for anything real.
  */
 const DEV_SECRET = 'dev-insecure-signing-key-change-me'
 
-/** Token lifetime in seconds (matches `expires_in` in the C# response). */
+/** Token lifetime in seconds (mirrored in the `expires_in` response field). */
 export const TOKEN_TTL_SECONDS = 3600
 
 function base64url(input: ArrayBuffer | string): string {
@@ -18,7 +18,7 @@ function base64url(input: ArrayBuffer | string): string {
 	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-/** Scopes the C# `JwtTokenService` stamps onto every token (as a claim array). */
+/** Scopes stamped onto every token (as a claim array). */
 const TOKEN_SCOPES = [
 	'profile',
 	'rn',
@@ -36,7 +36,7 @@ const TOKEN_SCOPES = [
 	'offline_access',
 ]
 
-/** Roles the C# grants — the client needs `gameClient` to operate. */
+/** Roles granted — the client needs `gameClient` to operate. */
 const TOKEN_ROLES = ['gameClient', 'developer', 'moderator']
 
 export async function generateToken(
@@ -47,7 +47,6 @@ export async function generateToken(
 ): Promise<string> {
 	const now = Math.floor(Date.now() / 1000)
 	const header = { alg: 'HS256', typ: 'JWT' }
-	// Mirror the claim set produced by the C# `JwtTokenService.GenerateToken`.
 	// The client reads `role`/`scope` (and expects a well-formed iss/aud) to
 	// authorize itself; a token with only `sub` is rejected before login finishes.
 	const payload = {

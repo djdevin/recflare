@@ -3,9 +3,8 @@ import { DurableObject } from 'cloudflare:workers'
 import type { Env } from './context'
 
 /**
- * Durable Object hosting the SignalR notifications hub, ported from the C#
- * `NotificationsHub` + `NotificationService`. A single global instance plays the
- * role of the C# static dictionaries (one process, shared across connections).
+ * Durable Object hosting the SignalR notifications hub. A single global instance
+ * holds the shared hub state (one process, shared across connections).
  *
  * It speaks the SignalR JSON Hub Protocol over a hibernatable WebSocket:
  *   1. negotiate happens in the worker; the client then opens a WS to `/hub/v1`.
@@ -15,7 +14,7 @@ import type { Env } from './context'
  *
  * Connection/subscription state lives in SQLite so it survives hibernation:
  *   - `subscriptions(connectionId, playerId)` — both the connection→players and
- *     (queried the other way) the player→connections maps from the C#.
+ *     (queried the other way) the player→connections maps.
  *   - `pending(id, playerId, payload)` — the per-player queue delivered once a
  *     player is subscribed.
  */
@@ -136,7 +135,7 @@ export class NotificationsHub extends DurableObject<Env> {
 		state.handshakeDone = true
 		ws.serializeAttachment(state)
 
-		// C# OnConnectedAsync sends "OnConnect" to the caller after connecting.
+		// Send "OnConnect" to the caller after connecting.
 		ws.send(this.invocation('OnConnect', []))
 	}
 
@@ -275,8 +274,8 @@ export class NotificationsHub extends DurableObject<Env> {
 	// ---- Helpers -------------------------------------------------------------
 
 	/**
-	 * Build the `Notification` argument: a JSON string `{ Id, Msg }`, matching the
-	 * C# `SendToConnection` (null values are dropped from `Msg`).
+	 * Build the `Notification` argument: a JSON string `{ Id, Msg }`
+	 * (null values are dropped from `Msg`).
 	 */
 	private buildNotificationPayload(
 		notificationType: number,

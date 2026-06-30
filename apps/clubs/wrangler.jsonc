@@ -6,7 +6,7 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [
 		{
-			"pattern": "clubs.rec.djdevin.net",
+			"pattern": "clubs.rec.example.com",
 			"custom_domain": true
 		}
 	],
