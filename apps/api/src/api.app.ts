@@ -4,12 +4,10 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import apiConfigV2 from '../static/api-config-v2.json'
-import defaultAvatar from '../static/default-avatar.json'
 import gameConfigsV1All from '../static/gameconfigs-v1-all.json'
 import storefrontGiftDrop2 from '../static/storefronts-v3-giftdropstore-2.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
 import storefrontGiftDrop300 from '../static/storefronts-v3-giftdropstore-300.json'
-import { DEFAULT_AVATAR_ITEMS } from './default-avatar-items'
 import { defaultSettings } from './default-settings'
 import { validateAndGetAccountId } from './jwt'
 import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
@@ -229,45 +227,10 @@ const app = new Hono<App>({ strict: false })
 		return c.json([])
 	})
 
-	// ---- Avatar ---------------------------------------------------------------
-	.get('/api/avatar/v4/items', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		// Owned items would be concatenated here; none without a DB binding.
-		return c.json(DEFAULT_AVATAR_ITEMS)
-	})
-	.get('/api/avatar/v2', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		// TODO: load/create PlayerAvatar for `id`. Must return a populated outfit —
-		// the client NREs on an empty OutfitSelections — so serve a valid default.
-		return c.json(defaultAvatar)
-	})
-	.post('/api/avatar/v2/set', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const update = await c.req.json<Record<string, unknown>>().catch(() => null)
-		if (update === null) return c.body(null, 400)
-		// TODO: persist; echo the accepted avatar back. Fall back to the valid
-		// default avatar fields when the client omits them.
-		return c.json({
-			OwnerAccountId: id,
-			OutfitSelections: update.OutfitSelections ?? defaultAvatar.OutfitSelections,
-			FaceFeatures: update.FaceFeatures ?? defaultAvatar.FaceFeatures,
-			SkinColor: update.SkinColor ?? defaultAvatar.SkinColor,
-			HairColor: update.HairColor ?? defaultAvatar.HairColor,
-		})
-	})
-	.get('/api/avatar/v3/saved', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		return c.json([]) // TODO: query SavedOutfits
-	})
-	.get('/api/avatar/v2/gifts', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		return c.json([]) // TODO: query pending ReceivedGifts
-	})
+	// ---- Avatar gifts ---------------------------------------------------------
+	// The avatar read endpoints (`v4/items`, `v2`, `v2/set`, `v3/saved`, `v2/gifts`)
+	// live in the `econ` worker, which the client calls on the econ host — not here.
+	// Only the gift generate/consume actions remain on this worker.
 	.post('/api/avatar/v2/gifts/generate', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)

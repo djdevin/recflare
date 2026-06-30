@@ -4,7 +4,6 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../api.app'
 
-import { DEFAULT_AVATAR_ITEMS } from '../../default-avatar-items'
 
 import type { Env } from '../../context'
 
@@ -246,24 +245,15 @@ describe('public endpoints', () => {
 
 describe('auth-gated endpoints', () => {
 	test('401 without a bearer token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`)
+		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2`)
 		expect(res.status).toBe(401)
 	})
 
 	test('401 with a garbage token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2`, {
 			headers: { Authorization: 'Bearer not-a-real-token' },
 		})
 		expect(res.status).toBe(401)
-	})
-
-	test('GET /api/avatar/v4/items returns default items with a valid token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
-			headers: await bearer(),
-		})
-		expect(res.status).toBe(200)
-		const items = (await res.json()) as unknown[]
-		expect(items).toHaveLength(DEFAULT_AVATAR_ITEMS.length)
 	})
 
 	test('GET /api/settings/v2 returns the default settings for the account', async () => {
@@ -274,12 +264,6 @@ describe('auth-gated endpoints', () => {
 		const settings = (await res.json()) as Array<{ PlayerId: number; Key: string }>
 		expect(Array.isArray(settings)).toBe(true)
 		for (const s of settings) expect(s.PlayerId).toBe(42)
-	})
-
-	test('GET /api/avatar/v2 returns a default avatar', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, { headers: await bearer() })
-		const body = (await res.json()) as { OutfitSelections: string }
-		expect(body.OutfitSelections.length).toBeGreaterThan(0)
 	})
 
 	test('GET /api/checklist/v1/current 401s without a token, returns [] with one', async () => {

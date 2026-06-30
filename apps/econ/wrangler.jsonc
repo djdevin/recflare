@@ -4,6 +4,16 @@
 	"main": "src/econ.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` D1 (accounts table) — read/write the player's avatar column.
+	// The accounts schema/migrations are owned by the `auth` worker. The "local"
+	// placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local"
+		}
+	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {

@@ -1,9 +1,27 @@
+import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../econ.app'
 
+import { SCHEMA_DDL } from '../../avatar-db'
+
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
 const ORIGIN = 'https://example.com'
+
+// Build the accounts table and seed the test player (the default token's sub, 42)
+// so avatar reads/writes have a row to attach to.
+beforeAll(async () => {
+	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+		.bind(JSON.stringify({ AccountId: 42, Username: 'Tester', DisplayName: 'Tester' }))
+		.run()
+})
 
 // Mint a token the way the `auth` worker does, using the same dev secret.
 const DEV_SECRET = 'dev-insecure-signing-key-change-me'
@@ -41,13 +59,10 @@ describe('econ endpoints', () => {
 		expect(body[0]).toHaveProperty('AvatarItemDesc')
 	})
 
-	test('GET /api/avatar/v1/defaultbaseavataritems returns the same catalog', async () => {
+	test('GET /api/avatar/v1/defaultbaseavataritems is an empty stub (no auth)', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v1/defaultbaseavataritems`)
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as unknown[]
-		expect(Array.isArray(body)).toBe(true)
-		expect(body.length).toBeGreaterThan(0)
-		expect(body[0]).toHaveProperty('AvatarItemDesc')
+		expect(await res.json()).toEqual([])
 	})
 
 	test('GET /api/avatar/v4/items 401s without a token', async () => {
@@ -72,8 +87,11 @@ describe('econ endpoints', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('GET /api/avatar/v2 returns a populated default avatar with a valid token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, { headers: await bearer() })
+	test('GET /api/avatar/v2 returns a populated default avatar when none is saved', async () => {
+		// Account 7 has no saved avatar → falls back to the default outfit.
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, {
+			headers: await bearer('7'),
+		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as { OutfitSelections: string; FaceFeatures: string }
 		// Must be non-empty — the client's outfit parser NREs on an empty string.
@@ -82,10 +100,57 @@ describe('econ endpoints', () => {
 		expect(body.FaceFeatures).toContain('eyeId')
 	})
 
-	test('GET /econ/customAvatarItems/v1/owned returns { items: [] } (no auth)', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/econ/customAvatarItems/v1/owned`)
+	test('POST /api/avatar/v2/set 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/set`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ OutfitSelections: 'a,,0' }),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /api/avatar/v2/set saves the avatar, and GET reads it back', async () => {
+		const headers = { ...(await bearer()), 'Content-Type': 'application/json' }
+		const avatar = {
+			OutfitSelections: '1fd69ef8-0b74-4962-af5a-67f0bf0358f2,,0;d0a9262f-5504-46a7-bb10-7507503db58e,,1',
+			OutfitSelectionsV2: '{"selections":[]}',
+			FaceFeatures: '{"eyeId":"AjGMoJhEcEehacRZjUMuDg"}',
+			SkinColor: '3529b670-a66d-448e-9573-1905eae5b9bf',
+			HairColor: '0e_jaaObREWTf1AorAZ95g',
+			CustomAvatarItems: [],
+		}
+
+		// Save echoes the payload back.
+		const setRes = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/set`, {
+			method: 'POST',
+			headers,
+			body: JSON.stringify(avatar),
+		})
+		expect(setRes.status).toBe(200)
+		expect(await setRes.json()).toEqual(avatar)
+
+		// And it persists — GET now returns the saved avatar, not the default.
+		const getRes = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, { headers: await bearer() })
+		expect(await getRes.json()).toEqual(avatar)
+	})
+
+	test('POST /api/avatar/v2/set 404s when the caller has no account row', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/set`, {
+			method: 'POST',
+			headers: { ...(await bearer('99999')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ OutfitSelections: 'a,,0' }),
+		})
+		expect(res.status).toBe(404)
+	})
+
+	test('GET /econ/customAvatarItems/v1/owned 401s without a token, returns an empty paginated stub', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/econ/customAvatarItems/v1/owned`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/econ/customAvatarItems/v1/owned`, {
+			headers: await bearer(),
+		})
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ items: [] })
+		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
 	})
 
 	test('GET /api/objectives/v1/myprogress returns the default progress (no auth)', async () => {

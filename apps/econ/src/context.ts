@@ -2,7 +2,8 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
 export type Env = SharedHonoEnv & {
-	// add additional Bindings here
+	/** Shared `recflare` D1 (accounts table) — stores the player's avatar. */
+	DB: D1Database
 }
 
 /** Variables can be extended */

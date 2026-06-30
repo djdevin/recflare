@@ -8,6 +8,7 @@ import defaultAvatarItems from '../static/default-avatar-items.json'
 import myProgress from '../static/my-progress.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
+import { getAvatar, setAvatar } from './avatar-db'
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
@@ -72,9 +73,8 @@ const app = new Hono<App>()
 	// Default-unlocked avatar items, served from the bundled static JSON.
 	.get('/api/avatar/v1/defaultunlocked', (c) => c.json(defaultAvatarItems))
 
-	// Default base avatar items. Reads the same source file as defaultunlocked,
-	// so it returns the identical catalog.
-	.get('/api/avatar/v1/defaultbaseavataritems', (c) => c.json(defaultAvatarItems))
+	// Default base avatar items — empty stub for now. No auth.
+	.get('/api/avatar/v1/defaultbaseavataritems', (c) => c.json([]))
 
 	// The player's avatar items — owned items concatenated with the default
 	// catalog. No DB binding yet, so owned is empty and this is just the catalog.
@@ -85,25 +85,41 @@ const app = new Hono<App>()
 		return c.json(defaultAvatarItems)
 	})
 
-	// The player's owned custom avatar items. No auth; returns `{ items: [] }`.
-	// The client downloads these when custom-item creation is
+	// The player's owned custom avatar items. [Authorize]; paginated. Empty stub for
+	// now (no DB binding). The client downloads these when custom-item creation is
 	// allowed; a 404 here surfaces as "Failed to download unlocked avatar items".
-	.get('/econ/customAvatarItems/v1/owned', (c) => c.json({ items: [] }))
+	.get('/econ/customAvatarItems/v1/owned', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		return c.json({ Results: [], TotalResults: 0 })
+	})
 
 	// The player's objectives progress. Serves a static JSON file verbatim with
 	// no auth — same default for everyone until there's a DB binding to track
 	// per-player progress.
 	.get('/api/objectives/v1/myprogress', (c) => c.json(myProgress))
 
-	// The player's avatar. No DB binding yet, so it always returns the default
-	// for a player with no PlayerAvatar row.
+	// The player's avatar, stored as a JSON blob on their account row. Falls back
+	// to the default outfit when they haven't saved one — the client's parser NREs
+	// on an empty OutfitSelections (real RecNet never returns one).
 	.get('/api/avatar/v2', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: load/create the PlayerAvatar for `id` once a DB binding exists.
-		// Must return a populated outfit — the client's parser NREs on an empty
-		// OutfitSelections (real RecNet never returns one), so serve a valid default.
-		return c.json(defaultAvatar)
+		return c.json((await getAvatar(c.env.DB, id)) ?? defaultAvatar)
+	})
+
+	// Save the player's avatar. [Authorize]. Stores the posted JSON payload verbatim
+	// on the account row and echoes it back. 400 on a non-object body; 404 when the
+	// caller has no account row to attach it to.
+	.post('/api/avatar/v2/set', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const avatar = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+		if (avatar === null || typeof avatar !== 'object' || Array.isArray(avatar)) {
+			return c.body(null, 400)
+		}
+		if (!(await setAvatar(c.env.DB, id, avatar))) return c.body(null, 404)
+		return c.json(avatar)
 	})
 
 	// NUX checklist — the client fetches this on the econ host during load. []
