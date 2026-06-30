@@ -9,6 +9,20 @@ each as an independent Worker on its own subdomain.
 > experimentation. It is not affiliated with, endorsed by, or connected to Rec
 > Room Inc. "Rec Room" is a trademark of its respective owner.
 
+# Why?
+
+There are already so many multiplayer clones, why?
+
+1. None of them are fully open source
+2. None of them run on microservice architecture
+3. "Upgrading the server" is not a lasting fix
+
+RecFlare uses a true microservice architecture which, if developed correctly, is
+near infinitely scalable and could support the same number of concurrent users
+that the original game had.
+
+Of course, all you need is money for the cloud costs...
+
 ## Client
 
 RecFlare is compatible with the
@@ -26,14 +40,10 @@ fans out across the workers in `apps/`.
 
 Authentication is a Bearer-JWT flow: the `auth` worker issues tokens from
 `/connect/token` and owns the shared `accounts` table; every other worker
-validates that token on its auth-gated routes. New players are placed into the
-Orientation room on first login.
+validates that token on its auth-gated routes.
 
-State is persisted with Cloudflare's storage primitives — D1 (SQLite) for
-accounts and rooms, KV for per-player settings and presence, R2 for images and
-CDN binaries, and a Durable Object for the real-time notifications hub. Endpoints
-that aren't backed by storage yet return sensible defaults and are marked
-`TODO`.
+State is persisted with Cloudflare's storage primitives — the workers are
+completely stateless and no data is stored alongside the microservices.
 
 ## Services
 
@@ -41,7 +51,7 @@ These are every RecNet service the client discovers, taken from the
 service-discovery map in [`apps/ns/src/endpoints.ts`](apps/ns/src/endpoints.ts).
 Each is reached at `https://<subdomain>.<your-domain>`. Services with a worker in
 `apps/` are implemented here; the rest are advertised in the endpoints document
-but not yet backed by a Worker.
+but not yet backed by a Worker. Not all services are fully implemented.
 
 | Service                 | Subdomain               | Worker             | Notes                                                              |
 | ----------------------- | ----------------------- | ------------------ | ----------------------------------------------------------------- |
@@ -82,9 +92,9 @@ but not yet backed by a Worker.
 | Videos                  | `videos`                | —                  | Not yet implemented                                               |
 | WWW                     | `www`                   | —                  | Website host (not a Worker)                                       |
 
-The `ns` worker itself serves this discovery document at the apex/`ns` host and
-isn't listed within it. Each implemented worker has its own `README.md` under
-`apps/<name>/` documenting its routes.
+Additionally there is a small `ns` worker itself serves this discovery document
+at the apex/`ns` host and isn't listed within it. Each implemented worker has
+its own `README.md` under `apps/<name>/` documenting its routes.
 
 ## Why Cloudflare?
 
@@ -116,8 +126,11 @@ object storage, a pub/sub or WebSocket layer) and wire up the deployment yoursel
 - pnpm v10 or later
 - bun 1.2 or later
 - A Cloudflare account with a zone (domain) you control, for deploying
-- shfmt / rg (ripgrep) — optional, recommended for shell formatting
-- mise — optional, recommended for tool management
+
+The free plan is good enough for testing (100k requests/day) but the client is
+pretty chatty, so frequent testing may exhauast that quota.
+
+See https://developers.cloudflare.com/workers/platform/pricing/#workers
 
 ## Getting Started
 
@@ -127,7 +140,7 @@ object storage, a pub/sub or WebSocket layer) and wire up the deployment yoursel
 just install
 ```
 
-**Configure your domain:**
+**Configure your custom domain:**
 
 `env.json` is the single source of truth for your base domain; it is gitignored,
 so each clone needs its own copy.
@@ -182,9 +195,6 @@ inline comments in those files for the exact `wrangler` commands.
   - `@repo/typescript-config`, `@repo/oxlint-config` - Shared TS and lint config.
 - `turbo/generators/` - `turbo gen` templates for scaffolding new workers/packages.
 - `Justfile` - Convenient aliases for common development tasks.
-- `pnpm-workspace.yaml` - pnpm workspace definition.
-- `turbo.jsonc` - Turborepo task graph and caching.
-- `.syncpackrc.cjs` - Keeps dependency versions consistent across packages.
 
 ## Available Commands
 
@@ -203,8 +213,7 @@ command. Some key ones:
 - `just cs` - Create a changeset for versioning.
 - `just update deps` - Update dependencies across the monorepo with syncpack.
 
-For a single worker, scope with turbo, e.g. `bun turbo -F api dev`,
-`bun turbo -F api test`, or `bun turbo -F api deploy`.
+For a single worker, scope with -F, e.g. `just deploy -F playersettings`.
 
 ## Why a monorepo?
 
