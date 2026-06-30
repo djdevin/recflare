@@ -4,13 +4,17 @@
 	"main": "src/rooms.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	// Room storage. Create with `wrangler d1 create rec-rooms`, set the id, then
+	// Room storage. Create with `wrangler d1 create rec-rooms`, then put the real
+	// id in the gitignored root .env under RECFLARE_D1 (see .env.example) — it is
+	// spliced in at deploy time by run-wrangler-deploy. The "local" placeholder
+	// below is only a key for the local SQLite db used by `wrangler dev`, so the
+	// committed file needs no per-developer edits. Apply migrations with
 	// `wrangler d1 migrations apply rec-rooms --remote`.
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "rec-rooms",
-			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5",
+			"database_id": "local",
 			"migrations_dir": "migrations"
 		}
 	],

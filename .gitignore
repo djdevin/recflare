@@ -2,6 +2,7 @@
 # Wrangler
 .wrangler
 .dev.vars
+wrangler.generated.jsonc
 
 # Astro generated types
 .astro/
