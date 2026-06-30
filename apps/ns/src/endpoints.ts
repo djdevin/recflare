@@ -28,7 +28,7 @@ const SERVICE_SUBDOMAINS = {
 	Link: 'link',
 	Lists: 'lists',
 	Matchmaking: 'match',
-	Moderation: 'api',
+	Moderation: 'moderation',
 	Notifications: 'notify',
 	PlatformNotifications: 'platformnotifications',
 	PlayerSettings: 'playersettings',

@@ -77,7 +77,7 @@ but not yet backed by a Worker. Not all services are fully implemented.
 | Link                    | `link`                  | —                  | Not yet implemented                                               |
 | Lists                   | `lists`                 | —                  | Not yet implemented                                               |
 | Matchmaking             | `match`                 | `match`            | Matchmaking & per-player presence (D1, KV)                       |
-| Moderation              | `api`                   | `api`              | Served by the `api` worker (shares the API host)                 |
+| Moderation              | `moderation`            | —                  | Not yet implemented                                               |
 | Notifications           | `notify`                | `notify`           | Real-time notifications over SignalR/WebSockets (Durable Object) |
 | PlatformNotifications   | `platformnotifications` | —                  | Not yet implemented                                               |
 | PlayerSettings          | `playersettings`        | `playersettings`   | Per-player settings (KV)                                         |
