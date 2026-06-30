@@ -142,12 +142,13 @@ just install
 
 **Configure your custom domain:**
 
-`env.json` is the single source of truth for your base domain; it is gitignored,
-so each clone needs its own copy.
+For local development, set your base domain in a `.env` file at the repo root; it
+is gitignored, so each clone needs its own copy. (For CI you can skip the file and
+export `RECFLARE_DOMAIN` directly — see below.)
 
 ```bash
-cp env.example.json env.json
-# edit env.json and set "domain" to your domain
+cp .env.example .env
+# edit .env and set RECFLARE_DOMAIN to your domain
 ```
 
 `just deploy` resolves the base domain at deploy time and passes it to wrangler —
@@ -156,11 +157,11 @@ and the base domain is injected as the `DOMAIN` var so the `ns` service-discover
 document and the api share-link base URL are built at runtime. Nothing in version
 control is rewritten; committed `wrangler.jsonc` files have no routes.
 
-The domain is read from the `RECFLARE_DOMAIN` environment variable if set,
-otherwise from `env.json`. Per-app subdomain overrides come from
-`RECFLARE_SUBDOMAINS` (a JSON object, e.g. `{"playersettings":"settings"}`) or
-the `subdomains` key in `env.json`. For CI, set `RECFLARE_DOMAIN` as a secret and
-skip `env.json` entirely:
+The domain comes from the `RECFLARE_DOMAIN` environment variable; for local dev
+that's loaded from `.env`, and an already-exported value (e.g. a CI secret) takes
+precedence over the file. Per-app subdomain overrides come from
+`RECFLARE_SUBDOMAINS` (a JSON object, e.g. `{"playersettings":"settings"}`). For
+CI, set `RECFLARE_DOMAIN` as a secret and skip `.env` entirely:
 
 ```bash
 RECFLARE_DOMAIN=rec.example.com just deploy

@@ -47,6 +47,3 @@ yarn-error.log*
 
 # Agents
 .claude/settings.local.json
-
-# Configuration
-env.json

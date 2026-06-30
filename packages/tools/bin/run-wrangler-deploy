@@ -10,22 +10,27 @@ VERSION=$(get-version)
 # — committed wrangler.jsonc has no routes, and the base domain is passed as the
 # DOMAIN var at runtime.
 #
-# Source order: the RECFLARE_DOMAIN env var wins (handy for CI secrets), else the
-# gitignored env.json at the repo root. Per-app subdomain overrides come from
-# RECFLARE_SUBDOMAINS (a JSON object) or env.json's "subdomains".
-if [ -n "${RECFLARE_DOMAIN:-}" ]; then
-	DOMAIN="$RECFLARE_DOMAIN"
-	SUBDOMAINS_JSON=${RECFLARE_SUBDOMAINS:-}
-	[ -n "$SUBDOMAINS_JSON" ] || SUBDOMAINS_JSON='{}'
-else
-	ENV_JSON="$(git rev-parse --show-toplevel)/env.json"
-	if [ ! -f "$ENV_JSON" ]; then
-		echo "error: set RECFLARE_DOMAIN or create $ENV_JSON (copy env.example.json)" >&2
-		exit 1
+# The domain comes from the RECFLARE_DOMAIN env var. For local dev that's set in a
+# gitignored .env at the repo root; in CI it's an exported secret. An already-set
+# RECFLARE_DOMAIN wins and skips the file. Per-app subdomain overrides come from
+# RECFLARE_SUBDOMAINS (a JSON object, e.g. {"playersettings":"settings"}).
+if [ -z "${RECFLARE_DOMAIN:-}" ]; then
+	ENV_FILE="$(git rev-parse --show-toplevel)/.env"
+	if [ -f "$ENV_FILE" ]; then
+		set -a
+		. "$ENV_FILE"
+		set +a
 	fi
-	DOMAIN=$(jq -r '.domain' "$ENV_JSON")
-	SUBDOMAINS_JSON=$(jq -c '.subdomains // {}' "$ENV_JSON")
 fi
+
+if [ -z "${RECFLARE_DOMAIN:-}" ]; then
+	echo "error: RECFLARE_DOMAIN is not set — export it or add it to .env (see .env.example)" >&2
+	exit 1
+fi
+
+DOMAIN="$RECFLARE_DOMAIN"
+SUBDOMAINS_JSON=${RECFLARE_SUBDOMAINS:-}
+[ -n "$SUBDOMAINS_JSON" ] || SUBDOMAINS_JSON='{}'
 
 DIR=$(basename "$PWD")
 # Per-app subdomain override, falling back to the worker's directory name.
