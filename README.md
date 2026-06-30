@@ -86,6 +86,30 @@ The `ns` worker itself serves this discovery document at the apex/`ns` host and
 isn't listed within it. Each implemented worker has its own `README.md` under
 `apps/<name>/` documenting its routes.
 
+## Why Cloudflare?
+
+- **It's free to run a lot of services.** Cloudflare Workers' free tier is keyed
+  to usage, not to the number of Workers — so whether you deploy 1 service or all
+  36, the baseline cost is the same. You only start paying once usage crosses the
+  free-tier limits.
+- **It mirrors RecNet's architecture.** Rec Room's backend is a set of
+  independent microservices, not one monolith. Modeling each service as its own
+  Worker keeps RecFlare's structure close to the real thing — services scale,
+  fail, and deploy independently — instead of collapsing everything into a single
+  giant server.
+
+## Do I have to use Cloudflare?
+
+No. The services are plain [Hono](https://hono.dev) apps, so the request-handling
+code isn't tied to Cloudflare and can be deployed to other hosting providers —
+AWS (Lambda), Vercel, Netlify, Fly.io, a plain Node/Bun server, and so on.
+
+The catch is everything _around_ the code. RecFlare leans on Cloudflare for the
+deployment and infrastructure layer — custom-domain routing per service, plus the
+storage bindings (D1, KV, R2, Durable Objects) the workers use. On another
+provider you'll need to provide equivalents (per-service routing, databases,
+object storage, a pub/sub or WebSocket layer) and wire up the deployment yourself.
+
 ## Prerequisites
 
 - node.js v22 or later
