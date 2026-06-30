@@ -8,11 +8,11 @@
 		".": "./src/default.config.ts"
 	},
 	"dependencies": {
-		"oxlint": "1.56.0",
-		"oxlint-tsgolint": "0.17.1"
+		"oxlint": "1.72.0",
+		"oxlint-tsgolint": "0.23.0"
 	},
 	"devDependencies": {
-		"@types/node": "25.5.0",
-		"vitest": "4.1.0"
+		"@types/node": "26.0.1",
+		"vitest": "4.1.9"
 	}
 }
