@@ -98,14 +98,14 @@ const presenceKey = (id: number) => `presence:${id}`
 
 /** Persist the player's presence (room instance + status), refreshing the TTL. */
 async function setPresence(c: Context<App>, id: number, presence: Presence): Promise<void> {
-	await c.env.MATCH_PRESENCE.put(presenceKey(id), JSON.stringify(presence), {
+	await c.env.RECFLARE_MATCH_PRESENCE.put(presenceKey(id), JSON.stringify(presence), {
 		expirationTtl: PRESENCE_TTL,
 	})
 }
 
 /** Read the player's stored presence, or null when they aren't in a room. */
 async function getPresence(c: Context<App>, id: number): Promise<Presence | null> {
-	return c.env.MATCH_PRESENCE.get<Presence>(presenceKey(id), 'json')
+	return c.env.RECFLARE_MATCH_PRESENCE.get<Presence>(presenceKey(id), 'json')
 }
 
 /** Store the room instance the player just matchmade into, preserving status. */

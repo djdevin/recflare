@@ -1,5 +1,5 @@
 /**
- * Read helpers for the shared `rec-rooms` D1 database. The schema, migrations,
+ * Read helpers for the shared `recflare` D1 database. The schema, migrations,
  * and seed are owned by the `rooms` worker (apps/rooms/src/rooms-db.ts +
  * migrations); this worker binds the same database read-only to resolve a room's
  * real scene/subroom when building a matchmake instance. Keep these queries in

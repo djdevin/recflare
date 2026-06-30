@@ -518,7 +518,7 @@ const app = new Hono<App>({ strict: false })
 	)
 
 	// ---- Room server ----------------------------------------------------------
-	// Room data is read from the shared `rec-rooms` D1 (owned by the rooms worker).
+	// Room data is read from the shared `recflare` D1 (owned by the rooms worker).
 	// Register specific paths before the `/:id` param route.
 	.get('/roomserver/rooms/bulk', async (c) => {
 		const idParam = c.req.query('id')

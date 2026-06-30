@@ -3,7 +3,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 
 export type Env = SharedHonoEnv & {
 	/** Per-player settings store. Key `player:<id>` → JSON map of `{ key: value }`. */
-	PLAYER_SETTINGS: KVNamespace
+	RECFLARE_PLAYER_SETTINGS: KVNamespace
 }
 
 /** Variables can be extended */

@@ -2,7 +2,7 @@
 
 Image-delivery worker served on the `img` subdomain.
 
-Images are stored as objects in the **`rec-img` R2 bucket** and streamed back by
+Images are stored as objects in the **`recflare-img` R2 bucket** and streamed back by
 key:
 
 - `GET /` — service status `{ "service": "img", "status": "ok" }`.
@@ -37,7 +37,7 @@ node -e "const{generateKeyPairSync}=require('crypto');const{publicKey,privateKey
 ## One-time bucket setup
 
 ```sh
-wrangler r2 bucket create rec-img
+wrangler r2 bucket create recflare-img
 ```
 
 ## Seeding / uploading images
@@ -45,7 +45,7 @@ wrangler r2 bucket create rec-img
 A starter image lives in `static/` so it can be uploaded to R2:
 
 ```sh
-wrangler r2 object put rec-img/DefaultProfileImage.jpg \
+wrangler r2 object put recflare-img/DefaultProfileImage.jpg \
   --file=apps/img/static/DefaultProfileImage.jpg \
   --content-type=image/jpeg --remote
 ```

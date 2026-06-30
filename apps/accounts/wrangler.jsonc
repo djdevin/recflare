@@ -4,13 +4,15 @@
 	"main": "src/accounts.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	// Shared D1 database. The `accounts` table schema/migrations are owned by the
-	// `auth` worker; this worker binds it read/write to look up and create accounts.
+	// Shared `recflare` D1 database. The `accounts` table schema/migrations are owned
+	// by the `auth` worker; this worker binds it read/write to look up and create
+	// accounts. The "local" placeholder is replaced with the real id from RECFLARE_D1
+	// (see .env) at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "rec-rooms",
-			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5"
+			"database_name": "recflare",
+			"database_id": "local"
 		}
 	],
 	"logpush": false,

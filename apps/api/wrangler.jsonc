@@ -4,12 +4,14 @@
 	"main": "src/api.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	// Shared rooms DB (created + migrated by the `rooms` worker; bound read-only here).
+	// Shared `recflare` DB (bound read-only here). Created manually with
+	// `wrangler d1 create recflare`; its id lives in RECFLARE_D1 (see .env) and the
+	// "local" placeholder below is spliced out at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "rec-rooms",
-			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5"
+			"database_name": "recflare",
+			"database_id": "local"
 		}
 	],
 	// Image bucket shared with the `img` worker (which serves objects back by key).
@@ -17,7 +19,7 @@
 	"r2_buckets": [
 		{
 			"binding": "IMAGES",
-			"bucket_name": "rec-img"
+			"bucket_name": "recflare-img"
 		}
 	],
 	"logpush": false,

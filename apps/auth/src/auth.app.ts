@@ -87,7 +87,7 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 		platform: 0,
 		appVersion: '20230302',
 	}
-	await env.MATCH_PRESENCE.put(`presence:${accountId}`, JSON.stringify(presence), {
+	await env.RECFLARE_MATCH_PRESENCE.put(`presence:${accountId}`, JSON.stringify(presence), {
 		expirationTtl: PRESENCE_TTL,
 	})
 }

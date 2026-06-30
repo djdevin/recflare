@@ -11,7 +11,7 @@
 	"r2_buckets": [
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "rec-cdn"
+			"bucket_name": "recflare-cdn"
 		}
 	],
 	"upload_source_maps": true,

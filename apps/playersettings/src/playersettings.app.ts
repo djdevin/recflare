@@ -89,10 +89,10 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 
 		const kvKey = `player:${id}`
-		let stored = await c.env.PLAYER_SETTINGS.get<Record<string, string>>(kvKey, 'json')
+		let stored = await c.env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(kvKey, 'json')
 		if (!stored || Object.keys(stored).length === 0) {
 			stored = Object.fromEntries(DEFAULT_SETTINGS.map((s) => [s.Key, s.Value]))
-			await c.env.PLAYER_SETTINGS.put(kvKey, JSON.stringify(stored))
+			await c.env.RECFLARE_PLAYER_SETTINGS.put(kvKey, JSON.stringify(stored))
 		}
 
 		return c.json(Object.entries(stored).map(([Key, Value]) => ({ PlayerId: id, Key, Value })))
@@ -109,11 +109,11 @@ const app = new Hono<App>()
 		if (incoming.length === 0) return c.body(null, 200)
 
 		const kvKey = `player:${id}`
-		const existing = await c.env.PLAYER_SETTINGS.get<Record<string, string>>(kvKey, 'json')
+		const existing = await c.env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(kvKey, 'json')
 		const merged: Record<string, string> = { ...existing }
 		for (const { key, value } of incoming) merged[key] = value
 
-		await c.env.PLAYER_SETTINGS.put(kvKey, JSON.stringify(merged))
+		await c.env.RECFLARE_PLAYER_SETTINGS.put(kvKey, JSON.stringify(merged))
 		return c.body(null, 200)
 	})
 

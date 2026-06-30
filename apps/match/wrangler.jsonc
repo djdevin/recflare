@@ -5,19 +5,20 @@
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
 	// Per-player presence store (room instance the player is currently in).
-	// Create with `wrangler kv namespace create MATCH_PRESENCE` and set the id.
+	// Create with `wrangler kv namespace create RECFLARE_MATCH_PRESENCE` and set the id.
 	"kv_namespaces": [
 		{
-			"binding": "MATCH_PRESENCE",
+			"binding": "RECFLARE_MATCH_PRESENCE",
 			"id": "9f53f04b7dd244658d59f515a14748b6"
 		}
 	],
-	// Shared rooms DB (created + migrated by the `rooms` worker; bound read-only here).
+	// Shared `recflare` DB (bound read-only here). The "local" placeholder is replaced
+	// with the real id from RECFLARE_D1 (see .env) at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "rec-rooms",
-			"database_id": "d44083e1-5bfe-4467-aa9a-f13c5c2496d5"
+			"database_name": "recflare",
+			"database_id": "local"
 		}
 	],
 	"logpush": false,

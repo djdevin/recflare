@@ -139,7 +139,7 @@ describe('auth worker routes', () => {
 	test('POST /connect/token create_account seeds the new player into Orientation', async () => {
 		const payload = await tokenFor('grant_type=create_account&platform_id=steam-456')
 		const sub = payload.sub as string
-		const presence = await env.MATCH_PRESENCE.get<{
+		const presence = await env.RECFLARE_MATCH_PRESENCE.get<{
 			roomInstance: { roomInstanceId: number; roomId: number; location: string; name: string }
 		}>(`presence:${sub}`, 'json')
 		expect(presence).not.toBeNull()

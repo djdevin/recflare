@@ -37,18 +37,16 @@ DIR=$(basename "$PWD")
 SUBDOMAIN=$(printf '%s' "$SUBDOMAINS_JSON" | jq -r --arg d "$DIR" '.[$d] // $d')
 HOST="$SUBDOMAIN.$DOMAIN"
 
-# Resolve this worker's D1 database id from RECFLARE_D1 (a JSON object keyed by
-# the worker's directory name) and splice it into a generated config. The
-# committed wrangler.jsonc carries a "local" placeholder so it needs no
+# Splice the shared `recflare` D1 database id from RECFLARE_D1 into a generated
+# config. All D1-backed workers bind the same database, so RECFLARE_D1 is a single
+# id. The committed wrangler.jsonc carries a "local" placeholder so it needs no
 # per-developer edits; the real id stays in the gitignored .env / CI secrets.
 # Workers without a D1 binding simply have no placeholder to replace.
 CONFIG="wrangler.jsonc"
 if grep -q '"database_id": *"local"' wrangler.jsonc 2>/dev/null; then
-	D1_JSON=${RECFLARE_D1:-}
-	[ -n "$D1_JSON" ] || D1_JSON='{}'
-	DB_ID=$(printf '%s' "$D1_JSON" | jq -r --arg d "$DIR" '.[$d] // empty')
+	DB_ID=${RECFLARE_D1:-}
 	if [ -z "$DB_ID" ]; then
-		echo "error: no D1 id for '$DIR' in RECFLARE_D1 — add it to .env (see .env.example)" >&2
+		echo "error: RECFLARE_D1 is not set — add the recflare D1 id to .env (see .env.example)" >&2
 		exit 1
 	fi
 	CONFIG="wrangler.generated.jsonc"

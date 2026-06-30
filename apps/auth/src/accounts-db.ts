@@ -1,5 +1,5 @@
 /**
- * Account storage on the shared `rec-rooms` D1 database. Each account is a single
+ * Account storage on the shared `recflare` D1 database. Each account is a single
  * JSON blob in the `data` column; queryable fields (AccountId, Username) are
  * SQLite generated (virtual) columns extracted from that JSON and indexed —
  * the same JSON-blob pattern the `rooms` worker uses.

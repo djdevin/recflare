@@ -12,7 +12,7 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
-// Matchmaking into a room resolves its real scene from the shared rec-rooms D1.
+// Matchmaking into a room resolves its real scene from the shared recflare D1.
 // Seed the schema + a couple of rooms (matching the rooms worker's migration).
 const RECCENTER_SCENE = 'cbad71af-0831-44d8-b8ef-69edafa841f6'
 const TEST_ROOMS = [

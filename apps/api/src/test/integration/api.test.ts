@@ -14,7 +14,7 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
-// The /roomserver/rooms/* routes read from the shared rec-rooms D1. Set up the
+// The /roomserver/rooms/* routes read from the shared recflare D1. Set up the
 // schema (matching the rooms worker's migration) + a couple of rooms for tests.
 const TEST_ROOMS = [
 	{

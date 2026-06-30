@@ -7,7 +7,7 @@
 	// Per-player settings persistence.
 	"kv_namespaces": [
 		{
-			"binding": "PLAYER_SETTINGS",
+			"binding": "RECFLARE_PLAYER_SETTINGS",
 			"id": "d33a90014e904b0eac720bddcbe0b036"
 		}
 	],

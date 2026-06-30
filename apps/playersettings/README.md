@@ -9,7 +9,7 @@ Player-settings worker served on the `playersettings` subdomain.
 - `PUT /playersettings` — `[Authorize]`. Accepts a form-urlencoded
   `key=…&value=…` (or a JSON `{key,value}` / array) and **upserts** it into the
   player's settings, keyed by the `sub` claim of the Bearer JWT. Returns `200`.
-  Persisted in Workers KV (`PLAYER_SETTINGS`, key `player:<id>`).
+  Persisted in Workers KV (`RECFLARE_PLAYER_SETTINGS`, key `player:<id>`).
 
 > A full settings PUT would replace the player's _entire_ settings set on each
 > call; we merge instead, so a single-key PUT (e.g. `key=PlayerSessionCount`)
@@ -18,7 +18,7 @@ Player-settings worker served on the `playersettings` subdomain.
 ## KV namespace
 
 ```sh
-wrangler kv namespace create PLAYER_SETTINGS   # then put the id in wrangler.jsonc
+wrangler kv namespace create RECFLARE_PLAYER_SETTINGS   # then put the id in wrangler.jsonc
 ```
 
 ## Development

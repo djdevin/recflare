@@ -8,7 +8,7 @@
 	"r2_buckets": [
 		{
 			"binding": "IMAGES",
-			"bucket_name": "rec-img"
+			"bucket_name": "recflare-img"
 		}
 	],
 	"upload_source_maps": true,

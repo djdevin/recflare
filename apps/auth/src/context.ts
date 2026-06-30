@@ -8,7 +8,7 @@ export type Env = SharedHonoEnv & {
 	// Shared match-presence KV (owned by the `match` worker). On account creation
 	// the new player's presence is seeded to the Orientation room so the match
 	// heartbeat keeps them there instead of bouncing them to the dorm.
-	MATCH_PRESENCE: KVNamespace
+	RECFLARE_MATCH_PRESENCE: KVNamespace
 }
 
 /** Variables can be extended */
