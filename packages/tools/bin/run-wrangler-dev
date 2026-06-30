@@ -3,6 +3,21 @@ set -eu
 
 NAME=$(jq -r '.name' package.json)
 
+# Give each worker a stable, unique dev port so `turbo dev` can run them all in
+# parallel without colliding on wrangler's default 8787 (and its 9229 inspector
+# port). The offset is the worker's alphabetical position among its siblings, so
+# it stays deterministic and needs no per-worker configuration.
+OFFSET=$(
+	for dir in ../*/; do
+		[ -f "${dir}wrangler.jsonc" ] || continue
+		jq -r '.name' "${dir}package.json"
+	done | sort | grep -Fnx "$NAME" | cut -d: -f1
+)
+PORT=$((8787 + OFFSET - 1))
+INSPECTOR_PORT=$((9229 + OFFSET - 1))
+
 exec wrangler dev \
 	--var NAME:"$NAME" \
+	--port "$PORT" \
+	--inspector-port "$INSPECTOR_PORT" \
 	"$@"
