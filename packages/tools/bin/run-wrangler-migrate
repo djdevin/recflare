@@ -30,6 +30,12 @@ for arg in "$@"; do
 	esac
 done
 
+# wrangler's "your database may be unavailable during the migration, continue?"
+# confirmation can't be answered when this runs under turbo (it doesn't forward
+# stdin to the task), so run non-interactively — wrangler skips the prompt and
+# proceeds, still capturing a backup. An already-set CI value (real CI) wins.
+export CI=${CI:-true}
+
 if [ "$LOCAL" -eq 1 ]; then
 	# Local db keys off the "local" placeholder, so the committed config is fine.
 	exec wrangler d1 migrations apply "$DB_NAME" "$@"

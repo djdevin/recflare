@@ -203,6 +203,10 @@ just migrate -F rooms        # or scope to one worker
 just migrate -- --local      # target the local dev db instead of remote
 ```
 
+This runs non-interactively (it sets `CI`), so wrangler's "database may be
+unavailable during the migration" confirmation is auto-accepted — turbo can't
+forward your answer to the task anyway. A backup is still captured.
+
 _KV — two namespaces_ (`RECFLARE_MATCH_PRESENCE` for `match`/`auth`,
 `RECFLARE_PLAYER_SETTINGS` for `playersettings`):
 
