@@ -42,6 +42,19 @@ function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
 }
 
+/** RecNet currency types (the `CurrencyType` enum the client uses). */
+const CurrencyType = {
+	Invalid: 0,
+	LaserTagTickets: 1,
+	RecCenterTokens: 2,
+	LostSkullsGold: 100,
+	DraculaSilver: 101,
+	RecRoyaleSeason1: 200,
+	RoomCurrency: 300,
+	RoomInventoryItem: 301,
+	ProgressionEvent: 400,
+} as const
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -144,12 +157,14 @@ const app = new Hono<App>()
 		return c.json([])
 	})
 
-	// Token balance. [Authorize]; empty without a DB binding.
+	// Token balance. [Authorize]. The `2` in the path is the RecCenterTokens
+	// CurrencyType. The balance is a fake test value (a large amount) until a DB
+	// binding tracks real balances; Platform -2 means "all platforms".
 	.get('/api/storefronts/v4/balance/2', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		// TODO: query TokenBalances once a DB binding exists.
-		return c.json([])
+		return c.json([{ CurrencyType: CurrencyType.RecCenterTokens, Platform: -2, Balance: 2147483648 }])
 	})
 
 	// Gift-drop storefront. Falls back to the bundled static catalog when no

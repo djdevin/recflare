@@ -186,14 +186,14 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('GET /api/storefronts/v4/balance/2 401s without a token, returns []', async () => {
+	test('GET /api/storefronts/v4/balance/2 401s without a token, returns the token balance', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`)
 		expect(anon.status).toBe(401)
 		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
 			headers: await bearer(),
 		})
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([])
+		expect(await res.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 2147483648 }])
 	})
 
 	test('GET /api/storefronts/v3/giftdropstore/3 returns the storefront catalog', async () => {
