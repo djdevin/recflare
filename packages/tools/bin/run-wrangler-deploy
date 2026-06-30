@@ -37,24 +37,69 @@ DIR=$(basename "$PWD")
 SUBDOMAIN=$(printf '%s' "$SUBDOMAINS_JSON" | jq -r --arg d "$DIR" '.[$d] // $d')
 HOST="$SUBDOMAIN.$DOMAIN"
 
-# Splice the shared `recflare` D1 database id from RECFLARE_D1 into a generated
-# config. All D1-backed workers bind the same database, so RECFLARE_D1 is a single
-# id. The committed wrangler.jsonc carries a "local" placeholder so it needs no
-# per-developer edits; the real id stays in the gitignored .env / CI secrets.
-# Workers without a D1 binding simply have no placeholder to replace.
+# Splice deploy-time resource ids into a generated config. The committed
+# wrangler.jsonc carries "local" placeholders so it needs no per-developer edits;
+# the real ids stay in the gitignored .env / CI secrets. Workers without these
+# bindings simply have no placeholder to replace.
+#
+#   D1 — RECFLARE_D1: a single id (all workers share the one `recflare` database).
+#   KV — RECFLARE_KV: a JSON object keyed by binding name, since each KV namespace
+#        is distinct, e.g. {"RECFLARE_MATCH_PRESENCE":"…","RECFLARE_PLAYER_SETTINGS":"…"}.
 CONFIG="wrangler.jsonc"
-if grep -q '"database_id": *"local"' wrangler.jsonc 2>/dev/null; then
-	DB_ID=${RECFLARE_D1:-}
-	if [ -z "$DB_ID" ]; then
-		echo "error: RECFLARE_D1 is not set — add the recflare D1 id to .env (see .env.example)" >&2
-		exit 1
-	fi
+NEEDS_D1=$(grep -q '"database_id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
+NEEDS_KV=$(grep -q '"id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
+
+if [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ]; then
 	CONFIG="wrangler.generated.jsonc"
 	# Generated alongside the original so its relative paths (main, migrations_dir)
 	# still resolve. Gitignored; removed on exit so `wrangler dev` is unaffected.
-	trap 'rm -f wrangler.generated.jsonc' EXIT
-	sed -E 's/("database_id"[[:space:]]*:[[:space:]]*")[^"]*(")/\1'"$DB_ID"'\2/' \
-		wrangler.jsonc >wrangler.generated.jsonc
+	trap 'rm -f wrangler.generated.jsonc wrangler.generated.tmp' EXIT
+	cp wrangler.jsonc wrangler.generated.jsonc
+
+	if [ -n "$NEEDS_D1" ]; then
+		DB_ID=${RECFLARE_D1:-}
+		if [ -z "$DB_ID" ]; then
+			echo "error: RECFLARE_D1 is not set — add the recflare D1 id to .env (see .env.example)" >&2
+			exit 1
+		fi
+		sed -E 's/("database_id"[[:space:]]*:[[:space:]]*")[^"]*(")/\1'"$DB_ID"'\2/' \
+			wrangler.generated.jsonc >wrangler.generated.tmp
+		mv wrangler.generated.tmp wrangler.generated.jsonc
+	fi
+
+	if [ -n "$NEEDS_KV" ]; then
+		KV_JSON=${RECFLARE_KV:-}
+		[ -n "$KV_JSON" ] || KV_JSON='{}'
+		# Map binding name -> id, then replace each kv_namespaces `"id": "local"`
+		# with the id for its nearest preceding "binding" line. awk keeps state so
+		# multiple namespaces in one file each get the right id.
+		KV_PAIRS=$(printf '%s' "$KV_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+		awk -v pairs="$KV_PAIRS" '
+			BEGIN {
+				n = split(pairs, lines, "\n")
+				for (i = 1; i <= n; i++) {
+					if (lines[i] == "") continue
+					t = index(lines[i], "\t")
+					id[substr(lines[i], 1, t - 1)] = substr(lines[i], t + 1)
+				}
+			}
+			/"binding"[[:space:]]*:/ {
+				b = $0
+				sub(/.*"binding"[[:space:]]*:[[:space:]]*"/, "", b)
+				sub(/".*/, "", b)
+				curbind = b
+			}
+			/"id"[[:space:]]*:[[:space:]]*"local"/ {
+				if (!(curbind in id)) {
+					print "error: no KV id for binding [" curbind "] in RECFLARE_KV — add it to .env (see .env.example)" >"/dev/stderr"
+					exit 3
+				}
+				sub(/"local"/, "\"" id[curbind] "\"")
+			}
+			{ print }
+		' wrangler.generated.jsonc >wrangler.generated.tmp || exit 1
+		mv wrangler.generated.tmp wrangler.generated.jsonc
+	fi
 fi
 
 # Deploy with wrangler using the extracted values as binding variables

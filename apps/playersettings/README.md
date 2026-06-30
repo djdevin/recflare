@@ -18,7 +18,7 @@ Player-settings worker served on the `playersettings` subdomain.
 ## KV namespace
 
 ```sh
-wrangler kv namespace create RECFLARE_PLAYER_SETTINGS   # then put the id in wrangler.jsonc
+wrangler kv namespace create RECFLARE_PLAYER_SETTINGS   # then put the id in .env under RECFLARE_KV (see .env.example)
 ```
 
 ## Development

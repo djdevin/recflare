@@ -8,7 +8,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "RECFLARE_PLAYER_SETTINGS",
-			"id": "d33a90014e904b0eac720bddcbe0b036"
+			"id": "local"
 		}
 	],
 	"upload_source_maps": true,

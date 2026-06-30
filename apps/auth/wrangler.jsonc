@@ -23,7 +23,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "RECFLARE_MATCH_PRESENCE",
-			"id": "9f53f04b7dd244658d59f515a14748b6"
+			"id": "local"
 		}
 	],
 	"logpush": false,
