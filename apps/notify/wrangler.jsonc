@@ -5,7 +5,7 @@
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {
-		"bindings": [{ "name": "NOTIFICATIONS_HUB", "class_name": "NotificationsHub" }]
+		"bindings": [{ "name": "RECFLARE_NOTIFICATIONS_HUB", "class_name": "NotificationsHub" }]
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["NotificationsHub"] }],
 	"logpush": false,

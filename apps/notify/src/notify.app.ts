@@ -52,7 +52,7 @@ const app = new Hono<App>()
 		if ((c.req.header('upgrade') ?? '').toLowerCase() !== 'websocket') {
 			return c.json({ error: 'Expected a WebSocket upgrade request' }, 426)
 		}
-		return c.env.NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).fetch(c.req.raw)
+		return c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).fetch(c.req.raw)
 	})
 
 	// ---- Internal service-to-service send/broadcast --------------------------
@@ -65,7 +65,7 @@ const app = new Hono<App>()
 		if (!body || typeof body.playerId !== 'number' || typeof body.notificationType !== 'number') {
 			return c.json({ error: 'playerId and notificationType are required' }, 400)
 		}
-		const result = await c.env.NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+		const result = await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
 			body.playerId,
 			body.notificationType,
 			body.data
@@ -80,7 +80,7 @@ const app = new Hono<App>()
 		if (!body || typeof body.notificationType !== 'number') {
 			return c.json({ error: 'notificationType is required' }, 400)
 		}
-		const result = await c.env.NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).broadcast(
+		const result = await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).broadcast(
 			body.notificationType,
 			body.data
 		)

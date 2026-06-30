@@ -172,7 +172,72 @@ document and the api share-link base URL are built at runtime. Nothing in versio
 control is rewritten; committed `wrangler.jsonc` files have no routes.
 
 Per-app subdomain overrides come from
-`RECFLARE_SUBDOMAINS` (a JSON object, e.g. `{"playersettings":"settings"}`).
+`RECFLARE_SUBDOMAINS` (a JSON object, e.g. `'{"playersettings":"settings"}'`).
+
+**Create the storage resources:**
+
+The workers bind Cloudflare storage primitives — one shared D1 database, two KV
+namespaces, two R2 buckets, and a Durable Object. Create them once against your
+Cloudflare account, then record the ids in `.env`. The committed `wrangler.jsonc`
+files carry `"local"` placeholders; the real ids are spliced in at deploy time, so
+nothing in version control needs editing. Authenticate wrangler first
+(`wrangler login`).
+
+_D1 — one shared `recflare` database_ (bound by `api`, `accounts`, `auth`, `match`,
+`rooms`):
+
+```bash
+wrangler d1 create recflare
+# copy the printed database_id into .env:
+#   RECFLARE_D1=<database_id>
+```
+
+Then apply the schema. The `rooms` and `auth` workers own the migrations under
+their `apps/<worker>/migrations/` directories. Remote operations need the real id
+in the config (the committed file only has the `"local"` placeholder), so splice
+it in the same way the deploy does — from each owning worker, with `RECFLARE_D1`
+exported:
+
+```bash
+cd apps/rooms   # then repeat for apps/auth
+sed -E "s/\"database_id\": *\"local\"/\"database_id\": \"$RECFLARE_D1\"/" \
+  wrangler.jsonc >wrangler.generated.jsonc
+wrangler d1 migrations apply recflare --remote --config wrangler.generated.jsonc
+rm wrangler.generated.jsonc
+```
+
+For the local dev database no id is needed — it uses the `"local"` placeholder
+directly: `wrangler d1 migrations apply recflare --local`.
+
+_KV — two namespaces_ (`RECFLARE_MATCH_PRESENCE` for `match`/`auth`,
+`RECFLARE_PLAYER_SETTINGS` for `playersettings`):
+
+```bash
+wrangler kv namespace create RECFLARE_MATCH_PRESENCE
+wrangler kv namespace create RECFLARE_PLAYER_SETTINGS
+```
+
+Record both ids in `.env` as a single JSON object keyed by binding name (note the
+surrounding single quotes — without them the shell strips the inner quotes):
+
+```bash
+RECFLARE_KV='{"RECFLARE_MATCH_PRESENCE":"<id>","RECFLARE_PLAYER_SETTINGS":"<id>"}'
+```
+
+_R2 — two buckets_ (`recflare-cdn` for `cdn`, `recflare-img` for `api`/`img`):
+
+```bash
+wrangler r2 bucket create recflare-cdn
+wrangler r2 bucket create recflare-img
+```
+
+R2 buckets are referenced by name in the committed `wrangler.jsonc`, so there is
+nothing to add to `.env`. See [`apps/img/README.md`](apps/img/README.md) for
+seeding the default avatar/profile images.
+
+_Durable Objects — no manual setup_. The `notify` worker's `RECFLARE_NOTIFICATIONS_HUB`
+binding (class `NotificationsHub`) is provisioned automatically from the migration
+declared in its `wrangler.jsonc` on first deploy — there is no id to create or set.
 
 **Run the development microservices:**
 
@@ -191,9 +256,11 @@ just deploy
 
 Deploying requires `wrangler` to be authenticated against your Cloudflare
 account (`wrangler login`, or `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
-in the environment). Storage resources (D1 databases, KV namespaces, R2 buckets)
-must be created and their ids set in each worker's `wrangler.jsonc` — see the
-inline comments in those files for the exact `wrangler` commands.
+in the environment). It also requires the storage resources to exist and their
+ids to be set in `.env` — see **Create the storage resources** above. At deploy
+time the deploy script splices `RECFLARE_D1` and `RECFLARE_KV` into the `"local"`
+placeholders in each worker's `wrangler.jsonc`; a missing id fails the deploy with
+a message naming the binding.
 
 ## Repository Structure
 
