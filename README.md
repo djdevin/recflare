@@ -99,9 +99,9 @@ but not yet backed by a Worker. Not all services are fully implemented.
 | Videos                  | `videos`                | —                  | Not yet implemented                                               |
 | WWW                     | `www`                   | —                  | Website host (not a Worker)                                       |
 
-Additionally there is a small `ns` worker itself serves this discovery document
-at the apex/`ns` host and isn't listed within it. Each implemented worker has
-its own `README.md` under `apps/<name>/` documenting its routes.
+Additionally, the small `ns` worker itself serves this discovery document at the
+apex/`ns` host and isn't listed within it. Each implemented worker has its own
+`README.md` under `apps/<name>/` documenting its routes.
 
 ## Why Cloudflare?
 
@@ -138,7 +138,7 @@ object storage, a pub/sub or WebSocket layer) and wire up the deployment yoursel
 - A Cloudflare account with a zone (domain) you control, for deploying
 
 Cloudflare's free plan is good enough for testing (100k requests/day) but the
-Rec Room client is pretty chatty. Frequent testing may exhauast that quota.
+Rec Room client is pretty chatty. Frequent testing may exhaust that quota.
 
 See https://developers.cloudflare.com/workers/platform/pricing/#workers
 
@@ -241,8 +241,10 @@ declared in its `wrangler.jsonc` on first deploy — there is no id to create or
 
 **Run the development microservices:**
 
-@todo This works, but the nameserver document won't use local services. You could still
-call each service individually. Each instance of Wrangler runs on a different port number.
+> **Note:** This runs, but the name-server document still advertises the deployed
+> hosts, not your local instances — so service discovery won't resolve locally.
+> You can still call each service directly; each Wrangler instance runs on its own
+> port.
 
 ```bash
 just dev
@@ -296,7 +298,7 @@ For a single worker, scope with -F, e.g. `just deploy -F playersettings`.
 
 ### What year is this for?
 
-This works with 2023 clients. It has been tested with manifest 7859140924515540835. Other clients may not work.
+This works with 2023 clients. It has been tested with manifest `7859140924515540835`. Other clients may not work.
 
 See the "Client" section above for instructions on how to modify a client to connect to this server.
 
@@ -304,7 +306,7 @@ See the "Client" section above for instructions on how to modify a client to con
 
 It's not currently supported. But theoretically, you could.
 
-See "Run the development server" above. It may be possible later as Wrangler will mock remote services. YMMV for now.
+See "Run the development microservices" above. It may be possible later as Wrangler will mock remote services. YMMV for now.
 
 ### Can I use this to make my own server?
 
@@ -312,7 +314,7 @@ Yes, that's the point.
 
 ### Can I copy this project and modify it?
 
-Yes, see the (LICENSE)[LICENSE).
+Yes, see the [LICENSE](LICENSE).
 
 I would love if you contributed your changes back.
 
