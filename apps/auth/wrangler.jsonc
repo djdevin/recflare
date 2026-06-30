@@ -4,12 +4,6 @@
 	"main": "src/auth.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "auth.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// Shared D1 database (also used by the rooms worker). The `auth` worker owns
 	// the `accounts` table; a dedicated migrations_table keeps its migration
 	// history separate from the rooms worker's migrations on the same database.

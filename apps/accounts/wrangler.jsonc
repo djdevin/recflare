@@ -4,12 +4,6 @@
 	"main": "src/accounts.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "accounts.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// Shared D1 database. The `accounts` table schema/migrations are owned by the
 	// `auth` worker; this worker binds it read/write to look up and create accounts.
 	"d1_databases": [

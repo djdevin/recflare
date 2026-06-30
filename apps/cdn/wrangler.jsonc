@@ -6,12 +6,6 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"routes": [
-		{
-			"pattern": "cdn.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// CDN binaries (signature blobs + room build data) are stored as R2 objects
 	// and streamed back by key. Keys are prefixed `sigs/` and `room/`.
 	"r2_buckets": [

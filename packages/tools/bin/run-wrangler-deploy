@@ -5,10 +5,29 @@ set -eu
 NAME=$(jq -r '.name' package.json)
 VERSION=$(get-version)
 
+# Resolve the base domain (and this worker's subdomain) from the gitignored
+# env.json at the repo root, then deploy onto the custom domain via `--domain`.
+# This keeps the real domain out of versioned files — committed wrangler.jsonc
+# has no routes, and the base domain is passed as the DOMAIN var at runtime.
+ROOT=$(git rev-parse --show-toplevel)
+ENV_JSON="$ROOT/env.json"
+if [ ! -f "$ENV_JSON" ]; then
+	echo "error: $ENV_JSON not found — copy env.example.json and set your domain" >&2
+	exit 1
+fi
+
+DIR=$(basename "$PWD")
+DOMAIN=$(jq -r '.domain' "$ENV_JSON")
+# Per-app subdomain override, falling back to the worker's directory name.
+SUBDOMAIN=$(jq -r --arg d "$DIR" '.subdomains[$d] // $d' "$ENV_JSON")
+HOST="$SUBDOMAIN.$DOMAIN"
+
 # Deploy with wrangler using the extracted values as binding variables
-echo "Deploying worker $NAME version $VERSION"
+echo "Deploying worker $NAME version $VERSION to $HOST"
 exec wrangler deploy \
 	--var NAME:"$NAME" \
 	--var SENTRY_RELEASE:"$VERSION" \
+	--var DOMAIN:"$DOMAIN" \
+	--domain "$HOST" \
 	--minify \
 	"$@"

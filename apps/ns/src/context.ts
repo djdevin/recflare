@@ -2,7 +2,12 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
 export type Env = SharedHonoEnv & {
-	// add additional Bindings here
+	/**
+	 * Base domain the service hosts are derived from, e.g. `rec.example.com`.
+	 * Injected at deploy time via `--var DOMAIN`; defaults in `wrangler.jsonc`
+	 * for local dev and tests.
+	 */
+	DOMAIN: string
 }
 
 /** Variables can be extended */

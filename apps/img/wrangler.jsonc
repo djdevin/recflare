@@ -4,12 +4,6 @@
 	"main": "src/img.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "img.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// Images are stored as objects in an R2 bucket and streamed back by key.
 	"r2_buckets": [
 		{

@@ -4,12 +4,6 @@
 	"main": "src/match.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "match.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// Per-player presence store (room instance the player is currently in).
 	// Create with `wrangler kv namespace create MATCH_PRESENCE` and set the id.
 	"kv_namespaces": [

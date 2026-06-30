@@ -4,12 +4,6 @@
 	"main": "src/clubs.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "clubs.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {

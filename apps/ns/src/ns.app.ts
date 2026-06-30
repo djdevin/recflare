@@ -3,15 +3,16 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import endpoints from '../static/endpoints.json'
+import { buildEndpoints } from './endpoints'
 
 import type { App } from './context'
 
 /**
  * Name-server / service-discovery worker served at the apex domain.
  * Returns the endpoints document the game client fetches to discover every
- * service host. Generated from `env.json` by `runx sync` — run it after
- * changing the domain (see `apps/ns/static/endpoints.json`).
+ * service host. Hosts are derived from the `DOMAIN` var, which is injected at
+ * deploy time (see `run-wrangler-deploy`) and defaults in `wrangler.jsonc` for
+ * local dev.
  */
 const app = new Hono<App>()
 	.use(
@@ -27,7 +28,7 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	// Endpoints document. TODO: generate this dynamically per environment.
-	.get('/', (c) => c.json(endpoints))
+	// Endpoints document, derived from the deploy-time base domain.
+	.get('/', (c) => c.json(buildEndpoints(c.env.DOMAIN)))
 
 export default app

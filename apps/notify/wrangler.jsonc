@@ -4,12 +4,6 @@
 	"main": "src/notify.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "notify.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	"durable_objects": {
 		"bindings": [{ "name": "NOTIFICATIONS_HUB", "class_name": "NotificationsHub" }]
 	},

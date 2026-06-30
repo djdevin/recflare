@@ -6,17 +6,12 @@ Name-server / service-discovery worker served on the `ns` subdomain.
 discover every service host (Accounts, API, Auth, Econ, Matchmaking,
 Notifications, …).
 
-The document is served from `static/endpoints.json`, whose hosts are generated
-from the repo-root `env.json` by `runx sync` — every entry is derived from the
-configured base `domain`.
+Each host is built at runtime from the `DOMAIN` var (the base domain) plus the
+service → subdomain map in `src/endpoints.ts`. `DOMAIN` is injected at deploy
+time from the repo-root `env.json` (see `run-wrangler-deploy`) and defaults to
+`rec.example.com` in `wrangler.jsonc` for local dev.
 
 ## Updating endpoints
 
-Change `domain` in `env.json` (or edit the host map in `static/endpoints.json`),
-then regenerate:
-
-```sh
-just sync
-```
-
-(Bundled at build time, so a redeploy is required for changes to take effect.)
+- To change the base domain, edit `domain` in `env.json` and redeploy.
+- To add or rename a service host, edit the map in `src/endpoints.ts`.

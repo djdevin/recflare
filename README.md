@@ -47,12 +47,15 @@ own copy.
 ```bash
 cp env.example.json env.json
 # edit env.json and set "domain" to your domain
-just sync
 ```
 
-`just sync` regenerates the derived config (wrangler route patterns, the `ns`
-service-discovery document, and the api share-link base URL) from `env.json`.
-Re-run it whenever you change `env.json`.
+`just deploy` reads `env.json` at deploy time and passes the base domain to
+wrangler — each worker is attached to its custom domain via `--domain
+<subdomain>.<domain>`, and the base domain is injected as the `DOMAIN` var so
+the `ns` service-discovery document and the api share-link base URL are built at
+runtime. Nothing in version control is rewritten; committed `wrangler.jsonc`
+files have no routes, and per-app subdomain overrides live under `subdomains` in
+`env.json`.
 
 **Run Development Server:**
 

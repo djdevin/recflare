@@ -4,12 +4,6 @@
 	"main": "src/datacollection.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "datacollection.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {

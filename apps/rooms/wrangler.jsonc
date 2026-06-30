@@ -4,12 +4,6 @@
 	"main": "src/rooms.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "rooms.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// Room storage. Create with `wrangler d1 create rec-rooms`, set the id, then
 	// `wrangler d1 migrations apply rec-rooms --remote`.
 	"d1_databases": [

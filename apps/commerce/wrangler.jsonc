@@ -4,12 +4,6 @@
 	"main": "src/commerce.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "commerce.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {

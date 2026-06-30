@@ -4,12 +4,6 @@
 	"main": "src/api.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "api.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	// Shared rooms DB (created + migrated by the `rooms` worker; bound read-only here).
 	"d1_databases": [
 		{
@@ -36,6 +30,7 @@
 	},
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"DOMAIN": "rec.example.com" // base domain; overridden during deployment
 	}
 }

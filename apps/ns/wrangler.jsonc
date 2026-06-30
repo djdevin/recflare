@@ -4,12 +4,6 @@
 	"main": "src/ns.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	"routes": [
-		{
-			"pattern": "ns.rec.example.com",
-			"custom_domain": true
-		}
-	],
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {
@@ -20,6 +14,7 @@
 	},
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		"DOMAIN": "rec.example.com" // base domain; overridden during deployment
 	}
 }

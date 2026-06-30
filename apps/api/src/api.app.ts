@@ -174,7 +174,11 @@ const app = new Hono<App>({ strict: false })
 			VersionRegex: '.*',
 		})
 	)
-	.get('/api/config/v2', (c) => c.json(apiConfigV2))
+	// ShareBaseUrl is derived from the deploy-time base domain; the rest of the
+	// config is static.
+	.get('/api/config/v2', (c) =>
+		c.json({ ...apiConfigV2, ShareBaseUrl: `https://www.${c.env.DOMAIN}/{0}` })
+	)
 	.get('/api/versioncheck/v4', (c) =>
 		c.json({
 			VersionStatus: 0,
