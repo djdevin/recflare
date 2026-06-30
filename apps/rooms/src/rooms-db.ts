@@ -37,6 +37,47 @@ export const SCHEMA_DDL: string[] = [
 /** A stored room — the parsed JSON blob (full client-facing room response). */
 export type Room = Record<string, unknown>
 
+/**
+ * Clone an existing room into a new one owned by `accountId`. Copies the source
+ * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
+ * name, and the new owner; the `base` template tag is dropped so user clones
+ * aren't themselves listed as base rooms. Returns the new room, or null when the
+ * source isn't in D1 or disallows cloning.
+ */
+export async function cloneRoom(
+	db: D1Database,
+	sourceRoomId: number,
+	name: string,
+	accountId: number
+): Promise<Room | null> {
+	const source = await getRoomById(db, sourceRoomId)
+	if (!source || source.CloningAllowed === false) return null
+
+	const row = await db
+		.prepare('SELECT MAX(room_id) AS maxId FROM rooms')
+		.first<{ maxId: number | null }>()
+	const newRoomId = (row?.maxId ?? 0) + 1
+
+	const tags = Array.isArray(source.Tags)
+		? (source.Tags as Array<Record<string, unknown>>).filter(
+				(t) => String(t?.Tag).toLowerCase() !== 'base'
+			)
+		: source.Tags
+
+	const cloned: Room = {
+		...source,
+		RoomId: newRoomId,
+		Name: name,
+		CreatorAccountId: accountId,
+		IsDorm: false,
+		Tags: tags,
+		CreatedAt: new Date().toISOString(),
+	}
+
+	await db.prepare('INSERT INTO rooms (data) VALUES (?1)').bind(JSON.stringify(cloned)).run()
+	return cloned
+}
+
 interface RoomRow {
 	data: string
 }
@@ -79,6 +120,56 @@ export async function getRoomsByCreator(db: D1Database, accountId: number): Prom
 		.bind(accountId)
 		.all<RoomRow>()
 	return parseAll(results)
+}
+
+/**
+ * Rooms the player has favorited (interaction.favorited = 1), most recently
+ * interacted first. Joins the `interaction` table to `rooms`, so a favorited room
+ * no longer in D1 is simply absent. Paginated via skip/take; returns a bare array
+ * of rooms (the client's room-source loaders expect a plain list).
+ */
+export async function getFavoritedRooms(
+	db: D1Database,
+	playerId: number,
+	skip: number,
+	take: number
+): Promise<Room[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT r.data AS data
+			 FROM interaction i
+			 JOIN rooms r ON r.room_id = i.room_id
+			 WHERE i.player_id = ?1 AND i.favorited = 1
+			 ORDER BY i.last_visited_at DESC`
+		)
+		.bind(playerId)
+		.all<RoomRow>()
+	return parseAll(results).slice(skip, skip + take)
+}
+
+/**
+ * Rooms the player has visited (an interaction row with a `last_visited_at`),
+ * most recent first. Like favorites, it joins `interaction` to `rooms`, so a
+ * visited room no longer in D1 is simply absent. Paginated via skip/take; returns
+ * a bare array of rooms (the client's room-source loaders expect a plain list).
+ */
+export async function getVisitedRooms(
+	db: D1Database,
+	playerId: number,
+	skip: number,
+	take: number
+): Promise<Room[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT r.data AS data
+			 FROM interaction i
+			 JOIN rooms r ON r.room_id = i.room_id
+			 WHERE i.player_id = ?1 AND i.last_visited_at IS NOT NULL
+			 ORDER BY i.last_visited_at DESC`
+		)
+		.bind(playerId)
+		.all<RoomRow>()
+	return parseAll(results).slice(skip, skip + take)
 }
 
 /** A player's interaction state with a room. */
@@ -161,14 +252,19 @@ const TAG_ALIASES: Record<string, string[]> = {
 	recroomoriginal: ['rro'],
 }
 
+/** A room's tag names, lowercased (empty when it has no Tags array). */
+function roomTags(room: Room): string[] {
+	const tags = room.Tags
+	if (!Array.isArray(tags)) return []
+	return tags
+		.map((t) => (t as Record<string, unknown> | null)?.Tag)
+		.filter((v): v is string => typeof v === 'string')
+		.map((v) => v.toLowerCase())
+}
+
 /** True if the room carries any of the given (lowercased) tags. */
 function roomHasAnyTag(room: Room, tags: Set<string>): boolean {
-	const roomTags = room.Tags
-	if (!Array.isArray(roomTags)) return false
-	return roomTags.some((t) => {
-		const value = (t as Record<string, unknown> | null)?.Tag
-		return typeof value === 'string' && tags.has(value.toLowerCase())
-	})
+	return roomTags(room).some((t) => tags.has(t))
 }
 
 /**
@@ -201,4 +297,99 @@ export async function searchRooms(
 	}
 
 	return { Results: rooms.slice(skip, skip + take), TotalResults: rooms.length }
+}
+
+/** Engagement score used to order the hot feed (cheers weigh most, then favorites). */
+function hotScore(room: Room): number {
+	const stats = room.Stats as Record<string, unknown> | null | undefined
+	const n = (v: unknown): number => (typeof v === 'number' ? v : 0)
+	return n(stats?.CheerCount) * 3 + n(stats?.FavoriteCount) * 2 + n(stats?.VisitorCount)
+}
+
+/**
+ * The "hot" rooms feed: public, non-dorm rooms not excluded from lists, ordered
+ * by engagement and optionally filtered to a single `tag` (with the same aliases
+ * as search). Paginated via skip/take; returns `{ Results, TotalResults }` like
+ * search. Ties (and the all-zero seed data) fall back to RoomId order so paging
+ * is stable. The dataset is small, so this filters/sorts in memory rather than
+ * in SQL.
+ */
+export async function getHotRooms(
+	db: D1Database,
+	tag: string,
+	skip: number,
+	take: number
+): Promise<{ Results: Room[]; TotalResults: number }> {
+	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	let rooms = parseAll(results).filter(
+		(r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true
+	)
+
+	const t = tag.trim().toLowerCase()
+	if (t !== '') {
+		const accepted = new Set([t, ...(TAG_ALIASES[t] ?? [])])
+		rooms = rooms.filter((r) => roomHasAnyTag(r, accepted))
+	}
+
+	const roomId = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
+	rooms.sort((a, b) => hotScore(b) - hotScore(a) || roomId(a) - roomId(b))
+	return { Results: rooms.slice(skip, skip + take), TotalResults: rooms.length }
+}
+
+/**
+ * Rooms similar to a target room: public, non-dorm rooms (excluding the target)
+ * that share at least one tag with it, ranked by shared-tag count then
+ * engagement. Returns a bare array; empty if the target isn't in D1 or is
+ * untagged. Paginated via skip/take. Small dataset, so done in memory.
+ */
+export async function getSimilarRooms(
+	db: D1Database,
+	roomId: number,
+	skip: number,
+	take: number
+): Promise<Room[]> {
+	const target = await getRoomById(db, roomId)
+	if (!target) return []
+	const targetTags = new Set(roomTags(target))
+	if (targetTags.size === 0) return []
+
+	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const sharedCount = (r: Room): number => roomTags(r).filter((t) => targetTags.has(t)).length
+	const roomIdOf = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
+
+	const scored = parseAll(results)
+		.filter(
+			(r) =>
+				roomIdOf(r) !== roomId &&
+				r.IsDorm !== true &&
+				r.Accessibility === 1 &&
+				r.ExcludeFromLists !== true
+		)
+		.map((room) => ({ room, shared: sharedCount(room) }))
+		.filter((x) => x.shared > 0)
+
+	scored.sort(
+		(a, b) =>
+			b.shared - a.shared ||
+			hotScore(b.room) - hotScore(a.room) ||
+			roomIdOf(a.room) - roomIdOf(b.room)
+	)
+	return scored.slice(skip, skip + take).map((x) => x.room)
+}
+
+/**
+ * "Base" rooms — the template rooms tagged `base` that the client offers as
+ * starting points when creating a room. Unlike the public feeds these are
+ * returned regardless of accessibility (most base rooms aren't publicly listed).
+ * Ordered by RoomId for stable paging. Paginated via skip/take; returns a bare
+ * array. Small dataset, so done in memory.
+ */
+export async function getBaseRooms(db: D1Database, skip: number, take: number): Promise<Room[]> {
+	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const base = new Set(['base'])
+	const roomIdOf = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
+	return parseAll(results)
+		.filter((r) => roomHasAnyTag(r, base))
+		.sort((a, b) => roomIdOf(a) - roomIdOf(b))
+		.slice(skip, skip + take)
 }

@@ -99,9 +99,14 @@ describe('rooms endpoints', () => {
 		expect(body.map((r) => r.Name)).toEqual(['RecCenter'])
 	})
 
-	it('GET /rooms/ownedby/me returns the caller created rooms (auth-scoped)', async () => {
-		// No token → stub account 1, which owns all the seeded rooms.
-		const mine = (await (await SELF.fetch(`${ORIGIN}/rooms/ownedby/me`)).json()) as unknown[]
+	it('GET /rooms/ownedby/me is auth-gated and scoped to the caller', async () => {
+		// No token → 401, no stub-account fallback (would otherwise leak account 1).
+		const noAuth = await SELF.fetch(`${ORIGIN}/rooms/ownedby/me`)
+		expect(noAuth.status).toBe(401)
+		// Account 1 owns all the seeded rooms.
+		const mine = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/ownedby/me`, { headers: await bearer('1') })
+		).json()) as unknown[]
 		expect(mine.length).toBe(importRooms.length)
 		// A different account owns none of them.
 		const other = (await (
@@ -145,6 +150,255 @@ describe('rooms endpoints', () => {
 		}
 		expect(aliased.TotalResults).toBe(direct.TotalResults)
 		expect(aliased.TotalResults).toBeGreaterThan(0)
+	})
+
+	it('GET /rooms/favoritedby/me returns a bare array of the caller favorited rooms (auth-scoped)', async () => {
+		const headers = await bearer('777')
+
+		// Auth-gated — no token is a 401, never account 1's favorites.
+		expect((await SELF.fetch(`${ORIGIN}/rooms/favoritedby/me`)).status).toBe(401)
+
+		// No favorites yet → empty array.
+		const empty = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/favoritedby/me`, { headers })
+		).json()) as unknown[]
+		expect(empty).toEqual([])
+
+		// Favorite two real rooms, then they come back.
+		for (const id of [2, 12]) {
+			await SELF.fetch(`${ORIGIN}/rooms/${id}/interactionby/me/favorite`, {
+				method: 'PUT',
+				headers,
+			})
+		}
+		const body = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/favoritedby/me?skip=0&take=100`, { headers })
+		).json()) as Array<{ RoomId: number }>
+		expect(body.map((r) => r.RoomId).sort((a, b) => a - b)).toEqual([2, 12])
+
+		// Un-favoriting one drops it from the list.
+		await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/favorite`, { method: 'PUT', headers })
+		const afterUnfav = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/favoritedby/me`, { headers })
+		).json()) as Array<{ RoomId: number }>
+		expect(afterUnfav.map((r) => r.RoomId)).toEqual([12])
+
+		// Scoped per player — a different account sees none.
+		const other = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/favoritedby/me`, { headers: await bearer('778') })
+		).json()) as unknown[]
+		expect(other).toEqual([])
+	})
+
+	it('GET /rooms/visitedby/me returns a bare array of rooms the caller has interacted with (auth-scoped)', async () => {
+		const headers = await bearer('779')
+
+		// No interactions yet → empty array.
+		const empty = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers })
+		).json()) as unknown[]
+		expect(empty).toEqual([])
+
+		// Interacting (cheer/favorite) records a last-visit on those rooms.
+		await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/cheer`, { method: 'PUT', headers })
+		await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'PUT', headers })
+
+		const body = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me?skip=0&take=100`, { headers })
+		).json()) as Array<{ RoomId: number }>
+		expect(body.map((r) => r.RoomId).sort((a, b) => a - b)).toEqual([2, 12])
+
+		// Un-cheering still counts as visited (the interaction row persists).
+		await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/cheer`, { method: 'PUT', headers })
+		const afterUncheer = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers })
+		).json()) as unknown[]
+		expect(afterUncheer.length).toBe(2)
+
+		// Scoped per player — a different account sees none.
+		const other = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: await bearer('780') })
+		).json()) as unknown[]
+		expect(other).toEqual([])
+	})
+
+	it('GET /rooms/hot returns a paginated { Results, TotalResults } of public rooms', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/hot?skip=0&take=100`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Results: Array<{ RoomId: number; IsDorm?: boolean }>
+			TotalResults: number
+		}
+		expect(body.Results.length).toBeGreaterThan(0)
+		expect(body.TotalResults).toBeGreaterThanOrEqual(body.Results.length)
+		// The dorm (RoomId 1) is non-public, so it's never in the feed.
+		expect(body.Results.some((r) => r.RoomId === 1 || r.IsDorm === true)).toBe(false)
+	})
+
+	it('GET /rooms/hot?tag=rro filters to rro-tagged rooms', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/hot?tag=rro&skip=0&take=100`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Results: Array<{ Name: string; Tags?: Array<{ Tag: string }> }>
+			TotalResults: number
+		}
+		expect(body.Results.length).toBeGreaterThan(0)
+		// Every result carries the rro tag, and a known rro room is present.
+		expect(body.Results.every((r) => (r.Tags ?? []).some((t) => t.Tag === 'rro'))).toBe(true)
+		expect(body.Results.some((r) => r.Name === 'RecCenter')).toBe(true)
+	})
+
+	it('GET /rooms/hot respects take pagination (TotalResults is the full count)', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/hot?tag=rro&skip=0&take=2`)
+		const body = (await res.json()) as { Results: unknown[]; TotalResults: number }
+		expect(body.Results.length).toBeLessThanOrEqual(2)
+		expect(body.TotalResults).toBeGreaterThan(body.Results.length)
+	})
+
+	it('GET /rooms/hot aliases #recroomoriginal to the rro tag', async () => {
+		const aliased = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/hot?tag=recroomoriginal`)
+		).json()) as { TotalResults: number }
+		const direct = (await (await SELF.fetch(`${ORIGIN}/rooms/hot?tag=rro`)).json()) as {
+			TotalResults: number
+		}
+		expect(aliased.TotalResults).toBe(direct.TotalResults)
+		expect(aliased.TotalResults).toBeGreaterThan(0)
+	})
+
+	it('GET /rooms/base returns a bare array of base/template rooms (incl. non-public)', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/base`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Array<{
+			RoomId: number
+			Accessibility: number
+			Tags?: Array<{ Tag: string }>
+		}>
+		expect(Array.isArray(body)).toBe(true)
+		expect(body.length).toBeGreaterThan(0)
+		// Every result carries the `base` tag.
+		expect(body.every((r) => (r.Tags ?? []).some((t) => t.Tag === 'base'))).toBe(true)
+		// Includes rooms that aren't publicly listed (Accessibility != 1) — base
+		// rooms bypass the public filter the feeds use.
+		expect(body.some((r) => r.Accessibility !== 1)).toBe(true)
+	})
+
+	it('GET /rooms/base respects take pagination', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/base?skip=0&take=5`)
+		const body = (await res.json()) as unknown[]
+		expect(body.length).toBeLessThanOrEqual(5)
+	})
+
+	it('GET /rooms/:id/similar returns a bare array of tag-sharing rooms (excluding self)', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/2/similar`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Array<{ RoomId: number; Tags?: Array<{ Tag: string }> }>
+		expect(Array.isArray(body)).toBe(true)
+		expect(body.length).toBeGreaterThan(0)
+		// Never includes the target room itself.
+		expect(body.some((r) => r.RoomId === 2)).toBe(false)
+		// Every result shares the `rro` tag RecCenter (room 2) carries.
+		expect(body.every((r) => (r.Tags ?? []).some((t) => t.Tag === 'rro'))).toBe(true)
+	})
+
+	it('GET /rooms/:id/similar respects take pagination', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/2/similar?skip=0&take=3`)
+		const body = (await res.json()) as unknown[]
+		expect(body.length).toBeLessThanOrEqual(3)
+	})
+
+	it('GET /rooms/:id/similar returns [] for a room not in D1', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/99999/similar`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	it('POST /rooms/:id/clone clones a base room into a new owned room', async () => {
+		const headers = {
+			...(await bearer('801')),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		}
+		const post = async (id: number, name: string) =>
+			(await (
+				await SELF.fetch(`${ORIGIN}/rooms/${id}/clone`, {
+					method: 'POST',
+					headers,
+					body: new URLSearchParams({ name }).toString(),
+				})
+			).json()) as { success: boolean; error: string; value: { RoomId: number; Name: string; CreatorAccountId: number; Tags?: Array<{ Tag: string }> } | null }
+
+		// Clone MakerRoom (base, RoomId 24) → a fresh room owned by the caller (801).
+		const ok = await post(24, 'MyMakerClone')
+		expect(ok.success).toBe(true)
+		expect(ok.error).toBe('')
+		expect(ok.value).not.toBeNull()
+		expect(ok.value!.Name).toBe('MyMakerClone')
+		expect(ok.value!.CreatorAccountId).toBe(801)
+		expect(ok.value!.RoomId).toBeGreaterThan(51)
+		// The `base` template tag is dropped so clones aren't listed as base rooms.
+		expect((ok.value!.Tags ?? []).some((t) => t.Tag === 'base')).toBe(false)
+
+		// It persists and is fetchable by its new id.
+		const fetched = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/${ok.value!.RoomId}`)
+		).json()) as { Name: string }
+		expect(fetched.Name).toBe('MyMakerClone')
+
+		// Duplicate name is rejected.
+		const dup = await post(24, 'MyMakerClone')
+		expect(dup).toMatchObject({ success: false, value: null })
+		expect(dup.error).toMatch(/already exists/i)
+	})
+
+	it('POST /rooms/:id/clone requires auth (401, no account-1 fallback)', async () => {
+		// No Authorization header → hard 401, and nothing is created.
+		const res = await SELF.fetch(`${ORIGIN}/rooms/24/clone`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ name: 'UnauthedClone' }).toString(),
+		})
+		expect(res.status).toBe(401)
+		expect(await res.json()).toMatchObject({ success: false, value: null })
+
+		// An invalid/garbage token is also rejected.
+		const bad = await SELF.fetch(`${ORIGIN}/rooms/24/clone`, {
+			method: 'POST',
+			headers: {
+				Authorization: 'Bearer not.a.jwt',
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams({ name: 'UnauthedClone' }).toString(),
+		})
+		expect(bad.status).toBe(401)
+
+		// The room was never created.
+		const lookup = await SELF.fetch(`${ORIGIN}/rooms?name=UnauthedClone`)
+		expect(await lookup.json()).toEqual({})
+	})
+
+	it('POST /rooms/:id/clone validates name and cloneability', async () => {
+		const headers = {
+			...(await bearer('802')),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		}
+		const post = async (id: number, body?: string) =>
+			(await (
+				await SELF.fetch(`${ORIGIN}/rooms/${id}/clone`, { method: 'POST', headers, body })
+			).json()) as { success: boolean; error: string; value: unknown }
+
+		// Missing name.
+		const noName = await post(24, new URLSearchParams({ name: '' }).toString())
+		expect(noName).toMatchObject({ success: false, value: null })
+		expect(noName.error).toMatch(/must enter a name/i)
+
+		// The dorm (RoomId 1) disallows cloning.
+		const notCloneable = await post(1, new URLSearchParams({ name: 'CannotCloneDorm' }).toString())
+		expect(notCloneable).toMatchObject({ success: false, value: null })
+		expect(notCloneable.error).toMatch(/can't clone/i)
+
+		// A source room not in D1.
+		const missing = await post(99999, new URLSearchParams({ name: 'CloneOfNothing' }).toString())
+		expect(missing).toMatchObject({ success: false, value: null })
 	})
 
 	it('GET /photon_access_token (bare + /roomserver) returns permissions', async () => {
