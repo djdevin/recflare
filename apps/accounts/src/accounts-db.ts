@@ -35,6 +35,8 @@ export interface Account {
 	createdAt: string
 	/** Set via POST /account/me/email; absent until the player provides one. */
 	email?: string
+	/** Set via PUT /account/me/bio; read back via GET /account/:id/bio. */
+	bio?: string
 }
 
 interface AccountRow {

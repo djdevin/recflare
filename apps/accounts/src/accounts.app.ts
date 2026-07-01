@@ -117,11 +117,12 @@ const app = new Hono<App>()
 		return c.json(ids.map((id) => toAccountDto(stored.get(id) ?? defaultAccount(id))))
 	})
 
-	.get('/account/:id/bio', (c) => {
+	.get('/account/:id/bio', async (c) => {
 		const accountId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(accountId)) return c.body(null, 400)
-		// TODO: query PlayerBios; no binding yet so the bio is always empty.
-		return c.json({ accountId, bio: '' })
+		// Bio is stored on the account JSON (set via PUT /account/me/bio).
+		const account = await getAccount(c.env.DB, accountId)
+		return c.json({ accountId, bio: account?.bio ?? '' })
 	})
 
 	.get('/account/:id', async (c) => {
@@ -192,7 +193,8 @@ const app = new Hono<App>()
 	.put('/account/me/bio', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		await formField(c, 'bio') // TODO: upsert into PlayerBios.
+		const bio = await formField(c, 'bio')
+		await updateAccount(c.env.DB, id, { bio })
 		return c.json({ success: true })
 	})
 

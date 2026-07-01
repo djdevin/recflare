@@ -232,6 +232,23 @@ describe('auth-gated endpoints', () => {
 		expect(((await me.json()) as { identityFlags: number }).identityFlags).toBe(384)
 	})
 
+	test('PUT /account/me/bio 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/bio`, { ...form({ bio: 'x' }) })
+		expect(res.status).toBe(401)
+	})
+
+	test('PUT /account/me/bio persists the bio, read back via GET /account/:id/bio', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/bio`, {
+			...form({ bio: 'Devin!' }),
+			headers: { ...(await bearer('890')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+
+		const bio = await exports.default.fetch(`${ORIGIN}/account/890/bio`)
+		expect(await bio.json()).toEqual({ accountId: 890, bio: 'Devin!' })
+	})
+
 	test('POST /account/me/email 401s without a token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/me/email`, {
 			...form({ email: 'a@b.com' }),
