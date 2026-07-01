@@ -44,12 +44,12 @@ beforeAll(async () => {
 	await env.DB.prepare(
 		`CREATE TABLE IF NOT EXISTS accounts (
 			data TEXT NOT NULL,
-			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.AccountId')) VIRTUAL,
-			username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Username'))) VIRTUAL
+			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL,
+			username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL
 		)`
 	).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
-		.bind(JSON.stringify({ AccountId: 42, Username: 'Tester', ProfileImage: 'DefaultProfileImage.jpg' }))
+		.bind(JSON.stringify({ accountId: 42, username: 'Tester', profileImage: 'DefaultProfileImage.jpg' }))
 		.run()
 })
 
@@ -374,11 +374,11 @@ describe('images', () => {
 		const { ImageName } = (await res.json()) as { ImageName: string }
 		expect(ImageName).toMatch(/^[0-9a-f]+\.jpg$/)
 
-		// The account row now points its ProfileImage at the uploaded key.
+		// The account row now points its profileImage at the uploaded key.
 		const row = await env.DB.prepare('SELECT data FROM accounts WHERE account_id = 42').first<{
 			data: string
 		}>()
-		expect(JSON.parse(row!.data).ProfileImage).toBe(ImageName)
+		expect(JSON.parse(row!.data).profileImage).toBe(ImageName)
 	})
 
 	test('POST /api/images/v4/uploadsaved 401s without a bearer token', async () => {

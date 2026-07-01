@@ -289,28 +289,32 @@ describe('rooms endpoints', () => {
 		expect(body.length).toBeLessThanOrEqual(5)
 	})
 
-	it('GET /rooms/:id/similar returns a bare array of tag-sharing rooms (excluding self)', async () => {
+	it('GET /rooms/:id/similar returns { Results, TotalResults } of tag-sharing rooms (excluding self)', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/rooms/2/similar`)
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as Array<{ RoomId: number; Tags?: Array<{ Tag: string }> }>
-		expect(Array.isArray(body)).toBe(true)
-		expect(body.length).toBeGreaterThan(0)
+		const body = (await res.json()) as {
+			Results: Array<{ RoomId: number; Tags?: Array<{ Tag: string }> }>
+			TotalResults: number
+		}
+		expect(body.Results.length).toBeGreaterThan(0)
+		expect(body.TotalResults).toBeGreaterThanOrEqual(body.Results.length)
 		// Never includes the target room itself.
-		expect(body.some((r) => r.RoomId === 2)).toBe(false)
+		expect(body.Results.some((r) => r.RoomId === 2)).toBe(false)
 		// Every result shares the `rro` tag RecCenter (room 2) carries.
-		expect(body.every((r) => (r.Tags ?? []).some((t) => t.Tag === 'rro'))).toBe(true)
+		expect(body.Results.every((r) => (r.Tags ?? []).some((t) => t.Tag === 'rro'))).toBe(true)
 	})
 
 	it('GET /rooms/:id/similar respects take pagination', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/rooms/2/similar?skip=0&take=3`)
-		const body = (await res.json()) as unknown[]
-		expect(body.length).toBeLessThanOrEqual(3)
+		const body = (await res.json()) as { Results: unknown[]; TotalResults: number }
+		expect(body.Results.length).toBeLessThanOrEqual(3)
+		expect(body.TotalResults).toBeGreaterThan(body.Results.length)
 	})
 
-	it('GET /rooms/:id/similar returns [] for a room not in D1', async () => {
+	it('GET /rooms/:id/similar returns an empty result for a room not in D1', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/rooms/99999/similar`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([])
+		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
 	})
 
 	it('POST /rooms/:id/clone clones a base room into a new owned room', async () => {
@@ -399,6 +403,73 @@ describe('rooms endpoints', () => {
 		// A source room not in D1.
 		const missing = await post(99999, new URLSearchParams({ name: 'CloneOfNothing' }).toString())
 		expect(missing).toMatchObject({ success: false, value: null })
+	})
+
+	const putForm = async (path: string, fields: Record<string, string>, sub?: string) =>
+		SELF.fetch(`${ORIGIN}${path}`, {
+			method: 'PUT',
+			headers: {
+				...(sub ? await bearer(sub) : {}),
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams(fields).toString(),
+		})
+
+	// Room-mutation envelope helper.
+	type RoomResult = { Success: boolean; Value: unknown; ErrorId: string | null; Error: string | null }
+	const bodyOf = async (res: Response) => (await res.json()) as RoomResult
+
+	it('PUT /rooms/:id/description is auth-gated, owner-only, and persists', async () => {
+		// No token → 401 (auth gate).
+		expect((await putForm('/rooms/2/description', { description: 'x' })).status).toBe(401)
+		// Not the owner (RecCenter is owned by account 1) → 200 envelope, Success:false.
+		expect(await bodyOf(await putForm('/rooms/2/description', { description: 'x' }, '999'))).toMatchObject(
+			{ Success: false, ErrorId: 'Rooms.NotOwner' }
+		)
+		// Unknown room → Rooms.DoesntExist envelope.
+		expect(await bodyOf(await putForm('/rooms/99999/description', { description: 'x' }, '1'))).toMatchObject(
+			{ Success: false, ErrorId: 'Rooms.DoesntExist', Error: 'This room does not exist!' }
+		)
+
+		// Owner updates it, and it persists.
+		const ok = await putForm('/rooms/2/description', { description: 'blah blah blah' }, '1')
+		expect(ok.status).toBe(200)
+		expect(await bodyOf(ok)).toMatchObject({ Success: true, Value: null, ErrorId: null, Error: null })
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { Description: string }
+		expect(room.Description).toBe('blah blah blah')
+	})
+
+	it('PUT /rooms/:id/name is auth-gated, owner-only, unique, and persists', async () => {
+		// No token → 401 (auth gate).
+		expect((await putForm('/rooms/2/name', { name: 'Whatever' })).status).toBe(401)
+		// Wrong owner / unknown room → Success:false envelopes.
+		expect(await bodyOf(await putForm('/rooms/2/name', { name: 'Whatever' }, '999'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.NotOwner',
+		})
+		expect(await bodyOf(await putForm('/rooms/99999/name', { name: 'Whatever' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.DoesntExist',
+		})
+		// Empty name → Success:false.
+		expect(await bodyOf(await putForm('/rooms/2/name', { name: '  ' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.InvalidName',
+		})
+		// A name already used by a different room (GoldenTrophy is room 12).
+		expect(await bodyOf(await putForm('/rooms/2/name', { name: 'GoldenTrophy' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.AlreadyExists',
+			Error: 'A room with that name already exists!',
+		})
+
+		// Owner renames to a free name, and it persists (findable by the new name).
+		const ok = await putForm('/rooms/2/name', { name: 'RenamedCenter' }, '1')
+		expect(await bodyOf(ok)).toMatchObject({ Success: true })
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms?name=RenamedCenter`)).json()) as {
+			RoomId: number
+		}
+		expect(room.RoomId).toBe(2)
 	})
 
 	it('GET /photon_access_token (bare + /roomserver) returns permissions', async () => {

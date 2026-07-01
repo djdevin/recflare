@@ -17,6 +17,8 @@ import {
 	getSimilarRooms,
 	getVisitedRooms,
 	searchRooms,
+	setRoomDescription,
+	setRoomName,
 	toggleCheer,
 	toggleFavorite,
 } from './rooms-db'
@@ -90,6 +92,22 @@ async function authedAccountId(c: Context<App>): Promise<number | null> {
 /** 401 for the auth-gated `*by/me` endpoints — no stub-account fallback. */
 function unauthorized(c: Context<App>) {
 	return c.json({ error: 'Unauthorized' }, 401)
+}
+
+/**
+ * Room-mutation result envelope: `{ Success, Value, ErrorId, Error }`, always
+ * HTTP 200 (the client reads `Success`). `ErrorId`/`Error` are null on success.
+ */
+function roomResult(
+	c: Context<App>,
+	fields: { Success: boolean; Value?: unknown; ErrorId?: string; Error?: string }
+) {
+	return c.json({
+		Success: fields.Success,
+		Value: fields.Value ?? null,
+		ErrorId: fields.ErrorId ?? null,
+		Error: fields.Error ?? null,
+	})
 }
 
 /** Client envelope for room clone results: `{ success, error, value }`. */
@@ -273,8 +291,87 @@ const app = new Hono<App>()
 		return cloneResult(c, room)
 	})
 
+	// Update a room's description. Auth-gated (401) and owner-only. Business results
+	// use the `{ Success, Value, ErrorId, Error }` envelope at HTTP 200.
+	.put('/rooms/:roomId{[0-9]+}/description', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (room.CreatorAccountId !== accountId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const description = typeof body.description === 'string' ? body.description : ''
+		await setRoomDescription(c.env.DB, roomId, description)
+		return roomResult(c, { Success: true })
+	})
+
+	// Rename a room. Auth-gated (401) and owner-only; the new name must be non-empty
+	// and not already taken by another room. Business results use the
+	// `{ Success, Value, ErrorId, Error }` envelope at HTTP 200.
+	// NOTE: the ErrorId strings (besides Rooms.DoesntExist) are best guesses.
+	.put('/rooms/:roomId{[0-9]+}/name', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (room.CreatorAccountId !== accountId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const name = typeof body.name === 'string' ? body.name.trim() : ''
+		if (name === '') {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.InvalidName',
+				Error: 'You must enter a name for your room!',
+			})
+		}
+
+		// Reject if a different room already uses this name (case-insensitive).
+		const existing = await getRoomByName(c.env.DB, name)
+		if (existing && existing.RoomId !== roomId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.AlreadyExists',
+				Error: 'A room with that name already exists!',
+			})
+		}
+
+		await setRoomName(c.env.DB, roomId, name)
+		return roomResult(c, { Success: true })
+	})
+
 	// Rooms similar to the given room (sharing tags). Paginated via skip/take (take
-	// defaults to 100). Returns a bare array; empty when the room is unknown/untagged.
+	// defaults to 100). Returns `{ Results, TotalResults }`; empty when the room is
+	// unknown/untagged.
 	.get('/rooms/:roomId{[0-9]+}/similar', async (c) => {
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100

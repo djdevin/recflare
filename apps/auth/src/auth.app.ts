@@ -109,20 +109,14 @@ const app = new Hono<App>()
 	// EAC challenge — a fresh GUID, JSON-quoted, served as plain text.
 	.get('/eac/challenge', (c) => c.text(`"AA=="`))
 
-	// Cached logins for a platform id. No DB binding yet — always empty.
+	// Cached logins for a platform id. No CachedLogins storage yet, so there's never
+	// a cached account — return []. The client then goes through a fresh login /
+	// create_account instead of auto-logging into a stub account.
 	.get('/cachedlogin/forplatformid/:platform/:id', (c) => {
 		const { platform, id } = c.req.param()
 		logger.info('cached login lookup', { platform, id })
-		// TODO: query CachedLogins once a DB binding exists.
-		return c.json([
-			{
-				accountId: 1,
-				platform: '0',
-				platformId: '0',
-				lastLoginTime: '2026-06-10T00:00:00Z',
-				requirePassword: false,
-			},
-		])
+		// TODO: query CachedLogins once they're persisted.
+		return c.json([])
 	})
 
 	// Bulk cached-login lookup by platform id (friends resolution). The client
@@ -141,17 +135,24 @@ const app = new Hono<App>()
 		const platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
 
 		// grant_type=create_account mints + persists a brand-new account (with an
-		// auto-assigned random username — players don't choose one initially). The
-		// token's `sub` is the new account's id. Otherwise use the posted account_id,
-		// falling back to "1" (the cachedlogin stub hands the client account 1).
+		// auto-assigned random username — players don't choose one initially) and the
+		// token's `sub` is its id. Otherwise the request MUST post a valid account_id —
+		// never fall back to a stub account (issuing account 1 to anyone would be bad).
 		let accountId: string
 		if (grantType === 'create_account') {
-			const account = await createAccount(c.env.DB, { Platforms: platformInt || 0 })
-			accountId = String(account.AccountId)
+			const account = await createAccount(c.env.DB, { platforms: platformInt || 0 })
+			accountId = String(account.accountId)
 			// Place the new player in Orientation (they don't matchmake into it).
-			await placeNewPlayerInOrientation(c.env, account.AccountId)
+			await placeNewPlayerInOrientation(c.env, account.accountId)
 		} else {
-			accountId = typeof body.account_id === 'string' && body.account_id ? body.account_id : '1'
+			const posted = typeof body.account_id === 'string' ? body.account_id.trim() : ''
+			if (!/^\d+$/.test(posted)) {
+				return c.json(
+					{ error: 'invalid_request', error_description: 'account_id is required' },
+					400
+				)
+			}
+			accountId = posted
 		}
 
 		const accessToken = await generateToken(accountId, platformId, platform)

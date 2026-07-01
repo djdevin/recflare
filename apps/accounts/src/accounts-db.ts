@@ -15,24 +15,26 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS accounts (
 		data TEXT NOT NULL,
 		avatar TEXT,
-		account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.AccountId')) VIRTUAL,
-		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Username'))) VIRTUAL
+		account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL,
+		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL
 	)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account_id ON accounts (account_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_accounts_username_lower ON accounts (username_lower)`,
 ]
 
-/** Client-facing account shape (PascalCase, as the client expects). */
+/** Client-facing account shape (camelCase, exactly as the client's AccountDTO). */
 export interface Account {
-	AccountId: number
-	Username: string
-	DisplayName: string
-	ProfileImage: string
-	IsJunior: boolean
-	Platforms: number
-	PersonalPronouns: number
-	IdentityFlags: number
-	CreatedAt: string
+	accountId: number
+	username: string
+	displayName: string
+	profileImage: string
+	isJunior: boolean
+	platforms: number
+	personalPronouns: number
+	identityFlags: number
+	createdAt: string
+	/** Set via POST /account/me/email; absent until the player provides one. */
+	email?: string
 }
 
 interface AccountRow {
@@ -68,15 +70,15 @@ export function randomUsername(): string {
  */
 export function defaultAccount(id: number, overrides: Partial<Account> = {}): Account {
 	return {
-		AccountId: id,
-		Username: `Player${id}`,
-		DisplayName: `Player${id}`,
-		ProfileImage: 'DefaultProfileImage.jpg',
-		IsJunior: false,
-		Platforms: 0,
-		PersonalPronouns: 0,
-		IdentityFlags: 0,
-		CreatedAt: new Date().toISOString(),
+		accountId: id,
+		username: `Player${id}`,
+		displayName: `Player${id}`,
+		profileImage: 'DefaultProfileImage.jpg',
+		isJunior: false,
+		platforms: 0,
+		personalPronouns: 0,
+		identityFlags: 0,
+		createdAt: new Date().toISOString(),
 		...overrides,
 	}
 }
@@ -111,7 +113,7 @@ export async function updateAccount(
 	overrides: Partial<Account>
 ): Promise<Account> {
 	const current = (await getAccount(db, id)) ?? defaultAccount(id)
-	const updated: Account = { ...current, ...overrides, AccountId: id }
+	const updated: Account = { ...current, ...overrides, accountId: id }
 	const data = JSON.stringify(updated)
 	const res = await db
 		.prepare('UPDATE accounts SET data = ?2 WHERE account_id = ?1')
@@ -136,8 +138,8 @@ export async function createAccount(
 		.prepare('SELECT COALESCE(MAX(account_id), 1) + 1 AS next FROM accounts')
 		.first<{ next: number }>()
 	const id = row?.next ?? 2
-	const username = overrides.Username ?? randomUsername()
-	const account = defaultAccount(id, { Username: username, DisplayName: username, ...overrides })
+	const username = overrides.username ?? randomUsername()
+	const account = defaultAccount(id, { username, displayName: username, ...overrides })
 	await db.prepare('INSERT INTO accounts (data) VALUES (?1)').bind(JSON.stringify(account)).run()
 	return account
 }

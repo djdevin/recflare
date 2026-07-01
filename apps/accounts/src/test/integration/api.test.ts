@@ -20,8 +20,8 @@ beforeAll(async () => {
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
 	await env.DB.batch([
-		insert.bind(JSON.stringify({ AccountId: 0, Username: 'RecRoom', DisplayName: 'Rec Room' })),
-		insert.bind(JSON.stringify({ AccountId: 1, Username: 'Coach', DisplayName: 'Coach' })),
+		insert.bind(JSON.stringify({ accountId: 0, username: 'RecRoom', displayName: 'Rec Room' })),
+		insert.bind(JSON.stringify({ accountId: 1, username: 'Coach', displayName: 'Coach' })),
 	])
 })
 
@@ -70,10 +70,10 @@ describe('public endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/123`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toMatchObject({
-			AccountId: 123,
-			Username: 'Player123',
-			DisplayName: 'Player123',
-			ProfileImage: 'DefaultProfileImage.jpg',
+			accountId: 123,
+			username: 'Player123',
+			displayName: 'Player123',
+			profileImage: 'DefaultProfileImage.jpg',
 		})
 	})
 
@@ -85,12 +85,12 @@ describe('public endpoints', () => {
 	test('GET /account/bulk resolves stored accounts and synthesizes the rest', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/bulk?id=1&id=2,3`)
 		expect(res.status).toBe(200)
-		const accounts = (await res.json()) as Array<{ AccountId: number; Username: string }>
+		const accounts = (await res.json()) as Array<{ accountId: number; username: string }>
 		// Every requested id is present and in order.
-		expect(accounts.map((a) => a.AccountId)).toEqual([1, 2, 3])
+		expect(accounts.map((a) => a.accountId)).toEqual([1, 2, 3])
 		// id 1 is the seeded Coach account; 2 and 3 fall back to synthesized defaults.
-		expect(accounts[0].Username).toBe('Coach')
-		expect(accounts[1].Username).toBe('Player2')
+		expect(accounts[0].username).toBe('Coach')
+		expect(accounts[1].username).toBe('Player2')
 	})
 
 	test('GET /account/:id/bio returns an empty bio', async () => {
@@ -103,20 +103,20 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
 			success: boolean
-			value: { AccountId: number; Username: string; DisplayName: string }
+			value: { accountId: number; username: string; displayName: string }
 		}
 		expect(body.success).toBe(true)
 		// Id is allocated above the seeded system accounts (0, 1).
-		expect(body.value.AccountId).toBeGreaterThanOrEqual(2)
+		expect(body.value.accountId).toBeGreaterThanOrEqual(2)
 		// Username is auto-assigned (not the synthesized "Player<id>" fallback) and
 		// the display name mirrors it.
-		expect(body.value.Username).not.toMatch(/^Player\d+$/)
-		expect(body.value.Username.length).toBeGreaterThan(0)
-		expect(body.value.DisplayName).toBe(body.value.Username)
+		expect(body.value.username).not.toMatch(/^Player\d+$/)
+		expect(body.value.username.length).toBeGreaterThan(0)
+		expect(body.value.displayName).toBe(body.value.username)
 		// It's retrievable afterwards.
-		const lookup = await exports.default.fetch(`${ORIGIN}/account/${body.value.AccountId}`)
-		const found = (await lookup.json()) as { Username: string }
-		expect(found.Username).toBe(body.value.Username)
+		const lookup = await exports.default.fetch(`${ORIGIN}/account/${body.value.accountId}`)
+		const found = (await lookup.json()) as { username: string }
+		expect(found.username).toBe(body.value.username)
 	})
 })
 
@@ -137,15 +137,21 @@ describe('auth-gated endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer() })
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as Record<string, unknown>
+		// Account JSON is camelCase (the client's AccountDTO), not the PascalCase we
+		// store internally.
 		expect(body).toMatchObject({
-			AccountId: 42,
-			Username: 'Player42',
-			AvailableUsernameChanges: 1,
+			accountId: 42,
+			username: 'Player42',
+			personalPronouns: 0,
+			identityFlags: 0,
+			availableUsernameChanges: 1,
 		})
-		// JuniorState + ParentAccountId must be omitted when null, not emitted as
-		// null, or the client's enum parser throws on `juniorState`.
-		expect('JuniorState' in body).toBe(false)
-		expect('ParentAccountId' in body).toBe(false)
+		// juniorState + parentAccountId must be omitted when null, not emitted as
+		// null, or the client's enum parser throws on `juniorState`. `phone` isn't
+		// part of the shape.
+		expect('juniorState' in body).toBe(false)
+		expect('parentAccountId' in body).toBe(false)
+		expect('phone' in body).toBe(false)
 	})
 
 	test('GET /parentalcontrol/me returns the flags', async () => {
@@ -196,6 +202,64 @@ describe('auth-gated endpoints', () => {
 
 		// The stored value is returned by the self account (no hardcoded override).
 		const me = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('777') })
-		expect(((await me.json()) as { ProfileImage: string }).ProfileImage).toBe('deadbeef.jpg')
+		expect(((await me.json()) as { profileImage: string }).profileImage).toBe('deadbeef.jpg')
+	})
+
+	test('PUT /account/me/identityflags 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/identityflags`, {
+			...form({ identityFlags: '384' }),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('PUT /account/me/identityflags 400s on a non-numeric value', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/identityflags`, {
+			...form({ identityFlags: 'nope' }),
+			headers: { ...(await bearer('889')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(400)
+	})
+
+	test('PUT /account/me/identityflags persists the flags, surfaced by /account/me', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/identityflags`, {
+			...form({ identityFlags: '384' }),
+			headers: { ...(await bearer('889')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+
+		const me = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('889') })
+		expect(((await me.json()) as { identityFlags: number }).identityFlags).toBe(384)
+	})
+
+	test('POST /account/me/email 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/email`, {
+			...form({ email: 'a@b.com' }),
+			method: 'POST',
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /account/me/email 400s on a malformed email', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/email`, {
+			...form({ email: 'notanemail' }),
+			method: 'POST',
+			headers: { ...(await bearer('888')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(400)
+	})
+
+	test('POST /account/me/email persists the email, surfaced by /account/me', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/email`, {
+			...form({ email: 'ners@recroom.com' }),
+			method: 'POST',
+			headers: { ...(await bearer('888')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+
+		// The stored email is now returned by the self account (was a null stub).
+		const me = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('888') })
+		expect(((await me.json()) as { email: string }).email).toBe('ners@recroom.com')
 	})
 })

@@ -7,6 +7,7 @@ import { createAccount, defaultAccount, getAccount, getAccountsByIds, updateAcco
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
+import type { Account } from './accounts-db'
 import type { App } from './context'
 
 /**
@@ -47,6 +48,24 @@ async function formField(c: Context<App>, name: string): Promise<string> {
 	return typeof value === 'string' ? value : ''
 }
 
+/**
+ * Project a stored account into the public account DTO — the client's camelCase
+ * shape, excluding private fields like `email` (surfaced only by /account/me).
+ */
+function toAccountDto(account: Account) {
+	return {
+		accountId: account.accountId,
+		username: account.username,
+		displayName: account.displayName,
+		profileImage: account.profileImage,
+		isJunior: account.isJunior,
+		platforms: account.platforms,
+		personalPronouns: account.personalPronouns,
+		identityFlags: account.identityFlags,
+		createdAt: account.createdAt,
+	}
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -70,16 +89,15 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		// Load the stored account, falling back to a synthesized default.
 		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
-		// `JuniorState` (an enum) and `ParentAccountId` are OMITTED when null —
+		// `juniorState` (an enum) and `parentAccountId` are OMITTED when null —
 		// emitting `"juniorState":null` makes the client's enum parser throw
-		// ("Can't parse JSON to Enum format"). `Email`/`Phone`/`Birthday` are kept
-		// as null (they aren't enums, so null is fine).
+		// ("Can't parse JSON to Enum format"). `email`/`birthday` are kept as null
+		// (they aren't enums, so null is fine).
 		return c.json({
-			...account,
-			Email: null,
-			Phone: null,
-			Birthday: null,
-			AvailableUsernameChanges: 1,
+			...toAccountDto(account),
+			email: account.email ?? null,
+			birthday: null,
+			availableUsernameChanges: 1,
 		})
 	})
 
@@ -95,8 +113,8 @@ const app = new Hono<App>()
 				.filter((n) => !Number.isNaN(n)) ?? []
 		// Resolve stored accounts, synthesizing a default for any id not in the DB
 		// so every requested id is present in the response.
-		const stored = new Map((await getAccountsByIds(c.env.DB, ids)).map((a) => [a.AccountId, a]))
-		return c.json(ids.map((id) => stored.get(id) ?? defaultAccount(id)))
+		const stored = new Map((await getAccountsByIds(c.env.DB, ids)).map((a) => [a.accountId, a]))
+		return c.json(ids.map((id) => toAccountDto(stored.get(id) ?? defaultAccount(id))))
 	})
 
 	.get('/account/:id/bio', (c) => {
@@ -110,7 +128,7 @@ const app = new Hono<App>()
 		const accountId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(accountId)) return c.body(null, 400)
 		// Load the stored account, falling back to a synthesized default.
-		return c.json((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId))
+		return c.json(toAccountDto((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId)))
 	})
 
 	// ---- Create --------------------------------------------------------------
@@ -123,10 +141,10 @@ const app = new Hono<App>()
 		// don't choose one initially).
 		const platforms = Number.parseInt(platform, 10)
 		const account = await createAccount(c.env.DB, {
-			Platforms: Number.isNaN(platforms) ? 0 : platforms,
+			platforms: Number.isNaN(platforms) ? 0 : platforms,
 		})
 		// TODO: also create a dorm Room/SubRoom for the new account.
-		return c.json({ success: true, value: account })
+		return c.json({ success: true, value: toAccountDto(account) })
 	})
 
 	// ---- Parental control ----------------------------------------------------
@@ -151,6 +169,26 @@ const app = new Hono<App>()
 		return c.json({ success: true })
 	})
 
+	// Set the player's email (persisted on the account row; surfaced by /account/me).
+	.post('/account/me/email', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const email = (await formField(c, 'email')).trim()
+		if (!email.includes('@')) return c.body(null, 400)
+		await updateAccount(c.env.DB, id, { email })
+		return c.json({ success: true })
+	})
+
+	// Set the player's identityFlags bitmask (persisted; surfaced by /account/me).
+	.put('/account/me/identityflags', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const identityFlags = Number.parseInt((await formField(c, 'identityFlags')).trim(), 10)
+		if (Number.isNaN(identityFlags)) return c.body(null, 400)
+		await updateAccount(c.env.DB, id, { identityFlags })
+		return c.json({ success: true })
+	})
+
 	.put('/account/me/bio', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
@@ -165,7 +203,7 @@ const app = new Hono<App>()
 		if (!imageName) return c.body(null, 400)
 		// Persist the new avatar key on the account row (the C# also fires an
 		// AccountUpdate websocket — no notify binding here, so it's omitted).
-		await updateAccount(c.env.DB, id, { ProfileImage: imageName })
+		await updateAccount(c.env.DB, id, { profileImage: imageName })
 		return c.json({ success: true })
 	})
 

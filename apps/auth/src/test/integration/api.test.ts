@@ -67,11 +67,10 @@ describe('auth worker routes', () => {
 		expect(await res.text()).toBe('"AA=="')
 	})
 
-	test('GET /cachedlogin/forplatformid/:platform/:id returns a cached login', async () => {
+	test('GET /cachedlogin/forplatformid/:platform/:id returns [] (no cached login)', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/1/abc123`)
 		expect(res.status).toBe(200)
-		const logins = (await res.json()) as Array<{ accountId: number }>
-		expect(logins[0]).toMatchObject({ accountId: 1 })
+		expect(await res.json()).toEqual([])
 	})
 
 	test('POST /connect/token issues a bearer token with role/scope claims', async () => {
@@ -107,19 +106,19 @@ describe('auth worker routes', () => {
 		expect(payload.scope).toContain('rn.api')
 	})
 
-	test('POST /connect/token falls back to account 1 when no account_id is posted', async () => {
+	test('POST /connect/token 400s when no account_id is posted (never defaults to 1)', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/connect/token`, { method: 'POST' })
-		expect(res.status).toBe(200)
-		const { access_token } = (await res.json()) as { access_token: string }
-		const payload = JSON.parse(
-			new TextDecoder().decode(
-				Uint8Array.from(
-					atob(access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
-					(ch) => ch.charCodeAt(0)
-				)
-			)
-		) as { sub: string }
-		expect(payload.sub).toBe('1')
+		expect(res.status).toBe(400)
+		expect((await res.json()) as { error: string }).toMatchObject({ error: 'invalid_request' })
+	})
+
+	test('POST /connect/token 400s on a non-numeric account_id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'account_id=notanumber',
+		})
+		expect(res.status).toBe(400)
 	})
 
 	test('POST /connect/token grant_type=create_account persists a new account', async () => {
@@ -132,8 +131,8 @@ describe('auth worker routes', () => {
 			.bind(sub)
 			.first<{ data: string }>()
 		expect(row).not.toBeNull()
-		const account = JSON.parse(row!.data) as { Username: string }
-		expect(account.Username).not.toMatch(/^Player\d+$/)
+		const account = JSON.parse(row!.data) as { username: string }
+		expect(account.username).not.toMatch(/^Player\d+$/)
 	})
 
 	test('POST /connect/token create_account seeds the new player into Orientation', async () => {

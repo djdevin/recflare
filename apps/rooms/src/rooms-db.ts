@@ -78,6 +78,26 @@ export async function cloneRoom(
 	return cloned
 }
 
+/** Set a room's Description in place (the caller is responsible for the owner check). */
+export async function setRoomDescription(
+	db: D1Database,
+	roomId: number,
+	description: string
+): Promise<void> {
+	await db
+		.prepare("UPDATE rooms SET data = json_set(data, '$.Description', ?2) WHERE room_id = ?1")
+		.bind(roomId, description)
+		.run()
+}
+
+/** Set a room's Name in place (the caller checks ownership + name uniqueness first). */
+export async function setRoomName(db: D1Database, roomId: number, name: string): Promise<void> {
+	await db
+		.prepare("UPDATE rooms SET data = json_set(data, '$.Name', ?2) WHERE room_id = ?1")
+		.bind(roomId, name)
+		.run()
+}
+
 interface RoomRow {
 	data: string
 }
@@ -339,19 +359,21 @@ export async function getHotRooms(
 /**
  * Rooms similar to a target room: public, non-dorm rooms (excluding the target)
  * that share at least one tag with it, ranked by shared-tag count then
- * engagement. Returns a bare array; empty if the target isn't in D1 or is
- * untagged. Paginated via skip/take. Small dataset, so done in memory.
+ * engagement. Returns a paginated `{ Results, TotalResults }` (the client's
+ * RoomSimilarity source expects an object, not a bare array); empty if the target
+ * isn't in D1 or is untagged. Small dataset, so done in memory.
  */
 export async function getSimilarRooms(
 	db: D1Database,
 	roomId: number,
 	skip: number,
 	take: number
-): Promise<Room[]> {
+): Promise<{ Results: Room[]; TotalResults: number }> {
+	const empty = { Results: [] as Room[], TotalResults: 0 }
 	const target = await getRoomById(db, roomId)
-	if (!target) return []
+	if (!target) return empty
 	const targetTags = new Set(roomTags(target))
-	if (targetTags.size === 0) return []
+	if (targetTags.size === 0) return empty
 
 	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
 	const sharedCount = (r: Room): number => roomTags(r).filter((t) => targetTags.has(t)).length
@@ -374,7 +396,8 @@ export async function getSimilarRooms(
 			hotScore(b.room) - hotScore(a.room) ||
 			roomIdOf(a.room) - roomIdOf(b.room)
 	)
-	return scored.slice(skip, skip + take).map((x) => x.room)
+	const rooms = scored.map((x) => x.room)
+	return { Results: rooms.slice(skip, skip + take), TotalResults: rooms.length }
 }
 
 /**

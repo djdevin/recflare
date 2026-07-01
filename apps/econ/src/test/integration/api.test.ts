@@ -19,7 +19,7 @@ const ORIGIN = 'https://example.com'
 beforeAll(async () => {
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
-		.bind(JSON.stringify({ AccountId: 42, Username: 'Tester', DisplayName: 'Tester' }))
+		.bind(JSON.stringify({ accountId: 42, username: 'Tester', displayName: 'Tester' }))
 		.run()
 })
 

@@ -14,8 +14,8 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS accounts (
 		data TEXT NOT NULL,
 		avatar TEXT,
-		account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.AccountId')) VIRTUAL,
-		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Username'))) VIRTUAL
+		account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL,
+		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL
 	)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account_id ON accounts (account_id)`,
 ]
