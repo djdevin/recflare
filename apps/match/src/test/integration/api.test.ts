@@ -354,7 +354,12 @@ describe('auth-gated endpoints', () => {
 				headers: { ...headers, 'Content-Type': 'application/json' },
 				body: JSON.stringify({ statusVisibility: 2, platform: 5, appVersion: '20210129' }),
 			})
-		).json()) as { statusVisibility: number; platform: number; appVersion: string; isOnline: boolean }
+		).json()) as {
+			statusVisibility: number
+			platform: number
+			appVersion: string
+			isOnline: boolean
+		}
 		expect(hb).toMatchObject({
 			statusVisibility: 2,
 			platform: 5,

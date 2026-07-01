@@ -40,7 +40,9 @@ function parseRange(header: string | undefined): R2Range | undefined {
 	const end = m[2]
 	if (start === '' && end !== '') return { suffix: Number(end) } // last N bytes
 	if (start !== '') {
-		return end !== '' ? { offset: Number(start), length: Number(end) - Number(start) + 1 } : { offset: Number(start) }
+		return end !== ''
+			? { offset: Number(start), length: Number(end) - Number(start) + 1 }
+			: { offset: Number(start) }
 	}
 	return undefined
 }

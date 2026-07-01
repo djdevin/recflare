@@ -112,7 +112,8 @@ describe('econ endpoints', () => {
 	test('POST /api/avatar/v2/set saves the avatar, and GET reads it back', async () => {
 		const headers = { ...(await bearer()), 'Content-Type': 'application/json' }
 		const avatar = {
-			OutfitSelections: '1fd69ef8-0b74-4962-af5a-67f0bf0358f2,,0;d0a9262f-5504-46a7-bb10-7507503db58e,,1',
+			OutfitSelections:
+				'1fd69ef8-0b74-4962-af5a-67f0bf0358f2,,0;d0a9262f-5504-46a7-bb10-7507503db58e,,1',
 			OutfitSelectionsV2: '{"selections":[]}',
 			FaceFeatures: '{"eyeId":"AjGMoJhEcEehacRZjUMuDg"}',
 			SkinColor: '3529b670-a66d-448e-9573-1905eae5b9bf',
@@ -130,7 +131,9 @@ describe('econ endpoints', () => {
 		expect(await setRes.json()).toEqual(avatar)
 
 		// And it persists — GET now returns the saved avatar, not the default.
-		const getRes = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, { headers: await bearer() })
+		const getRes = await exports.default.fetch(`${ORIGIN}/api/avatar/v2`, {
+			headers: await bearer(),
+		})
 		expect(await getRes.json()).toEqual(avatar)
 	})
 
@@ -226,7 +229,9 @@ describe('econ endpoints', () => {
 	})
 
 	test('GET /api/roomcurrencies/v1/getAllBalances returns []', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/roomcurrencies/v1/getAllBalances?roomId=1`)
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/roomcurrencies/v1/getAllBalances?roomId=1`
+		)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
 	})

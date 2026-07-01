@@ -232,6 +232,38 @@ describe('auth-gated endpoints', () => {
 		expect(((await me.json()) as { identityFlags: number }).identityFlags).toBe(384)
 	})
 
+	test('POST /account/me/phone 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/phone`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'phone=%2B14444444444',
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /account/me/phone 400s on empty, persists a real number', async () => {
+		const headers = {
+			...(await bearer('891')),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		}
+		// Empty phone → 400.
+		const empty = await exports.default.fetch(`${ORIGIN}/account/me/phone`, {
+			method: 'POST',
+			headers,
+			body: 'phone=',
+		})
+		expect(empty.status).toBe(400)
+
+		// Set it → success.
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/phone`, {
+			method: 'POST',
+			headers,
+			body: 'phone=%2B14444444444',
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+	})
+
 	test('PUT /account/me/bio 401s without a token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/me/bio`, { ...form({ bio: 'x' }) })
 		expect(res.status).toBe(401)

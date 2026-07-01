@@ -8,8 +8,7 @@ export interface PlayerSetting {
 	Value: string
 }
 
-const DEFAULTS: ReadonlyArray<readonly [key: string, value: string]> = [
-]
+const DEFAULTS: ReadonlyArray<readonly [key: string, value: string]> = []
 
 export function defaultSettings(playerId: number): PlayerSetting[] {
 	return DEFAULTS.map(([Key, Value]) => ({ PlayerId: playerId, Key, Value }))

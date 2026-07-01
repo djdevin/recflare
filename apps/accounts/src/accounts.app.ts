@@ -3,7 +3,13 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { createAccount, defaultAccount, getAccount, getAccountsByIds, updateAccount } from './accounts-db'
+import {
+	createAccount,
+	defaultAccount,
+	getAccount,
+	getAccountsByIds,
+	updateAccount,
+} from './accounts-db'
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
@@ -129,7 +135,9 @@ const app = new Hono<App>()
 		const accountId = Number.parseInt(c.req.param('id'), 10)
 		if (Number.isNaN(accountId)) return c.body(null, 400)
 		// Load the stored account, falling back to a synthesized default.
-		return c.json(toAccountDto((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId)))
+		return c.json(
+			toAccountDto((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId))
+		)
 	})
 
 	// ---- Create --------------------------------------------------------------
@@ -177,6 +185,16 @@ const app = new Hono<App>()
 		const email = (await formField(c, 'email')).trim()
 		if (!email.includes('@')) return c.body(null, 400)
 		await updateAccount(c.env.DB, id, { email })
+		return c.json({ success: true })
+	})
+
+	// Set the player's phone (persisted on the account row).
+	.post('/account/me/phone', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const phone = (await formField(c, 'phone')).trim()
+		if (phone === '') return c.body(null, 400)
+		await updateAccount(c.env.DB, id, { phone })
 		return c.json({ success: true })
 	})
 

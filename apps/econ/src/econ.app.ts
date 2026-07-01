@@ -3,8 +3,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import defaultAvatar from '../static/default-avatar.json'
 import defaultAvatarItems from '../static/default-avatar-items.json'
+import defaultAvatar from '../static/default-avatar.json'
 import myProgress from '../static/my-progress.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
@@ -180,7 +180,9 @@ const app = new Hono<App>()
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		// TODO: query TokenBalances once a DB binding exists.
-		return c.json([{ CurrencyType: CurrencyType.RecCenterTokens, Platform: -2, Balance: 2147483648 }])
+		return c.json([
+			{ CurrencyType: CurrencyType.RecCenterTokens, Platform: -2, Balance: 2147483648 },
+		])
 	})
 
 	// Gift-drop storefront. Falls back to the bundled static catalog when no

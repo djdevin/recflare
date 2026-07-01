@@ -3,9 +3,11 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { createAccount } from './accounts-db'
-import { generateToken, TOKEN_TTL_SECONDS } from './jwt'
+import { createAccount, getPasswordHash, setPasswordHash } from './accounts-db'
+import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from './jwt'
+import { hashPassword, verifyPassword } from './password'
 
+import type { Context } from 'hono'
 import type { App } from './context'
 
 /** OAuth scopes granted by `/connect/token`. */
@@ -54,8 +56,7 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 	const room = JSON.parse(row.data) as Record<string, unknown>
 	const subRooms = room.SubRooms
 	const sub = (Array.isArray(subRooms) ? subRooms[0] : undefined) as
-		| Record<string, unknown>
-		| undefined
+		Record<string, unknown> | undefined
 	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
 
@@ -90,6 +91,15 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 	await env.RECFLARE_MATCH_PRESENCE.put(`presence:${accountId}`, JSON.stringify(presence), {
 		expirationTtl: PRESENCE_TTL,
 	})
+}
+
+/** The Bearer token's account id (`sub`), or null when there's no valid token. */
+async function authedId(c: Context<App>): Promise<number | null> {
+	const authHeader = c.req.header('Authorization') ?? ''
+	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
+	const sub = await validateAndGetAccountId(authHeader.slice('Bearer '.length))
+	const id = sub ? Number.parseInt(sub, 10) : Number.NaN
+	return Number.isNaN(id) ? null : id
 }
 
 const app = new Hono<App>()
@@ -168,6 +178,31 @@ const app = new Hono<App>()
 			scope: TOKEN_SCOPE,
 			key: '8oQ+e+WQaOBPbEcakhqs3dwZZdOmmyDUmJSD9u4AHMY=',
 		})
+	})
+
+	// Change the caller's password. Auth-gated. Stores a PBKDF2 hash on the account
+	// row (the raw password is never persisted). When the account already has a
+	// password, `oldPassword` must match; the first time it's set, `oldPassword` is
+	// empty (as the client sends).
+	.post('/account/me/changepassword', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+		const oldPassword = typeof body.oldPassword === 'string' ? body.oldPassword : ''
+		const newPassword = typeof body.newPassword === 'string' ? body.newPassword : ''
+		if (newPassword === '') {
+			return c.json({ success: false, error: 'You must enter a new password.' }, 400)
+		}
+
+		const currentHash = await getPasswordHash(c.env.DB, id)
+		if (currentHash && !(await verifyPassword(oldPassword, currentHash))) {
+			return c.json({ success: false, error: 'Your old password is incorrect.' }, 400)
+		}
+
+		const ok = await setPasswordHash(c.env.DB, id, await hashPassword(newPassword))
+		if (!ok) return c.body(null, 404)
+		return c.json({ success: true })
 	})
 
 	// Developer role lookup. Not implemented yet.

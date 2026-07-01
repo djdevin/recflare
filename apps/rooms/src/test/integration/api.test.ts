@@ -329,7 +329,16 @@ describe('rooms endpoints', () => {
 					headers,
 					body: new URLSearchParams({ name }).toString(),
 				})
-			).json()) as { success: boolean; error: string; value: { RoomId: number; Name: string; CreatorAccountId: number; Tags?: Array<{ Tag: string }> } | null }
+			).json()) as {
+				success: boolean
+				error: string
+				value: {
+					RoomId: number
+					Name: string
+					CreatorAccountId: number
+					Tags?: Array<{ Tag: string }>
+				} | null
+			}
 
 		// Clone MakerRoom (base, RoomId 24) → a fresh room owned by the caller (801).
 		const ok = await post(24, 'MyMakerClone')
@@ -343,9 +352,9 @@ describe('rooms endpoints', () => {
 		expect((ok.value!.Tags ?? []).some((t) => t.Tag === 'base')).toBe(false)
 
 		// It persists and is fetchable by its new id.
-		const fetched = (await (
-			await SELF.fetch(`${ORIGIN}/rooms/${ok.value!.RoomId}`)
-		).json()) as { Name: string }
+		const fetched = (await (await SELF.fetch(`${ORIGIN}/rooms/${ok.value!.RoomId}`)).json()) as {
+			Name: string
+		}
 		expect(fetched.Name).toBe('MyMakerClone')
 
 		// Duplicate name is rejected.
@@ -416,25 +425,39 @@ describe('rooms endpoints', () => {
 		})
 
 	// Room-mutation envelope helper.
-	type RoomResult = { Success: boolean; Value: unknown; ErrorId: string | null; Error: string | null }
+	type RoomResult = {
+		Success: boolean
+		Value: unknown
+		ErrorId: string | null
+		Error: string | null
+	}
 	const bodyOf = async (res: Response) => (await res.json()) as RoomResult
 
 	it('PUT /rooms/:id/description is auth-gated, owner-only, and persists', async () => {
 		// No token → 401 (auth gate).
 		expect((await putForm('/rooms/2/description', { description: 'x' })).status).toBe(401)
 		// Not the owner (RecCenter is owned by account 1) → 200 envelope, Success:false.
-		expect(await bodyOf(await putForm('/rooms/2/description', { description: 'x' }, '999'))).toMatchObject(
-			{ Success: false, ErrorId: 'Rooms.NotOwner' }
-		)
+		expect(
+			await bodyOf(await putForm('/rooms/2/description', { description: 'x' }, '999'))
+		).toMatchObject({ Success: false, ErrorId: 'Rooms.NotOwner' })
 		// Unknown room → Rooms.DoesntExist envelope.
-		expect(await bodyOf(await putForm('/rooms/99999/description', { description: 'x' }, '1'))).toMatchObject(
-			{ Success: false, ErrorId: 'Rooms.DoesntExist', Error: 'This room does not exist!' }
-		)
+		expect(
+			await bodyOf(await putForm('/rooms/99999/description', { description: 'x' }, '1'))
+		).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.DoesntExist',
+			Error: 'This room does not exist!',
+		})
 
 		// Owner updates it, and it persists.
 		const ok = await putForm('/rooms/2/description', { description: 'blah blah blah' }, '1')
 		expect(ok.status).toBe(200)
-		expect(await bodyOf(ok)).toMatchObject({ Success: true, Value: null, ErrorId: null, Error: null })
+		expect(await bodyOf(ok)).toMatchObject({
+			Success: true,
+			Value: null,
+			ErrorId: null,
+			Error: null,
+		})
 		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { Description: string }
 		expect(room.Description).toBe('blah blah blah')
 	})
@@ -443,11 +466,15 @@ describe('rooms endpoints', () => {
 		// No token → 401 (auth gate).
 		expect((await putForm('/rooms/2/name', { name: 'Whatever' })).status).toBe(401)
 		// Wrong owner / unknown room → Success:false envelopes.
-		expect(await bodyOf(await putForm('/rooms/2/name', { name: 'Whatever' }, '999'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.NotOwner',
-		})
-		expect(await bodyOf(await putForm('/rooms/99999/name', { name: 'Whatever' }, '1'))).toMatchObject({
+		expect(await bodyOf(await putForm('/rooms/2/name', { name: 'Whatever' }, '999'))).toMatchObject(
+			{
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+			}
+		)
+		expect(
+			await bodyOf(await putForm('/rooms/99999/name', { name: 'Whatever' }, '1'))
+		).toMatchObject({
 			Success: false,
 			ErrorId: 'Rooms.DoesntExist',
 		})
@@ -457,7 +484,9 @@ describe('rooms endpoints', () => {
 			ErrorId: 'Rooms.InvalidName',
 		})
 		// A name already used by a different room (GoldenTrophy is room 12).
-		expect(await bodyOf(await putForm('/rooms/2/name', { name: 'GoldenTrophy' }, '1'))).toMatchObject({
+		expect(
+			await bodyOf(await putForm('/rooms/2/name', { name: 'GoldenTrophy' }, '1'))
+		).toMatchObject({
 			Success: false,
 			ErrorId: 'Rooms.AlreadyExists',
 			Error: 'A room with that name already exists!',
@@ -490,7 +519,10 @@ describe('rooms endpoints', () => {
 			).json()) as Interaction
 		const put = async (action: 'cheer' | 'favorite') =>
 			(await (
-				await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/${action}`, { method: 'PUT', headers })
+				await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/${action}`, {
+					method: 'PUT',
+					headers,
+				})
 			).json()) as Interaction
 
 		// No row yet → both false.

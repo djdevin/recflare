@@ -2,6 +2,7 @@ import { exports } from 'cloudflare:workers'
 import { describe, expect, test } from 'vitest'
 
 import '../../ns.app'
+
 import { buildEndpoints } from '../../endpoints'
 
 const ORIGIN = 'https://example.com'

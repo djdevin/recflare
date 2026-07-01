@@ -35,6 +35,8 @@ export interface Account {
 	createdAt: string
 	/** Set via POST /account/me/email; absent until the player provides one. */
 	email?: string
+	/** Set via POST /account/me/phone; absent until the player provides one. */
+	phone?: string
 	/** Set via PUT /account/me/bio; read back via GET /account/:id/bio. */
 	bio?: string
 }
@@ -49,12 +51,40 @@ const parseAll = (rows: AccountRow[]): Account[] => rows.map((r) => JSON.parse(r
 
 /** Word lists for auto-assigned usernames (players don't pick one on signup). */
 const ADJECTIVES = [
-	'Swift', 'Brave', 'Clever', 'Happy', 'Mighty', 'Lucky', 'Sunny', 'Cosmic',
-	'Witty', 'Nimble', 'Jolly', 'Bold', 'Gentle', 'Fuzzy', 'Speedy', 'Shiny',
+	'Swift',
+	'Brave',
+	'Clever',
+	'Happy',
+	'Mighty',
+	'Lucky',
+	'Sunny',
+	'Cosmic',
+	'Witty',
+	'Nimble',
+	'Jolly',
+	'Bold',
+	'Gentle',
+	'Fuzzy',
+	'Speedy',
+	'Shiny',
 ]
 const NOUNS = [
-	'Fox', 'Otter', 'Falcon', 'Panda', 'Tiger', 'Comet', 'Maple', 'Pixel',
-	'Robin', 'Wolf', 'Koala', 'Dragon', 'Penguin', 'Badger', 'Heron', 'Lynx',
+	'Fox',
+	'Otter',
+	'Falcon',
+	'Panda',
+	'Tiger',
+	'Comet',
+	'Maple',
+	'Pixel',
+	'Robin',
+	'Wolf',
+	'Koala',
+	'Dragon',
+	'Penguin',
+	'Badger',
+	'Heron',
+	'Lynx',
 ]
 
 /** A random, readable username (e.g. "SwiftFox4821"). */

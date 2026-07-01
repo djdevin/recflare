@@ -48,14 +48,29 @@ function decodePayload(token: string): Record<string, unknown> {
 	) as Record<string, unknown>
 }
 
-async function tokenFor(body: string): Promise<Record<string, unknown>> {
+async function accessTokenFor(body: string): Promise<string> {
 	const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 		body,
 	})
-	const { access_token } = (await res.json()) as { access_token: string }
-	return decodePayload(access_token)
+	return ((await res.json()) as { access_token: string }).access_token
+}
+
+async function tokenFor(body: string): Promise<Record<string, unknown>> {
+	return decodePayload(await accessTokenFor(body))
+}
+
+/** POST a form-urlencoded body to changepassword with an optional bearer token. */
+function changePassword(body: string, token?: string): Promise<Response> {
+	return exports.default.fetch(`${ORIGIN}/account/me/changepassword`, {
+		method: 'POST',
+		headers: {
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body,
+	})
 }
 
 describe('auth worker routes', () => {
@@ -163,6 +178,38 @@ describe('auth worker routes', () => {
 		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
+	})
+
+	test('POST /account/me/changepassword 401s without a token', async () => {
+		const res = await changePassword('oldPassword=&newPassword=secret123')
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /account/me/changepassword 400s without a new password', async () => {
+		const token = await accessTokenFor('grant_type=create_account&platform_id=steam-pw0')
+		const res = await changePassword('oldPassword=&newPassword=', token)
+		expect(res.status).toBe(400)
+	})
+
+	test('POST /account/me/changepassword sets then rotates the password', async () => {
+		const token = await accessTokenFor('grant_type=create_account&platform_id=steam-pw1')
+
+		// First set — oldPassword is empty (as the client sends it).
+		const set = await changePassword('oldPassword=&newPassword=first-password', token)
+		expect(set.status).toBe(200)
+		expect(await set.json()).toEqual({ success: true })
+
+		// A wrong old password is now rejected.
+		const wrong = await changePassword('oldPassword=nope&newPassword=second-password', token)
+		expect(wrong.status).toBe(400)
+
+		// The correct old password rotates it.
+		const rotate = await changePassword(
+			'oldPassword=first-password&newPassword=second-password',
+			token
+		)
+		expect(rotate.status).toBe(200)
+		expect(await rotate.json()).toEqual({ success: true })
 	})
 
 	test('GET /role/developer/:id returns ok', async () => {

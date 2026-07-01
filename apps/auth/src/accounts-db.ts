@@ -45,12 +45,40 @@ const parseAll = (rows: AccountRow[]): Account[] => rows.map((r) => JSON.parse(r
 
 /** Word lists for auto-assigned usernames (players don't pick one on signup). */
 const ADJECTIVES = [
-	'Swift', 'Brave', 'Clever', 'Happy', 'Mighty', 'Lucky', 'Sunny', 'Cosmic',
-	'Witty', 'Nimble', 'Jolly', 'Bold', 'Gentle', 'Fuzzy', 'Speedy', 'Shiny',
+	'Swift',
+	'Brave',
+	'Clever',
+	'Happy',
+	'Mighty',
+	'Lucky',
+	'Sunny',
+	'Cosmic',
+	'Witty',
+	'Nimble',
+	'Jolly',
+	'Bold',
+	'Gentle',
+	'Fuzzy',
+	'Speedy',
+	'Shiny',
 ]
 const NOUNS = [
-	'Fox', 'Otter', 'Falcon', 'Panda', 'Tiger', 'Comet', 'Maple', 'Pixel',
-	'Robin', 'Wolf', 'Koala', 'Dragon', 'Penguin', 'Badger', 'Heron', 'Lynx',
+	'Fox',
+	'Otter',
+	'Falcon',
+	'Panda',
+	'Tiger',
+	'Comet',
+	'Maple',
+	'Pixel',
+	'Robin',
+	'Wolf',
+	'Koala',
+	'Dragon',
+	'Penguin',
+	'Badger',
+	'Heron',
+	'Lynx',
 ]
 
 /** A random, readable username (e.g. "SwiftFox4821"). */
@@ -116,4 +144,30 @@ export async function createAccount(
 	const account = defaultAccount(id, { username, displayName: username, ...overrides })
 	await db.prepare('INSERT INTO accounts (data) VALUES (?1)').bind(JSON.stringify(account)).run()
 	return account
+}
+
+/**
+ * Read the account's stored password hash (`salt:hash`), or null when the account
+ * has none / doesn't exist. Kept in the account JSON blob but out of the public
+ * account DTO (which projects only known fields), so it never leaks.
+ */
+export async function getPasswordHash(db: D1Database, id: number): Promise<string | null> {
+	const row = await db
+		.prepare(
+			"SELECT json_extract(data, '$.passwordHash') AS hash FROM accounts WHERE account_id = ?1"
+		)
+		.bind(id)
+		.first<{ hash: string | null }>()
+	return row?.hash ?? null
+}
+
+/** Persist the account's password hash. Returns false when no such account exists. */
+export async function setPasswordHash(db: D1Database, id: number, hash: string): Promise<boolean> {
+	const { meta } = await db
+		.prepare(
+			"UPDATE accounts SET data = json_set(data, '$.passwordHash', ?2) WHERE account_id = ?1"
+		)
+		.bind(id, hash)
+		.run()
+	return meta.changes > 0
 }

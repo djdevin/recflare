@@ -169,8 +169,7 @@ function dormRoomInstance() {
 function roomInstanceFromRoom(room: Room, isPrivate: boolean): RoomInstance {
 	const subRooms = room.SubRooms
 	const sub = (Array.isArray(subRooms) ? subRooms[0] : undefined) as
-		| Record<string, unknown>
-		| undefined
+		Record<string, unknown> | undefined
 	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
 	const roomId = num(room.RoomId, 1)

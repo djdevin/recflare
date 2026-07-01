@@ -70,7 +70,10 @@ describe('playersettings endpoints', () => {
 		expect(settings.find((s) => s.Key === 'PlayerSessionCount')?.Value).toBe('13')
 
 		// Defaults were persisted to KV.
-		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>('player:100', 'json')
+		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(
+			'player:100',
+			'json'
+		)
 		expect(stored?.['Recroom.OOBE']).toBe('77')
 	})
 
@@ -97,7 +100,10 @@ describe('playersettings endpoints', () => {
 		)
 		expect(res.status).toBe(200)
 
-		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>('player:7', 'json')
+		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(
+			'player:7',
+			'json'
+		)
 		expect(stored).toEqual({ PlayerSessionCount: '1' })
 	})
 
@@ -111,7 +117,10 @@ describe('playersettings endpoints', () => {
 			putForm({ key: 'B', value: '2' }, await bearer('8'))
 		)
 
-		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>('player:8', 'json')
+		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(
+			'player:8',
+			'json'
+		)
 		expect(stored).toEqual({ A: '1', B: '2' })
 	})
 

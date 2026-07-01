@@ -4,7 +4,6 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../api.app'
 
-
 import type { Env } from '../../context'
 
 declare module 'cloudflare:test' {
@@ -23,7 +22,13 @@ const TEST_ROOMS = [
 		CreatorAccountId: 1,
 		SubRooms: [{ SubRoomId: 1, UnitySceneId: '76d98498-60a1-430c-ab76-b54a29b7a163' }],
 	},
-	{ RoomId: 2, Name: 'RecCenter', IsDorm: false, CreatorAccountId: 1, SubRooms: [{ SubRoomId: 2 }] },
+	{
+		RoomId: 2,
+		Name: 'RecCenter',
+		IsDorm: false,
+		CreatorAccountId: 1,
+		SubRooms: [{ SubRoomId: 2 }],
+	},
 ]
 
 beforeAll(async () => {
@@ -49,7 +54,9 @@ beforeAll(async () => {
 		)`
 	).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
-		.bind(JSON.stringify({ accountId: 42, username: 'Tester', profileImage: 'DefaultProfileImage.jpg' }))
+		.bind(
+			JSON.stringify({ accountId: 42, username: 'Tester', profileImage: 'DefaultProfileImage.jpg' })
+		)
 		.run()
 })
 

@@ -59,44 +59,44 @@ Each is reached at `https://<subdomain>.<your-domain>`. Services with a worker i
 `apps/` are implemented here; the rest are advertised in the endpoints document
 but not yet backed by a Worker. Not all services are fully implemented.
 
-| Service                 | Subdomain               | Worker             | Notes                                                              |
-| ----------------------- | ----------------------- | ------------------ | ----------------------------------------------------------------- |
-| Accounts                | `accounts`              | `accounts`         | Player accounts & profile reads/writes (D1)                       |
-| AI                      | `ai`                    | —                  | Not yet implemented                                               |
-| API                     | `api`                   | `api`              | Core Game API — config, social, avatar, rooms, image uploads (D1, R2) |
-| Auth                    | `auth`                  | `auth`             | OAuth token issuance (`/connect/token`); owns the accounts table (D1, KV) |
-| BugReporting            | `bugreporting`          | —                  | Not yet implemented                                               |
-| Cards                   | `cards`                 | —                  | Not yet implemented                                               |
-| CDN                     | `cdn`                   | `cdn`              | Binary CDN — signature blobs & room build data (R2)               |
-| Chat                    | `chat`                  | `chat`             | Chat service                                                      |
-| Clubs                   | `clubs`                 | `clubs`            | Clubs                                                             |
-| CMS                     | `cms`                   | —                  | Not yet implemented                                               |
-| Commerce                | `commerce`              | `commerce`         | Store / purchase endpoints                                        |
-| Data                    | `data`                  | —                  | Not yet implemented                                               |
-| DataCollection          | `datacollection`        | `datacollection`   | Client telemetry / analytics sink                                 |
-| Discovery               | `discovery`             | —                  | Not yet implemented                                               |
-| Econ                    | `econ`                  | `econ`             | Economy & avatar endpoints (separate from `api`)                 |
-| GameLogs                | `gamelogs`              | —                  | Not yet implemented                                               |
-| Geo                     | `geo`                   | —                  | Not yet implemented                                               |
-| Images                  | `img`                   | `img`              | Image storage & signed delivery (R2)                             |
-| Leaderboard             | `leaderboard`           | —                  | Not yet implemented                                               |
-| Link                    | `link`                  | —                  | Not yet implemented                                               |
-| Lists                   | `lists`                 | —                  | Not yet implemented                                               |
-| Matchmaking             | `match`                 | `match`            | Matchmaking & per-player presence (D1, KV)                       |
-| Moderation              | `moderation`            | —                  | Not yet implemented                                               |
-| Notifications           | `notify`                | `notify`           | Real-time notifications over SignalR/WebSockets (Durable Object) |
-| PlatformNotifications   | `platformnotifications` | —                  | Not yet implemented                                               |
-| PlayerSettings          | `playersettings`        | `playersettings`   | Per-player settings (KV)                                         |
-| RoomComments            | `roomcomments`          | —                  | Not yet implemented                                               |
-| RoomieIntegrations      | `roomieintegrations`    | —                  | Not yet implemented                                               |
-| Rooms                   | `rooms`                 | `rooms`            | Room storage & queries; seeds the Dorm & Orientation rooms (D1) |
-| Storage                 | `storage`               | —                  | Not yet implemented                                               |
-| Strings                 | `strings`               | —                  | Not yet implemented                                               |
-| StringsCDN              | `strings-cdn`           | —                  | Not yet implemented                                               |
-| Studio                  | `studio`                | —                  | Not yet implemented                                               |
-| Thorn                   | `thorn`                 | —                  | Not yet implemented                                               |
-| Videos                  | `videos`                | —                  | Not yet implemented                                               |
-| WWW                     | `www`                   | —                  | Website host (not a Worker)                                       |
+| Service               | Subdomain               | Worker           | Notes                                                                     |
+| --------------------- | ----------------------- | ---------------- | ------------------------------------------------------------------------- |
+| Accounts              | `accounts`              | `accounts`       | Player accounts & profile reads/writes (D1)                               |
+| AI                    | `ai`                    | —                | Not yet implemented                                                       |
+| API                   | `api`                   | `api`            | Core Game API — config, social, avatar, rooms, image uploads (D1, R2)     |
+| Auth                  | `auth`                  | `auth`           | OAuth token issuance (`/connect/token`); owns the accounts table (D1, KV) |
+| BugReporting          | `bugreporting`          | —                | Not yet implemented                                                       |
+| Cards                 | `cards`                 | —                | Not yet implemented                                                       |
+| CDN                   | `cdn`                   | `cdn`            | Binary CDN — signature blobs & room build data (R2)                       |
+| Chat                  | `chat`                  | `chat`           | Chat service                                                              |
+| Clubs                 | `clubs`                 | `clubs`          | Clubs                                                                     |
+| CMS                   | `cms`                   | —                | Not yet implemented                                                       |
+| Commerce              | `commerce`              | `commerce`       | Store / purchase endpoints                                                |
+| Data                  | `data`                  | —                | Not yet implemented                                                       |
+| DataCollection        | `datacollection`        | `datacollection` | Client telemetry / analytics sink                                         |
+| Discovery             | `discovery`             | —                | Not yet implemented                                                       |
+| Econ                  | `econ`                  | `econ`           | Economy & avatar endpoints (separate from `api`)                          |
+| GameLogs              | `gamelogs`              | —                | Not yet implemented                                                       |
+| Geo                   | `geo`                   | —                | Not yet implemented                                                       |
+| Images                | `img`                   | `img`            | Image storage & signed delivery (R2)                                      |
+| Leaderboard           | `leaderboard`           | —                | Not yet implemented                                                       |
+| Link                  | `link`                  | —                | Not yet implemented                                                       |
+| Lists                 | `lists`                 | —                | Not yet implemented                                                       |
+| Matchmaking           | `match`                 | `match`          | Matchmaking & per-player presence (D1, KV)                                |
+| Moderation            | `moderation`            | —                | Not yet implemented                                                       |
+| Notifications         | `notify`                | `notify`         | Real-time notifications over SignalR/WebSockets (Durable Object)          |
+| PlatformNotifications | `platformnotifications` | —                | Not yet implemented                                                       |
+| PlayerSettings        | `playersettings`        | `playersettings` | Per-player settings (KV)                                                  |
+| RoomComments          | `roomcomments`          | —                | Not yet implemented                                                       |
+| RoomieIntegrations    | `roomieintegrations`    | —                | Not yet implemented                                                       |
+| Rooms                 | `rooms`                 | `rooms`          | Room storage & queries; seeds the Dorm & Orientation rooms (D1)           |
+| Storage               | `storage`               | —                | Not yet implemented                                                       |
+| Strings               | `strings`               | —                | Not yet implemented                                                       |
+| StringsCDN            | `strings-cdn`           | —                | Not yet implemented                                                       |
+| Studio                | `studio`                | —                | Not yet implemented                                                       |
+| Thorn                 | `thorn`                 | —                | Not yet implemented                                                       |
+| Videos                | `videos`                | —                | Not yet implemented                                                       |
+| WWW                   | `www`                   | —                | Website host (not a Worker)                                               |
 
 Additionally, the small `ns` worker itself serves this discovery document at the
 apex/`ns` host and isn't listed within it. Each implemented worker has its own
