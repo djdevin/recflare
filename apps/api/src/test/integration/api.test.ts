@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../api.app'
 
+import { SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
+
 import type { Env } from '../../context'
 
 declare module 'cloudflare:test' {
@@ -58,6 +60,9 @@ beforeAll(async () => {
 			JSON.stringify({ accountId: 42, username: 'Tester', profileImage: 'DefaultProfileImage.jpg' })
 		)
 		.run()
+
+	// Images table (owned by the img worker) — uploadsaved records a row here.
+	for (const stmt of IMAGES_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 })
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
@@ -369,6 +374,82 @@ describe('images', () => {
 		const stored = await env.IMAGES.get(ImageName)
 		expect(stored).not.toBeNull()
 		expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
+
+		// A metadata row was created, and it's readable by name via /api/images/v6.
+		const meta = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v6?name=${ImageName}`)
+		).json()) as { ImageName: string; PlayerId: number; Id: number; CheerCount: number }
+		expect(meta.ImageName).toBe(ImageName)
+		expect(meta.PlayerId).toBe(42)
+		expect(typeof meta.Id).toBe('number')
+		expect(meta.CheerCount).toBe(0)
+	})
+
+	test('POST /api/images/v1/cheer is auth-gated and stubs success', async () => {
+		const body = JSON.stringify({ SavedImageId: 2, Cheer: true })
+		// No token → 401.
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/api/images/v1/cheer`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body,
+				})
+			).status
+		).toBe(401)
+		// With a token → accepted.
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v1/cheer`, {
+			method: 'POST',
+			headers: { ...(await bearer()), 'Content-Type': 'application/json' },
+			body,
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+	})
+
+	test('GET /api/images/v6 400s without a name and 404s for an unknown one', async () => {
+		expect((await exports.default.fetch(`${ORIGIN}/api/images/v6`)).status).toBe(400)
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/api/images/v6?name=doesnotexist.jpg`)).status
+		).toBe(404)
+	})
+
+	test('POST /api/images/v4/uploadsaved records metadata from imgMeta', async () => {
+		const fd = new FormData()
+		// The client's real imgMeta shape (tagged players are `playerIds`).
+		fd.append(
+			'imgMeta',
+			JSON.stringify({
+				playerIds: [5, 6],
+				savedImageType: 1,
+				roomId: 777,
+				playerEventId: 0,
+				accessibility: 2,
+			})
+		)
+		fd.append('image', new File([new Uint8Array([1, 2, 3])], 'pic.png', { type: 'image/png' }))
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
+			method: 'POST',
+			headers: await bearer('42'),
+			body: fd,
+		})
+		const { ImageName } = (await res.json()) as { ImageName: string }
+
+		const meta = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v6?name=${ImageName}`)
+		).json()) as {
+			Type: number
+			RoomId: number
+			Accessibility: number
+			TaggedPlayerIds: number[]
+			PlayerEventId: number | null
+		}
+		expect(meta.Type).toBe(1)
+		expect(meta.RoomId).toBe(777)
+		expect(meta.Accessibility).toBe(2)
+		expect(meta.TaggedPlayerIds).toEqual([5, 6])
+		// playerEventId 0 means "none" → stored as null.
+		expect(meta.PlayerEventId).toBeNull()
 	})
 
 	test('POST /api/images/v4/uploadsaved records a profile thumbnail on the account', async () => {

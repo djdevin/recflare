@@ -9,6 +9,7 @@ import storefrontGiftDrop2 from '../static/storefronts-v3-giftdropstore-2.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
 import storefrontGiftDrop300 from '../static/storefronts-v3-giftdropstore-300.json'
 import { defaultSettings } from './default-settings'
+import { createImage, getImageByName } from './images-db'
 import { validateAndGetAccountId } from './jwt'
 import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
 
@@ -422,18 +423,24 @@ const app = new Hono<App>({ strict: false })
 		if (!(candidate instanceof File)) return c.json({ error: 'No file found in request' }, 400)
 		const file = candidate
 
-		// `imgMeta` is a JSON blob describing the upload; its `savedImageType`
-		// decides what (if anything) the image is recorded against. Mirrors the C#
-		// `SavedImageMetaDTO` / `SavedImageType` enum.
-		let savedImageType: number = SavedImageType.None
+		// `imgMeta` is a JSON blob describing the upload (the C# `SavedImageMetaDTO`),
+		// posted as a multipart field. It carries the metadata we record on the image
+		// (savedImageType, roomId, accessibility, description, taggedPlayerIds, …).
+		let meta: Record<string, unknown> = {}
 		if (typeof body.imgMeta === 'string') {
 			try {
-				const meta = JSON.parse(body.imgMeta) as { savedImageType?: unknown } | null
-				if (meta && typeof meta.savedImageType === 'number') savedImageType = meta.savedImageType
+				const parsed = JSON.parse(body.imgMeta)
+				if (parsed && typeof parsed === 'object') meta = parsed as Record<string, unknown>
 			} catch {
 				// Malformed imgMeta — treat as an untyped upload (still stored).
 			}
 		}
+		// imgMeta shape: {playerIds, savedImageType, roomId, playerEventId, accessibility}.
+		const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined)
+		const savedImageType = num(meta.savedImageType) ?? SavedImageType.None
+		// roomId / playerEventId use 0 or -1 as "none" — store null in that case.
+		const roomId = num(meta.roomId)
+		const playerEventId = num(meta.playerEventId)
 
 		const valid = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
 		const dot = file.name.lastIndexOf('.')
@@ -457,7 +464,41 @@ const app = new Hono<App>({ strict: false })
 				.run()
 		}
 
+		// Record the image metadata (the `image` table the img worker owns), pulling
+		// the fields the client provided in imgMeta.
+		await createImage(c.env.DB, {
+			imageName: name,
+			playerId: id,
+			type: savedImageType,
+			accessibility: num(meta.accessibility),
+			roomId: roomId !== undefined && roomId > 0 ? roomId : null,
+			description: typeof meta.description === 'string' ? meta.description : null,
+			taggedPlayerIds: Array.isArray(meta.playerIds)
+				? meta.playerIds.filter((v): v is number => typeof v === 'number')
+				: undefined,
+			playerEventId: playerEventId !== undefined && playerEventId > 0 ? playerEventId : null,
+		})
+
 		return c.json({ ImageName: name })
+	})
+
+	// Image metadata by filename. Returns the stored SavedImage record, or 404 when
+	// there's no metadata row for that name.
+	.get('/api/images/v6', async (c) => {
+		const name = c.req.query('name') ?? ''
+		if (name === '') return c.json({ error: 'name is required' }, 400)
+		const image = await getImageByName(c.env.DB, name)
+		return image ? c.json(image) : c.notFound()
+	})
+
+	// Cheer / un-cheer a saved image ({ SavedImageId, Cheer }). Auth-gated. Stubbed
+	// for now — accepted but not persisted; cheer storage is still TBD.
+	.post('/api/images/v1/cheer', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: record the cheer against the image once cheer storage is designed.
+		await c.req.json().catch(() => null)
+		return c.json({ success: true })
 	})
 
 	// ---- Rooms ----------------------------------------------------------------

@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
+import { createRoomInstance, getJoinableInstance } from './room-instance-db'
 import { getRoomById, getRoomByName } from './rooms-db'
 
 import type { Context } from 'hono'
@@ -11,9 +12,9 @@ import type { App } from './context'
 import type { Room } from './rooms-db'
 
 /**
- * The matchmaking surface. Database-backed endpoints are stubbed here — there's
- * no DB binding yet, so room/player lookups fall back to default values when
- * nothing is found.
+ * The matchmaking surface. Rooms and room instances are D1-backed (matchmaking
+ * finds/creates a `room_instance` row per session); player lookups still fall back
+ * to default values when nothing is found. Presence lives in the match KV.
  *
  * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
  */
@@ -162,44 +163,60 @@ function dormRoomInstance() {
 }
 
 /**
- * Build a room instance from a stored D1 room — crucially using the room's real
- * SubRoom `UnitySceneId` as the instance `location` (an empty/unknown location
- * makes the client reject the session with "unknown scene location ID").
+ * Instance-relevant fields pulled from a stored room (scene, name, capacity, …).
+ * The `location` is the SubRoom's real `UnitySceneId` — an empty/unknown location
+ * makes the client reject the session with "unknown scene location ID".
  */
-function roomInstanceFromRoom(room: Room, isPrivate: boolean): RoomInstance {
-	const subRooms = room.SubRooms
-	const sub = (Array.isArray(subRooms) ? subRooms[0] : undefined) as
+function instanceFieldsFromRoom(room: Room) {
+	const sub = (Array.isArray(room.SubRooms) ? room.SubRooms[0] : undefined) as
 		Record<string, unknown> | undefined
 	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
-	const roomId = num(room.RoomId, 1)
 	// All room instance names are prefixed with `^` (the username prefix `@` is a
 	// separate thing, e.g. a dorm is `^@user's Dorm`). The client uses this prefix
 	// to resolve the instance; without it the new scene won't load. Matches Stella.
 	const rawName = str(room.Name, 'Room')
-	const name = rawName.startsWith('^') ? rawName : `^${rawName}`
-	// roomInstanceId must differ from the room the player is leaving — the client
-	// keys the transition off it. The dorm is instance 1, so a room that also
-	// returned 1 looked like "no change". Use the room id (per Stella), with a
-	// unique suffix-free deterministic Photon room so public players share it.
-	const photonRoomId = isPrivate ? `rec.${roomId}.${crypto.randomUUID()}` : `rec.${roomId}`
 	return {
-		roomInstanceId: roomId,
-		roomId,
+		roomId: num(room.RoomId, 1),
 		subRoomId: num(sub?.SubRoomId, 1),
-		roomInstanceType: room.IsDorm === true ? 2 : 0,
 		location: str(sub?.UnitySceneId),
 		dataBlob: str(sub?.DataBlob),
+		name: rawName.startsWith('^') ? rawName : `^${rawName}`,
+		maxCapacity: num(sub?.MaxPlayers, 4),
+		roomInstanceType: room.IsDorm === true ? 2 : 0,
+		isDorm: room.IsDorm === true,
+	}
+}
+
+/**
+ * Build the client instance wire shape from a stored room plus the live instance's
+ * id + Photon room id (both come from the `room_instance` table so joiners of the
+ * same instance share them).
+ */
+function roomInstanceFromRoom(
+	room: Room,
+	isPrivate: boolean,
+	instanceId: number,
+	photonRoomId: string
+): RoomInstance {
+	const f = instanceFieldsFromRoom(room)
+	return {
+		roomInstanceId: instanceId,
+		roomId: f.roomId,
+		subRoomId: f.subRoomId,
+		roomInstanceType: f.roomInstanceType,
+		location: f.location,
+		dataBlob: f.dataBlob,
 		eventId: 0,
 		clubId: 0,
 		roomCode: '',
 		photonRegion: 'us',
 		photonRegionId: 'us',
 		photonRoomId,
-		name,
-		maxCapacity: num(sub?.MaxPlayers, 4),
+		name: f.name,
+		maxCapacity: f.maxCapacity,
 		isFull: false,
-		isPrivate: isPrivate || room.IsDorm === true,
+		isPrivate: isPrivate || f.isDorm,
 		isInProgress: false,
 		EncryptVoiceChat: false,
 	}
@@ -212,19 +229,41 @@ async function readJoinMode(c: Context<App>): Promise<number> {
 }
 
 /**
- * Resolve a room by `:room` path segment (numeric id or name) from D1 and build
- * its instance. Returns null when the room isn't found.
+ * Resolve a room by `:room` path segment (numeric id or name) from D1, then find a
+ * joinable instance of it (public matchmakes reuse one via the `room_instance`
+ * table) or create a new one. Returns null when the room isn't found.
  */
 async function resolveRoomInstance(
 	c: Context<App>,
 	roomKey: string,
-	isPrivate: boolean
+	isPrivate: boolean,
+	ownerId: number
 ): Promise<RoomInstance | null> {
 	const id = Number.parseInt(roomKey, 10)
 	const room = Number.isNaN(id)
 		? await getRoomByName(c.env.DB, roomKey)
 		: await getRoomById(c.env.DB, id)
-	return room ? roomInstanceFromRoom(room, isPrivate) : null
+	if (!room) return null
+
+	const f = instanceFieldsFromRoom(room)
+	// Reuse an existing joinable public instance; private matchmakes always get a
+	// fresh instance. Create one when there's nothing to join.
+	let instance = isPrivate ? null : await getJoinableInstance(c.env.DB, f.roomId)
+	if (!instance) {
+		instance = await createRoomInstance(c.env.DB, {
+			ownerAccountId: ownerId,
+			roomId: f.roomId,
+			subRoomId: f.subRoomId,
+			location: f.location,
+			dataBlob: f.dataBlob,
+			photonRoomId: crypto.randomUUID(),
+			name: f.name,
+			maxCapacity: f.maxCapacity,
+			isPrivate: isPrivate || f.isDorm,
+			roomInstanceType: f.roomInstanceType,
+		})
+	}
+	return roomInstanceFromRoom(room, isPrivate, instance.roomInstanceId, instance.photonRoomId)
 }
 
 const app = new Hono<App>()
@@ -350,7 +389,7 @@ const app = new Hono<App>()
 		const instance =
 			room.toLowerCase() === 'dormroom'
 				? dormRoomInstance()
-				: await resolveRoomInstance(c, room, joinMode === 2)
+				: await resolveRoomInstance(c, room, joinMode === 2, id)
 		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
@@ -381,7 +420,7 @@ const app = new Hono<App>()
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const joinMode = await readJoinMode(c)
-		const instance = await resolveRoomInstance(c, c.req.param('roomId'), joinMode === 2)
+		const instance = await resolveRoomInstance(c, c.req.param('roomId'), joinMode === 2, id)
 		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
@@ -396,7 +435,7 @@ const app = new Hono<App>()
 		const instance =
 			room.toLowerCase() === 'dorm'
 				? dormRoomInstance()
-				: await resolveRoomInstance(c, room, joinMode === 2)
+				: await resolveRoomInstance(c, room, joinMode === 2, id)
 		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })

@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../match.app'
 
+import { SCHEMA_DDL as ROOM_INSTANCE_SCHEMA_DDL } from '../../room-instance-db'
+
 import type { Env } from '../../context'
 
 declare module 'cloudflare:test' {
@@ -42,6 +44,8 @@ beforeAll(async () => {
 	).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
 	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
+	// Room instances (owned by the rooms worker) — matchmaking finds/creates here.
+	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 })
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
@@ -255,15 +259,40 @@ describe('auth-gated endpoints', () => {
 		}
 		expect(body.roomInstance).toMatchObject({
 			roomId: 2,
-			// Must differ from the dorm's instance id (1) so the client treats this
-			// as a new room and actually loads the scene.
-			roomInstanceId: 2,
 			name: '^RecCenter',
 			location: RECCENTER_SCENE,
 			isPrivate: true,
 		})
-		// Private instances get a unique Photon room id; public share `rec.<roomId>`.
-		expect(body.roomInstance.photonRoomId.startsWith('rec.2')).toBe(true)
+		// The instance id is the room_instance table id (high-based, so it never
+		// collides with the dorm's fixed instance id of 1).
+		expect(body.roomInstance.roomInstanceId).toBeGreaterThan(1)
+		// Every non-dorm instance gets a fresh random Photon room id (a bare UUID).
+		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
+	})
+
+	test('POST /matchmake/:room reuses a public instance; a private one is fresh', async () => {
+		const matchmake = async (joinMode?: string) =>
+			(await (
+				await exports.default.fetch(`${ORIGIN}/matchmake/2`, {
+					method: 'POST',
+					headers: {
+						...(await bearer('900')),
+						'Content-Type': 'application/x-www-form-urlencoded',
+					},
+					body: joinMode ? new URLSearchParams({ JoinMode: joinMode }).toString() : undefined,
+				})
+			).json()) as { roomInstance: { photonRoomId: string; roomInstanceId: number } }
+
+		// Two public matchmakes into the same room share the (reused) instance.
+		const a = await matchmake()
+		const b = await matchmake()
+		expect(a.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
+		expect(b.roomInstance.photonRoomId).toBe(a.roomInstance.photonRoomId)
+		expect(b.roomInstance.roomInstanceId).toBe(a.roomInstance.roomInstanceId)
+
+		// A private matchmake (JoinMode 2) gets its own distinct instance.
+		const priv = await matchmake('2')
+		expect(priv.roomInstance.photonRoomId).not.toBe(a.roomInstance.photonRoomId)
 	})
 
 	test('POST /matchmake/:room 401s without a token', async () => {

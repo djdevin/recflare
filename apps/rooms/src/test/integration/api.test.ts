@@ -4,6 +4,11 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import '../../rooms.app'
 
 import importRooms from '../../../static/ImportRooms.json'
+import {
+	createRoomInstance,
+	getRoomInstance,
+	SCHEMA_DDL as ROOM_INSTANCE_SCHEMA_DDL,
+} from '../../room-instance-db'
 import { SCHEMA_DDL } from '../../rooms-db'
 
 import type { Env } from '../../context'
@@ -41,6 +46,7 @@ async function bearer(sub: string): Promise<Record<string, string>> {
 // Apply the schema + seed the imported rooms into the test D1 (mirrors the migrations).
 beforeAll(async () => {
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
 	await env.DB.batch(importRooms.map((r) => insert.bind(JSON.stringify(r))))
 })
@@ -520,6 +526,31 @@ describe('rooms endpoints', () => {
 			RoomId: number
 		}
 		expect(room.RoomId).toBe(2)
+	})
+
+	it('room_instance: create + read round-trips and hides JsonIgnore fields', async () => {
+		const created = await createRoomInstance(env.DB, {
+			ownerAccountId: 5,
+			roomId: 2,
+			subRoomId: 3,
+			photonRoomId: crypto.randomUUID(),
+			name: '^RecCenter',
+			maxCapacity: 20,
+			isPrivate: true,
+			encryptVoiceChat: true,
+		})
+		// The DB assigns a sequential id, mapped to `roomInstanceId` in the DTO.
+		expect(created.roomInstanceId).toBeGreaterThan(0)
+		expect(created.roomId).toBe(2)
+		expect(created.isPrivate).toBe(true)
+		expect(created.EncryptVoiceChat).toBe(true) // PascalCase JSON key, per the C#
+
+		// Reads back identically; JsonIgnore columns are not in the DTO.
+		const fetched = await getRoomInstance(env.DB, created.roomInstanceId)
+		expect(fetched).toEqual(created)
+		expect('ownerAccountId' in (fetched as object)).toBe(false)
+		expect('dataBlob' in (fetched as object)).toBe(false)
+		expect('allowNewUsers' in (fetched as object)).toBe(false)
 	})
 
 	it('GET /photon_access_token (bare + /roomserver) returns permissions', async () => {

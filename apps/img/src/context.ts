@@ -2,6 +2,8 @@ import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 
 export type Env = SharedHonoEnv & {
+	/** Shared `recflare` D1 — the `images` metadata table this worker owns. */
+	DB: D1Database
 	/** R2 bucket holding the served image objects, keyed by filename. */
 	IMAGES: R2Bucket
 	/**

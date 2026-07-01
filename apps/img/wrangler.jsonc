@@ -11,6 +11,19 @@
 			"bucket_name": "recflare-img"
 		}
 	],
+	// Shared `recflare` D1 — the `img` worker owns the `images` metadata table
+	// (schema/migration here); the `api` worker writes/reads it. Its own
+	// migrations_table keeps its history separate on the shared database. The
+	// "local" placeholder is replaced with the real id from RECFLARE_D1 at deploy.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_img"
+		}
+	],
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {
