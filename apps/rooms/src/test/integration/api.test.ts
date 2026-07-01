@@ -115,6 +115,27 @@ describe('rooms endpoints', () => {
 		expect(other).toEqual([])
 	})
 
+	it('GET /rooms/ownedby/:id returns an account public rooms (no auth)', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/ownedby/1`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Array<{
+			RoomId: number
+			Accessibility: number
+			IsDorm?: boolean
+			CreatorAccountId: number
+		}>
+		expect(body.length).toBeGreaterThan(0)
+		// Only public, non-dorm rooms owned by account 1 — the private dorm (RoomId 1)
+		// is excluded.
+		expect(
+			body.every((r) => r.Accessibility === 1 && r.IsDorm !== true && r.CreatorAccountId === 1)
+		).toBe(true)
+		expect(body.some((r) => r.RoomId === 1)).toBe(false)
+
+		// An account that owns no public rooms → empty array.
+		expect(await (await SELF.fetch(`${ORIGIN}/rooms/ownedby/999`)).json()).toEqual([])
+	})
+
 	it('GET /rooms/search returns a paginated { Results, TotalResults }', async () => {
 		// Name-term search resolves a known public room.
 		const res = await SELF.fetch(`${ORIGIN}/rooms/search?query=reccenter&skip=0&take=100`)

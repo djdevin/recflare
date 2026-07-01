@@ -143,6 +143,16 @@ export async function getRoomsByCreator(db: D1Database, accountId: number): Prom
 }
 
 /**
+ * An account's public, non-dorm rooms — the publicly viewable "rooms owned by
+ * <player>" list (excludes private rooms, dorms, and list-excluded rooms).
+ */
+export async function getPublicRoomsByCreator(db: D1Database, accountId: number): Promise<Room[]> {
+	return (await getRoomsByCreator(db, accountId)).filter(
+		(r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true
+	)
+}
+
+/**
  * Rooms the player has favorited (interaction.favorited = 1), most recently
  * interacted first. Joins the `interaction` table to `rooms`, so a favorited room
  * no longer in D1 is simply absent. Paginated via skip/take; returns a bare array

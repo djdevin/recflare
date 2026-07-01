@@ -57,9 +57,21 @@ const app = new Hono<App>()
 	// array = no club subscription memberships (the client chokes on null).
 	.get('/subscription/mine/member', (c) => c.json([]))
 
-	// Details for a given subscription. The client deserializes this into an
-	// object, so it must return `{}` (not `[]`).
+	// Subscription details for an account (numeric id) — simulated: no club, no subs.
+	.get('/subscription/details/:accountId{[0-9]+}', (c) =>
+		c.json({
+			accountId: Number.parseInt(c.req.param('accountId'), 10),
+			clubId: 0,
+			subscriberCount: 0,
+		})
+	)
+
+	// Details for a named subscription (e.g. `rrplus`). The client deserializes this
+	// into an object, so it must return `{}` (not `[]`).
 	.get('/subscription/details/:subscription', (c) => c.json({}))
+
+	// Subscriber count for an account. No club subscriptions yet → 0.
+	.get('/subscription/subscriberCount/:accountId{[0-9]+}', (c) => c.json(0))
 
 	// The player's clubs that have unread announcements (MyClubsWithUnread-
 	// Announcements). No DB → empty list.

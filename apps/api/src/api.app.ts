@@ -284,6 +284,12 @@ const app = new Hono<App>({ strict: false })
 	.get('/api/customAvatarItems/v1/isCreationEnabled', (c) => c.json(true))
 	.get('/api/customAvatarItems/v1/isRenderingEnabled', (c) => c.json(true))
 
+	// Custom avatar items created by a given account. No storage yet → an empty
+	// paginated result (matches the econ `customAvatarItems/v1/owned` shape).
+	.get('/api/customAvatarItems/v2/fromCreator/:accountId{[0-9]+}', (c) =>
+		c.json({ Results: [], TotalResults: 0 })
+	)
+
 	// Voice chat config. The client fetches it to set up voice.
 	// No reference shape, so return an empty object until the client needs fields.
 	.get('/voice/config', (c) => c.json({}))

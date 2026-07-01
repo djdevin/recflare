@@ -56,6 +56,18 @@ describe('clubs endpoints', () => {
 		expect(await res.json()).toEqual({})
 	})
 
+	test('GET /subscription/details/:accountId returns simulated details', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/subscription/details/2`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ accountId: 2, clubId: 0, subscriberCount: 0 })
+	})
+
+	test('GET /subscription/subscriberCount/:id returns 0', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/subscription/subscriberCount/2`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toBe(0)
+	})
+
 	test('GET /announcements/v2/mine/unread returns []', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/announcements/v2/mine/unread`)
 		expect(res.status).toBe(200)

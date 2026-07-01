@@ -174,6 +174,16 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	test('GET /api/itemWishlists/v1/wishlist/me 401s without a token, returns [] with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/itemWishlists/v1/wishlist/me`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/api/itemWishlists/v1/wishlist/me`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('GET /api/avatar/v3/saved 401s without a token, returns [] with one', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/avatar/v3/saved`)
 		expect(anon.status).toBe(401)

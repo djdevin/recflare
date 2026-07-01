@@ -168,13 +168,79 @@ describe('auth-gated endpoints', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('PUT /account/me/displayname acks with a valid token', async () => {
+	test('PUT /account/me/displayname persists the display name', async () => {
+		const headers = {
+			...(await bearer('895')),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		}
 		const res = await exports.default.fetch(`${ORIGIN}/account/me/displayname`, {
-			...form({ displayName: 'Bob' }),
-			headers: { ...(await bearer()), 'Content-Type': 'application/x-www-form-urlencoded' },
+			...form({ displayName: 'laskdjfasdlfkj' }),
+			headers,
 		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ success: true })
+
+		const me = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('895') })
+		expect(((await me.json()) as { displayName: string }).displayName).toBe('laskdjfasdlfkj')
+	})
+
+	test('PUT /account/me/username 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/username`, {
+			...form({ username: 'whoever' }),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('PUT /account/me/username returns a Success:false envelope for a taken name', async () => {
+		// "Coach" is the seeded account 1.
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/username`, {
+			...form({ username: 'Coach' }),
+			headers: { ...(await bearer('893')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		// Business errors are HTTP 200 with the { success, error, value } envelope.
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as { success: boolean; error: string; value: string }
+		expect(body.success).toBe(false)
+		expect(body.error).toMatch(/already taken/i)
+		expect(body.value).toBe('')
+	})
+
+	test('PUT /account/me/username changes the name, decrements the counter, then blocks', async () => {
+		const headers = {
+			...(await bearer('892')),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		}
+		// First change succeeds — value is the updated account.
+		const ok = await exports.default.fetch(`${ORIGIN}/account/me/username`, {
+			...form({ username: 'coachx' }),
+			headers,
+		})
+		expect(ok.status).toBe(200)
+		const okBody = (await ok.json()) as {
+			success: boolean
+			error: string
+			value: { accountId: number; username: string }
+		}
+		expect(okBody.success).toBe(true)
+		expect(okBody.error).toBe('')
+		expect(okBody.value).toMatchObject({ accountId: 892, username: 'coachx' })
+
+		// /account/me reflects the new name and the decremented counter.
+		const me = (await (
+			await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('892') })
+		).json()) as { username: string; availableUsernameChanges: number }
+		expect(me.username).toBe('coachx')
+		expect(me.availableUsernameChanges).toBe(0)
+
+		// A second change is blocked — no changes remaining (still HTTP 200).
+		const blocked = await exports.default.fetch(`${ORIGIN}/account/me/username`, {
+			...form({ username: 'coachy' }),
+			headers,
+		})
+		expect(blocked.status).toBe(200)
+		const blockedBody = (await blocked.json()) as { success: boolean; error: string }
+		expect(blockedBody.success).toBe(false)
+		expect(blockedBody.error).toMatch(/no username changes/i)
 	})
 
 	test('PUT /account/me/profileimage 401s without a token', async () => {
@@ -262,6 +328,18 @@ describe('auth-gated endpoints', () => {
 		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ success: true })
+	})
+
+	test('PUT /account/me/personalpronouns persists the value, surfaced by /account/me', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/me/personalpronouns`, {
+			...form({ pronounFlags: '2' }),
+			headers: { ...(await bearer('894')), 'Content-Type': 'application/x-www-form-urlencoded' },
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+
+		const me = await exports.default.fetch(`${ORIGIN}/account/me`, { headers: await bearer('894') })
+		expect(((await me.json()) as { personalPronouns: number }).personalPronouns).toBe(2)
 	})
 
 	test('PUT /account/me/bio 401s without a token', async () => {

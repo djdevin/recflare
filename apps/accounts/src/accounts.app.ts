@@ -7,6 +7,7 @@ import {
 	createAccount,
 	defaultAccount,
 	getAccount,
+	getAccountByUsername,
 	getAccountsByIds,
 	updateAccount,
 } from './accounts-db'
@@ -45,6 +46,18 @@ async function authedId(c: Context<App>): Promise<number | null> {
 /** Results.Unauthorized() equivalent — 401 with empty body. */
 function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
+}
+
+/** Username changes a fresh account starts with (until one has been consumed). */
+const DEFAULT_USERNAME_CHANGES = 1
+
+/**
+ * Username-change result envelope: `{ success, error, value }`, always HTTP 200.
+ * On success `value` is the updated account; on error `error` carries the message
+ * and `value` is an empty string.
+ */
+function usernameResult(c: Context<App>, error = '', value: unknown = '') {
+	return c.json({ success: error === '', error, value })
 }
 
 /** Read a single string field from a form-urlencoded / multipart body. */
@@ -103,7 +116,7 @@ const app = new Hono<App>()
 			...toAccountDto(account),
 			email: account.email ?? null,
 			birthday: null,
-			availableUsernameChanges: 1,
+			availableUsernameChanges: account.availableUsernameChanges ?? DEFAULT_USERNAME_CHANGES,
 		})
 	})
 
@@ -164,18 +177,44 @@ const app = new Hono<App>()
 	})
 
 	// ---- Profile mutations ---------------------------------------------------
+	// Set the player's display name (persisted on the account row).
 	.put('/account/me/displayname', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		await formField(c, 'displayName') // TODO: persist on the account row.
+		const displayName = (await formField(c, 'displayName')).trim()
+		if (displayName === '') return c.body(null, 400)
+		await updateAccount(c.env.DB, id, { displayName })
 		return c.json({ success: true })
 	})
 
+	// Change the caller's username. Rejects a name already taken by another account,
+	// and requires the account to have username changes remaining. On success the
+	// new name is persisted and the remaining-changes counter is decremented.
 	.put('/account/me/username', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		await formField(c, 'username') // TODO: persist on the account row.
-		return c.json({ success: true })
+
+		const username = (await formField(c, 'username')).trim()
+		if (username === '') return usernameResult(c, 'You must enter a username.')
+
+		// Duplicate check first (case-insensitive); keeping your own name is allowed.
+		const existing = await getAccountByUsername(c.env.DB, username)
+		if (existing && existing.accountId !== id) {
+			return usernameResult(c, 'That username is already taken.')
+		}
+
+		// Then require a remaining change.
+		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
+		const remaining = account.availableUsernameChanges ?? DEFAULT_USERNAME_CHANGES
+		if (remaining <= 0) {
+			return usernameResult(c, 'You have no username changes remaining.')
+		}
+
+		const updated = await updateAccount(c.env.DB, id, {
+			username,
+			availableUsernameChanges: remaining - 1,
+		})
+		return usernameResult(c, '', toAccountDto(updated))
 	})
 
 	// Set the player's email (persisted on the account row; surfaced by /account/me).
@@ -205,6 +244,16 @@ const app = new Hono<App>()
 		const identityFlags = Number.parseInt((await formField(c, 'identityFlags')).trim(), 10)
 		if (Number.isNaN(identityFlags)) return c.body(null, 400)
 		await updateAccount(c.env.DB, id, { identityFlags })
+		return c.json({ success: true })
+	})
+
+	// Set the player's personalPronouns (posted as `pronounFlags`; persisted).
+	.put('/account/me/personalpronouns', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const personalPronouns = Number.parseInt((await formField(c, 'pronounFlags')).trim(), 10)
+		if (Number.isNaN(personalPronouns)) return c.body(null, 400)
+		await updateAccount(c.env.DB, id, { personalPronouns })
 		return c.json({ success: true })
 	})
 

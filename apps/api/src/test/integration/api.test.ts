@@ -201,6 +201,12 @@ describe('public endpoints', () => {
 		expect(await res.json()).toBe(true)
 	})
 
+	test('GET /api/customAvatarItems/v2/fromCreator/:id returns an empty paginated result', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v2/fromCreator/2`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
+	})
+
 	test('GET /api/rooms/v1/filters returns an object with filter arrays', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/rooms/v1/filters`)
 		expect(res.status).toBe(200)

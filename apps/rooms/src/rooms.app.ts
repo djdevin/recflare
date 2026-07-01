@@ -10,6 +10,7 @@ import {
 	getFavoritedRooms,
 	getHotRooms,
 	getInteraction,
+	getPublicRoomsByCreator,
 	getRoomById,
 	getRoomByName,
 	getRoomsByCreator,
@@ -205,6 +206,12 @@ const app = new Hono<App>()
 	.get('/roomserver/rooms/createdby/me', ownedRooms)
 	.get('/rooms/ownedby/me', ownedRooms)
 	.get('/rooms/createdby/me', ownedRooms)
+
+	// Public: the rooms a given account owns that are publicly viewable. No auth —
+	// returns a bare array (empty when the account owns no public rooms).
+	.get('/rooms/ownedby/:accountId{[0-9]+}', async (c) =>
+		c.json(await getPublicRoomsByCreator(c.env.DB, Number.parseInt(c.req.param('accountId'), 10)))
+	)
 
 	// Rooms the caller has favorited (from the interaction table). Auth-gated.
 	// Paginated via skip/take (take defaults to 100). Returns a bare array, like the

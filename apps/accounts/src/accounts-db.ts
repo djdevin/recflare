@@ -39,6 +39,8 @@ export interface Account {
 	phone?: string
 	/** Set via PUT /account/me/bio; read back via GET /account/:id/bio. */
 	bio?: string
+	/** Remaining username changes; decremented by PUT /account/me/username. */
+	availableUsernameChanges?: number
 }
 
 interface AccountRow {
@@ -119,6 +121,19 @@ export function defaultAccount(id: number, overrides: Partial<Account> = {}): Ac
 export async function getAccount(db: D1Database, id: number): Promise<Account | null> {
 	return parseOne(
 		await db.prepare('SELECT data FROM accounts WHERE account_id = ?1').bind(id).first<AccountRow>()
+	)
+}
+
+/** Look up a single account by username (case-insensitive), or null if none. */
+export async function getAccountByUsername(
+	db: D1Database,
+	username: string
+): Promise<Account | null> {
+	return parseOne(
+		await db
+			.prepare('SELECT data FROM accounts WHERE username_lower = ?1')
+			.bind(username.toLowerCase())
+			.first<AccountRow>()
 	)
 }
 

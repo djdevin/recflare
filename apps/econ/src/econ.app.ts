@@ -130,6 +130,13 @@ const app = new Hono<App>()
 		return c.json([])
 	})
 
+	// The player's item wishlist. [Authorize]; empty without a DB binding.
+	.get('/api/itemWishlists/v1/wishlist/me', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		return c.json([])
+	})
+
 	// The player's saved outfits. [Authorize]; empty without a DB binding.
 	.get('/api/avatar/v3/saved', async (c) => {
 		const id = await authedId(c)
