@@ -15,8 +15,9 @@ There are already so many multiplayer clones, why?
 
 1. None of them are fully open source (some had leaks of old code).
 2. None of them run on microservice architecture.
-3. "Upgrading the server" is not a lasting fix.
-4. This was fun (sort of).
+3. None of them had unit tests.
+4. "Upgrading the server" is not sustainable plan for growth.
+5. This was fun (sort of).
 
 RecFlare uses a true microservice architecture which, if developed correctly, is
 near infinitely scalable and could support the same number of concurrent users
