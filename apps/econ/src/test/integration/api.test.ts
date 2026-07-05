@@ -137,6 +137,64 @@ describe('econ endpoints', () => {
 		expect(await getRes.json()).toEqual(avatar)
 	})
 
+	test('GET /api/avatar/v2/:id 400s on a non-numeric id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/notanumber`)
+		expect(res.status).toBe(400)
+	})
+
+	test('GET /api/avatar/v2/:id returns the default projection when none is saved (no auth)', async () => {
+		// Account 8 has no saved avatar → falls back to the default outfit. No token needed.
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/8`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Record<string, unknown>
+		// Projected to exactly the render subset — no OutfitSelectionsV2/CustomAvatarItems.
+		expect(Object.keys(body).sort()).toEqual([
+			'FaceFeatures',
+			'HairColor',
+			'OutfitSelections',
+			'SkinColor',
+		])
+		expect((body.OutfitSelections as string).length).toBeGreaterThan(0)
+	})
+
+	test('GET /api/avatar/v2/:id returns another player’s saved avatar, projected', async () => {
+		// Seed account 314 with a full avatar blob (superset of the projection).
+		await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: 314, username: 'Pi', displayName: 'Pi' }))
+			.run()
+		await env.DB.prepare('UPDATE accounts SET avatar = ?2 WHERE account_id = ?1')
+			.bind(
+				314,
+				JSON.stringify({
+					OutfitSelections: 'guid,,0;guid2,,1',
+					OutfitSelectionsV2: '{"selections":[]}',
+					FaceFeatures: '{"eyeId":"abc"}',
+					SkinColor: 'skin-guid',
+					HairColor: 'hair-guid',
+					CustomAvatarItems: [],
+				})
+			)
+			.run()
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/314`)
+		expect(res.status).toBe(200)
+		// Only the four projected fields, carrying the saved values.
+		expect(await res.json()).toEqual({
+			OutfitSelections: 'guid,,0;guid2,,1',
+			FaceFeatures: '{"eyeId":"abc"}',
+			SkinColor: 'skin-guid',
+			HairColor: 'hair-guid',
+		})
+	})
+
+	test('GET /api/avatar/v2/gifts is not shadowed by the :id route', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('POST /api/avatar/v2/set 404s when the caller has no account row', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/set`, {
 			method: 'POST',
