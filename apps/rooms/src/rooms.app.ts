@@ -17,6 +17,8 @@ import {
 	getRoomsByCreator,
 	getRoomsByIds,
 	getSimilarRooms,
+	removeCheer,
+	removeFavorite,
 	getVisitedRooms,
 	searchRooms,
 	setRoomDescription,
@@ -270,10 +272,34 @@ const app = new Hono<App>()
 		)
 		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
 	})
+	// Explicitly un-cheer a room (DELETE clears the cheer, vs the PUT toggle).
+	// Auth-gated; idempotent — un-cheering when there's no cheer is a no-op.
+	.delete('/rooms/:roomId{[0-9]+}/interactionby/me/cheer', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+		const interaction = await removeCheer(
+			c.env.DB,
+			accountId,
+			Number.parseInt(c.req.param('roomId'), 10)
+		)
+		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
+	})
 	.put('/rooms/:roomId{[0-9]+}/interactionby/me/favorite', async (c) => {
 		const accountId = await authedAccountId(c)
 		if (accountId === null) return unauthorized(c)
 		const interaction = await toggleFavorite(
+			c.env.DB,
+			accountId,
+			Number.parseInt(c.req.param('roomId'), 10)
+		)
+		return c.json({ ...interaction, LastVisitedAt: new Date().toISOString() })
+	})
+	// Explicitly un-favorite a room (DELETE clears the favorite, vs the PUT toggle).
+	// Auth-gated; idempotent — un-favoriting when there's no favorite is a no-op.
+	.delete('/rooms/:roomId{[0-9]+}/interactionby/me/favorite', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+		const interaction = await removeFavorite(
 			c.env.DB,
 			accountId,
 			Number.parseInt(c.req.param('roomId'), 10)

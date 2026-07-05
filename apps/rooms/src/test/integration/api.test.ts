@@ -620,4 +620,72 @@ describe('rooms endpoints', () => {
 		).json()) as Interaction
 		expect(otherGet).toMatchObject({ Cheered: false, Favorited: false })
 	})
+
+	it('DELETE /rooms/:id/interactionby/me/cheer clears the cheer (auth-gated, idempotent)', async () => {
+		type Interaction = { Cheered: boolean; Favorited: boolean }
+		const headers = await bearer('557')
+		const del = () =>
+			SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/cheer`, { method: 'DELETE', headers })
+
+		// No token → 401.
+		expect(
+			(await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/cheer`, { method: 'DELETE' })).status
+		).toBe(401)
+
+		// Cheer + favorite on, then DELETE clears only the cheer (favorite untouched).
+		await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/cheer`, { method: 'PUT', headers })
+		await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'PUT', headers })
+		expect(await (await del()).json()).toMatchObject({ Cheered: false, Favorited: true })
+
+		// Idempotent — a second DELETE stays cleared.
+		expect(await (await del()).json()).toMatchObject({ Cheered: false, Favorited: true })
+
+		// Idempotent on a never-interacted room, and it doesn't create a visited row.
+		const fresh = await bearer('558')
+		const res = await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/cheer`, {
+			method: 'DELETE',
+			headers: fresh,
+		})
+		expect(await res.json()).toMatchObject({ Cheered: false, Favorited: false })
+		const visited = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: fresh })
+		).json()) as unknown[]
+		expect(visited).toEqual([])
+	})
+
+	it('DELETE /rooms/:id/interactionby/me/favorite clears the favorite (auth-gated, idempotent)', async () => {
+		const headers = await bearer('559')
+		const del = () =>
+			SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'DELETE', headers })
+
+		// No token → 401.
+		expect(
+			(await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'DELETE' })).status
+		).toBe(401)
+
+		// Favorite + cheer on, then DELETE clears only the favorite (cheer untouched).
+		await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'PUT', headers })
+		await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/cheer`, { method: 'PUT', headers })
+		expect(await (await del()).json()).toMatchObject({ Cheered: true, Favorited: false })
+		// It drops out of the caller's favorited list.
+		const favs = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/favoritedby/me`, { headers })
+		).json()) as unknown[]
+		expect(favs).toEqual([])
+
+		// Idempotent — a second DELETE stays cleared.
+		expect(await (await del()).json()).toMatchObject({ Cheered: true, Favorited: false })
+
+		// Idempotent on a never-interacted room, without creating a visited row.
+		const fresh = await bearer('560')
+		const res = await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/favorite`, {
+			method: 'DELETE',
+			headers: fresh,
+		})
+		expect(await res.json()).toMatchObject({ Cheered: false, Favorited: false })
+		const visited = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: fresh })
+		).json()) as unknown[]
+		expect(visited).toEqual([])
+	})
 })

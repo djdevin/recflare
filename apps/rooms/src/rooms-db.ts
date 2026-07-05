@@ -274,6 +274,43 @@ export async function toggleFavorite(
 }
 
 /**
+ * Explicitly clear a single interaction flag on a room (the DELETE counterpart to
+ * the cheer/favorite toggles). Idempotent: only clears an existing interaction row
+ * and never creates one, so clearing a flag on a room the player never interacted
+ * with doesn't add a spurious visited/favorited entry. Returns the interaction.
+ */
+async function clearInteraction(
+	db: D1Database,
+	playerId: number,
+	roomId: number,
+	column: 'cheered' | 'favorited'
+): Promise<Interaction> {
+	await db
+		.prepare(`UPDATE interaction SET ${column} = 0 WHERE player_id = ?1 AND room_id = ?2`)
+		.bind(playerId, roomId)
+		.run()
+	return getInteraction(db, playerId, roomId)
+}
+
+/** Clear the player's cheer on a room (DELETE cheer), returning the interaction. */
+export async function removeCheer(
+	db: D1Database,
+	playerId: number,
+	roomId: number
+): Promise<Interaction> {
+	return clearInteraction(db, playerId, roomId, 'cheered')
+}
+
+/** Clear the player's favorite on a room (DELETE favorite), returning the interaction. */
+export async function removeFavorite(
+	db: D1Database,
+	playerId: number,
+	roomId: number
+): Promise<Interaction> {
+	return clearInteraction(db, playerId, roomId, 'favorited')
+}
+
+/**
  * Search-tag aliases: a queried `#tag` also matches these stored tag names.
  * The client's pinned filters don't always match how rooms are tagged (e.g. it
  * searches `recroomoriginal`, but rooms are tagged `rro`).
