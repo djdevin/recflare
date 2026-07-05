@@ -9,7 +9,13 @@ import storefrontGiftDrop2 from '../static/storefronts-v3-giftdropstore-2.json'
 import storefrontGiftDrop3 from '../static/storefronts-v3-giftdropstore-3.json'
 import storefrontGiftDrop300 from '../static/storefronts-v3-giftdropstore-300.json'
 import { defaultSettings } from './default-settings'
-import { createImage, getImageByName } from './images-db'
+import {
+	createImage,
+	getImageByName,
+	getImagesByPlayer,
+	getImagesByRoom,
+	getPlayerFeed,
+} from './images-db'
 import { validateAndGetAccountId } from './jwt'
 import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
 
@@ -480,6 +486,36 @@ const app = new Hono<App>({ strict: false })
 		})
 
 		return c.json({ ImageName: name })
+	})
+
+	// A room's photo feed — the public images taken in that room. `sort` orders the
+	// feed (1 = most cheered, else newest) and `filter` narrows by SavedImageType
+	// (0 = all). Paginated via skip/take (take defaults to 100). Returns a bare array.
+	.get('/api/images/v4/room/:roomId{[0-9]+}', async (c) => {
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const sort = Number.parseInt(c.req.query('sort') ?? '0', 10) || 0
+		const filter = Number.parseInt(c.req.query('filter') ?? '0', 10) || 0
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getImagesByRoom(c.env.DB, roomId, sort, filter, skip, take))
+	})
+
+	// A player's photos — the public images that player has taken, newest first.
+	// Paginated via skip/take (take defaults to 100). Returns a bare array.
+	.get('/api/images/v4/player/:playerId{[0-9]+}', async (c) => {
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getImagesByPlayer(c.env.DB, playerId, skip, take))
+	})
+
+	// A player's photo feed — the public images they took plus ones they're tagged
+	// in, newest first. Paginated via skip/take (take defaults to 100). Bare array.
+	.get('/api/images/v3/feed/player/:playerId{[0-9]+}', async (c) => {
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getPlayerFeed(c.env.DB, playerId, skip, take))
 	})
 
 	// Image metadata by filename. Returns the stored SavedImage record, or 404 when

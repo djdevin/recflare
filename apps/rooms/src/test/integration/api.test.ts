@@ -316,6 +316,30 @@ describe('rooms endpoints', () => {
 		expect(body.length).toBeLessThanOrEqual(5)
 	})
 
+	it('GET /rooms/recommendations returns a bare array of public rooms (split-test params ignored)', async () => {
+		const res = await SELF.fetch(
+			`${ORIGIN}/rooms/recommendations?splitTestId=1&splitTestValue=5`
+		)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Array<{ RoomId: number; IsDorm?: boolean }>
+		expect(Array.isArray(body)).toBe(true)
+		expect(body.length).toBeGreaterThan(0)
+		// The dorm (RoomId 1) is non-public, so it's never recommended.
+		expect(body.some((r) => r.RoomId === 1 || r.IsDorm === true)).toBe(false)
+
+		// The split-test params don't change the result.
+		const plain = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/recommendations`)
+		).json()) as Array<{ RoomId: number }>
+		expect(plain.map((r) => r.RoomId)).toEqual(body.map((r) => r.RoomId))
+	})
+
+	it('GET /rooms/recommendations respects take pagination', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/rooms/recommendations?skip=0&take=3`)
+		const body = (await res.json()) as unknown[]
+		expect(body.length).toBeLessThanOrEqual(3)
+	})
+
 	it('GET /rooms/:id/similar returns { Results, TotalResults } of tag-sharing rooms (excluding self)', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/rooms/2/similar`)
 		expect(res.status).toBe(200)

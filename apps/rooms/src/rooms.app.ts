@@ -11,6 +11,7 @@ import {
 	getHotRooms,
 	getInteraction,
 	getPublicRoomsByCreator,
+	getRecommendedRooms,
 	getRoomById,
 	getRoomByName,
 	getRoomsByCreator,
@@ -183,6 +184,16 @@ const app = new Hono<App>()
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
 		return c.json(await getBaseRooms(c.env.DB, skip, take))
+	})
+
+	// Recommended rooms feed — public, non-dorm rooms ranked by engagement, returned
+	// as a bare array (the client's recommendation room-source expects a plain list).
+	// The `splitTestId`/`splitTestValue` A/B params are accepted and ignored.
+	// Paginated via skip/take (take defaults to 100).
+	.get('/rooms/recommendations', async (c) => {
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getRecommendedRooms(c.env.DB, skip, take))
 	})
 
 	// Bulk room lookup by `id` or `name` — returns an array of matched rooms (the

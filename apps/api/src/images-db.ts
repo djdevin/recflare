@@ -89,3 +89,92 @@ export async function getImageByName(db: D1Database, name: string): Promise<Save
 		.first<ImageRow>()
 	return row ? (JSON.parse(row.data) as SavedImage) : null
 }
+
+/**
+ * The public images taken in a room, for the room's photo feed. Only publicly
+ * accessible images (Accessibility === 1) are returned. `filter` narrows by
+ * `SavedImageType` (0 = all types); `sort` orders the feed — `1` puts the most
+ * cheered first (ties broken by newest), anything else is newest-first. Paginated
+ * via skip/take; returns a bare array of SavedImage. The per-room set is small, so
+ * the room_id index does the lookup and filtering/sorting happens in memory.
+ *
+ * NOTE: the exact `sort`/`filter` enum values are best guesses — the client sends
+ * `sort=1&filter=1`, and this treats them as most-cheered / ShareCamera.
+ */
+export async function getImagesByRoom(
+	db: D1Database,
+	roomId: number,
+	sort: number,
+	filter: number,
+	skip: number,
+	take: number
+): Promise<SavedImage[]> {
+	const { results } = await db
+		.prepare('SELECT data FROM image WHERE room_id = ?1')
+		.bind(roomId)
+		.all<ImageRow>()
+	let images = results
+		.map((r) => JSON.parse(r.data) as SavedImage)
+		.filter((img) => img.Accessibility === 1)
+
+	if (filter > 0) images = images.filter((img) => img.Type === filter)
+
+	images.sort(
+		sort === 1 ? (a, b) => b.CheerCount - a.CheerCount || newestFirst(a, b) : newestFirst
+	)
+
+	return images.slice(skip, skip + take)
+}
+
+/** Newest-first order: most recent CreatedAt, ties broken by higher Id. */
+const newestFirst = (a: SavedImage, b: SavedImage) =>
+	b.CreatedAt.localeCompare(a.CreatedAt) || b.Id - a.Id
+
+/**
+ * The public images a player has taken — their photo list, newest first.
+ * Paginated via skip/take; returns a bare array of SavedImage. Uses the
+ * player_id index; the per-player set is small, so filtering/sorting is in memory.
+ */
+export async function getImagesByPlayer(
+	db: D1Database,
+	playerId: number,
+	skip: number,
+	take: number
+): Promise<SavedImage[]> {
+	const { results } = await db
+		.prepare('SELECT data FROM image WHERE player_id = ?1')
+		.bind(playerId)
+		.all<ImageRow>()
+	return results
+		.map((r) => JSON.parse(r.data) as SavedImage)
+		.filter((img) => img.Accessibility === 1)
+		.sort(newestFirst)
+		.slice(skip, skip + take)
+}
+
+/**
+ * A player's photo feed — the public images they took plus the ones they're
+ * tagged in (TaggedPlayerIds). Newest first, paginated via skip/take; returns a
+ * bare array of SavedImage. The tagged-in match uses json_each over the stored
+ * TaggedPlayerIds array (there's no index for it).
+ */
+export async function getPlayerFeed(
+	db: D1Database,
+	playerId: number,
+	skip: number,
+	take: number
+): Promise<SavedImage[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT data FROM image
+			 WHERE player_id = ?1
+			    OR EXISTS (SELECT 1 FROM json_each(image.data, '$.TaggedPlayerIds') WHERE value = ?1)`
+		)
+		.bind(playerId)
+		.all<ImageRow>()
+	return results
+		.map((r) => JSON.parse(r.data) as SavedImage)
+		.filter((img) => img.Accessibility === 1)
+		.sort(newestFirst)
+		.slice(skip, skip + take)
+}

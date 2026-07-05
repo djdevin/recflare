@@ -367,6 +367,27 @@ export async function getHotRooms(
 }
 
 /**
+ * Recommended rooms feed: public, non-dorm rooms not excluded from lists, ranked
+ * by engagement (same score as the hot feed). Unlike the hot feed this returns a
+ * bare array — the client's recommendation room-source loader expects a plain
+ * list, like the other `*by/me`/base sources. The `splitTest*` A/B params the
+ * client passes don't change the result. Paginated via skip/take; the dataset is
+ * small, so this filters/sorts in memory rather than in SQL.
+ */
+export async function getRecommendedRooms(
+	db: D1Database,
+	skip: number,
+	take: number
+): Promise<Room[]> {
+	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const roomId = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
+	return parseAll(results)
+		.filter((r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true)
+		.sort((a, b) => hotScore(b) - hotScore(a) || roomId(a) - roomId(b))
+		.slice(skip, skip + take)
+}
+
+/**
  * Rooms similar to a target room: public, non-dorm rooms (excluding the target)
  * that share at least one tag with it, ranked by shared-tag count then
  * engagement. Returns a paginated `{ Results, TotalResults }` (the client's

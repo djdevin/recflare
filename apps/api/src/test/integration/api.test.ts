@@ -7,6 +7,7 @@ import '../../api.app'
 import { SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
 
 import type { Env } from '../../context'
+import type { SavedImage } from '../../images-db'
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -492,5 +493,120 @@ describe('images', () => {
 			body: 'foo=bar',
 		})
 		expect(res.status).toBe(400)
+	})
+
+	test('GET /api/images/v4/room/:id returns a public room feed, filtered/sorted/paginated', async () => {
+		// Seed images in room 54: two public (one with more cheers, of different
+		// types), one private (hidden), and one in another room (excluded).
+		const seed = (img: Partial<SavedImage> & { Id: number }) =>
+			env.DB.prepare('INSERT INTO image (data) VALUES (?1)').bind(
+				JSON.stringify({
+					Type: 1,
+					Accessibility: 1,
+					AccessibilityLocked: false,
+					ImageName: `img${img.Id}.jpg`,
+					Description: null,
+					PlayerId: 42,
+					TaggedPlayerIds: [],
+					RoomId: 54,
+					PlayerEventId: null,
+					CreatedAt: '2026-01-01T00:00:00.000Z',
+					CheerCount: 0,
+					CommentCount: 0,
+					...img,
+				})
+			)
+		await env.DB.batch([
+			seed({ Id: 101, CheerCount: 5, CreatedAt: '2026-02-01T00:00:00.000Z' }),
+			seed({ Id: 102, CheerCount: 9, CreatedAt: '2026-01-15T00:00:00.000Z', Type: 3 }),
+			seed({ Id: 103, Accessibility: 0 }), // private → hidden from the public feed
+			seed({ Id: 104, RoomId: 99 }), // different room → excluded
+		])
+
+		// sort=1 → most cheered first (102 has 9, 101 has 5).
+		const top = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v4/room/54?sort=1&filter=0&take=100&skip=0`)
+		).json()) as SavedImage[]
+		expect(top.map((i) => i.Id)).toEqual([102, 101])
+
+		// sort=0 → newest first (101 is more recent than 102).
+		const newest = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v4/room/54?sort=0`)
+		).json()) as SavedImage[]
+		expect(newest.map((i) => i.Id)).toEqual([101, 102])
+
+		// filter=1 (ShareCamera) drops the Type-3 image (102).
+		const filtered = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v4/room/54?filter=1`)
+		).json()) as SavedImage[]
+		expect(filtered.map((i) => i.Id)).toEqual([101])
+
+		// take/skip paginate.
+		const page = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v4/room/54?sort=1&take=1&skip=1`)
+		).json()) as SavedImage[]
+		expect(page.map((i) => i.Id)).toEqual([101])
+
+		// A room with no images → empty array.
+		expect(
+			await (await exports.default.fetch(`${ORIGIN}/api/images/v4/room/12345`)).json()
+		).toEqual([])
+	})
+
+	test('GET /api/images/v4/player/:id and v3/feed/player/:id return the player photos + feed', async () => {
+		const seed = (img: Partial<SavedImage> & { Id: number }) =>
+			env.DB.prepare('INSERT INTO image (data) VALUES (?1)').bind(
+				JSON.stringify({
+					Type: 1,
+					Accessibility: 1,
+					AccessibilityLocked: false,
+					ImageName: `p${img.Id}.jpg`,
+					Description: null,
+					PlayerId: 700,
+					TaggedPlayerIds: [],
+					RoomId: null,
+					PlayerEventId: null,
+					CreatedAt: '2026-01-01T00:00:00.000Z',
+					CheerCount: 0,
+					CommentCount: 0,
+					...img,
+				})
+			)
+		await env.DB.batch([
+			// Player 700's own photos (newest last so ordering is exercised).
+			seed({ Id: 201, PlayerId: 700, CreatedAt: '2026-03-01T00:00:00.000Z' }),
+			seed({ Id: 202, PlayerId: 700, CreatedAt: '2026-04-01T00:00:00.000Z' }),
+			seed({ Id: 203, PlayerId: 700, Accessibility: 0 }), // private → hidden
+			// Taken by someone else, but player 700 is tagged in it → feed only.
+			seed({ Id: 204, PlayerId: 999, TaggedPlayerIds: [700], CreatedAt: '2026-05-01T00:00:00.000Z' }),
+			// Unrelated to 700 → in neither.
+			seed({ Id: 205, PlayerId: 999, TaggedPlayerIds: [111] }),
+		])
+
+		// v4/player → only photos 700 *took*, public, newest first.
+		const mine = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v4/player/700`)
+		).json()) as SavedImage[]
+		expect(mine.map((i) => i.Id)).toEqual([202, 201])
+
+		// take paginates.
+		const one = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v4/player/700?take=1`)
+		).json()) as SavedImage[]
+		expect(one.map((i) => i.Id)).toEqual([202])
+
+		// v3/feed/player → photos taken *or* tagged in, newest first (204 is newest).
+		const feed = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v3/feed/player/700?take=100`)
+		).json()) as SavedImage[]
+		expect(feed.map((i) => i.Id)).toEqual([204, 202, 201])
+
+		// A player with no photos → empty array on both.
+		expect(await (await exports.default.fetch(`${ORIGIN}/api/images/v4/player/424242`)).json()).toEqual(
+			[]
+		)
+		expect(
+			await (await exports.default.fetch(`${ORIGIN}/api/images/v3/feed/player/424242`)).json()
+		).toEqual([])
 	})
 })
