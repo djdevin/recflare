@@ -424,6 +424,9 @@ const app = new Hono<App>()
 		)
 	})
 
+	// The caller's per-room player data. Stub → empty blob (client reads `Data`).
+	.get('/rooms/:roomId{[0-9]+}/playerdata/me', (c) => c.json({ Data: '' }))
+
 	// Single room by id. 404 when the room isn't in D1. Ignores the
 	// include/unityAsset* query params.
 	.get('/rooms/:roomId{[0-9]+}', async (c) => {

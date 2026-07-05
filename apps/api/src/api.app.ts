@@ -197,6 +197,7 @@ const app = new Hono<App>({ strict: false })
 	// ---- Social ---------------------------------------------------------------
 	.get('/api/relationships/v2/get', (c) => c.json([]))
 	.get('/api/messages/v2/get', (c) => c.json([]))
+	.get('/api/messages/v1/favoriteFriendOnlineStatus', (c) => c.json([]))
 
 	// ---- Reputation / progression --------------------------------------------
 	.get('/api/playerReputation/v1/:id', (c) =>
@@ -506,7 +507,17 @@ const app = new Hono<App>({ strict: false })
 		const playerId = Number.parseInt(c.req.param('playerId'), 10)
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-		return c.json(await getImagesByPlayer(c.env.DB, playerId, skip, take))
+		return c.json(await getImagesByPlayer(c.env.DB, playerId, 0, skip, take))
+	})
+
+	// A player's photos with a sort option. `sort` orders the list (1 = most
+	// cheered, else newest). Paginated via skip/take (take defaults to 100). Bare array.
+	.get('/api/images/v5/player/:playerId{[0-9]+}', async (c) => {
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		const sort = Number.parseInt(c.req.query('sort') ?? '0', 10) || 0
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getImagesByPlayer(c.env.DB, playerId, sort, skip, take))
 	})
 
 	// A player's photo feed — the public images they took plus ones they're tagged

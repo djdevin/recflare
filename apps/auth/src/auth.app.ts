@@ -205,12 +205,11 @@ const app = new Hono<App>()
 		return c.json({ success: true })
 	})
 
-	// Developer role lookup. Not implemented yet.
+	// Developer role lookup. No developer role granted by default.
 	.get('/role/developer/:id', (c) => {
 		const { id } = c.req.param()
 		logger.info('developer role lookup', { id })
-		// TODO: implement
-		return c.json({ success: true })
+		return c.json({ success: false })
 	})
 
 export default app

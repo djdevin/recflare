@@ -138,6 +138,7 @@ const newestFirst = (a: SavedImage, b: SavedImage) =>
 export async function getImagesByPlayer(
 	db: D1Database,
 	playerId: number,
+	sort: number,
 	skip: number,
 	take: number
 ): Promise<SavedImage[]> {
@@ -148,7 +149,7 @@ export async function getImagesByPlayer(
 	return results
 		.map((r) => JSON.parse(r.data) as SavedImage)
 		.filter((img) => img.Accessibility === 1)
-		.sort(newestFirst)
+		.sort(sort === 1 ? (a, b) => b.CheerCount - a.CheerCount || newestFirst(a, b) : newestFirst)
 		.slice(skip, skip + take)
 }
 

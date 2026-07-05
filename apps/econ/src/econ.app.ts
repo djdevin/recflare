@@ -11,6 +11,7 @@ import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
 import { validateAndGetAccountId } from './jwt'
 
+import type { Avatar } from './avatar-db'
 import type { Context } from 'hono'
 import type { App } from './context'
 
@@ -41,6 +42,21 @@ async function authedId(c: Context<App>): Promise<number | null> {
 /** Results.Unauthorized() equivalent — 401 with empty body. */
 function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
+}
+
+/**
+ * Project a stored avatar into the public render subset returned by
+ * `GET /api/avatar/v2/:id` — the fields needed to draw another player's avatar
+ * (the full blob also holds `OutfitSelectionsV2`/`CustomAvatarItems`, which this
+ * view omits).
+ */
+function toAvatarV2Dto(avatar: Avatar) {
+	return {
+		OutfitSelections: avatar.OutfitSelections,
+		FaceFeatures: avatar.FaceFeatures,
+		SkinColor: avatar.SkinColor,
+		HairColor: avatar.HairColor,
+	}
 }
 
 /** RecNet currency types (the `CurrencyType` enum the client uses). */
@@ -151,6 +167,16 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		// TODO: query pending ReceivedGifts once a DB binding exists.
 		return c.json([])
+	})
+
+	// A player's avatar by account id, projected to the public render subset (used
+	// to draw other players' avatars). No auth — like the accounts `/account/:id`
+	// lookup. Falls back to the default outfit when the player hasn't saved one.
+	// Registered after the static `/api/avatar/v2/*` routes so `:id` can't shadow them.
+	.get('/api/avatar/v2/:id', async (c) => {
+		const accountId = Number.parseInt(c.req.param('id'), 10)
+		if (Number.isNaN(accountId)) return c.body(null, 400)
+		return c.json(toAvatarV2Dto((await getAvatar(c.env.DB, accountId)) ?? defaultAvatar))
 	})
 
 	// Unlocked equipment. Returns "[]" with no auth.

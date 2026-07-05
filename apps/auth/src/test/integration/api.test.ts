@@ -212,10 +212,10 @@ describe('auth worker routes', () => {
 		expect(await rotate.json()).toEqual({ success: true })
 	})
 
-	test('GET /role/developer/:id returns ok', async () => {
+	test('GET /role/developer/:id does not grant developer', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/role/developer/42`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ success: true })
+		expect(await res.json()).toEqual({ success: false })
 	})
 
 	test('unknown path returns 404', async () => {

@@ -456,4 +456,11 @@ const app = new Hono<App>()
 	// ---- Room instance -------------------------------------------------------
 	.post('/roominstance/:id/reportjoinresult', (c) => c.body(null, 200))
 
+	// Rooms flagged as needing a developer/moderator to spawn in. No such queue
+	// yet → empty list.
+	.get('/rooms/requiring/developer', (c) => c.json([]))
+
+	// Rooms flagged as requiring an RR+ subscription. No such queue yet → empty list.
+	.get('/rooms/requiring/rrplus', (c) => c.json([]))
+
 export default app

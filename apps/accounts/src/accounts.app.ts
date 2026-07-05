@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import {
 	createAccount,
@@ -85,6 +85,46 @@ function toAccountDto(account: Account) {
 	}
 }
 
+/**
+ * Project a stored account into the private self DTO (the /account/me shape) —
+ * the public DTO plus owner-only fields. `juniorState`/`parentAccountId` are
+ * OMITTED when null (emitting `null` makes the client's enum parser throw);
+ * `email`/`birthday` are kept as null (not enums, so null is fine).
+ */
+function toSelfAccountDto(account: Account) {
+	return {
+		...toAccountDto(account),
+		email: account.email ?? null,
+		birthday: null,
+		availableUsernameChanges: account.availableUsernameChanges ?? DEFAULT_USERNAME_CHANGES,
+	}
+}
+
+/** The notifications hub is a single global DO instance (see the `notify` worker). */
+const HUB_INSTANCE = 'global'
+
+/**
+ * Push the notifications that follow an account mutation, mirroring the C#/Go
+ * hub behavior: the owner receives `SelfAccountUpdate` and `AccountUpdate`, and
+ * every connected client receives an `AccountUpdate` broadcast. Hub failures are
+ * logged and swallowed — the account write has already committed, so a hub
+ * hiccup must not fail the request.
+ */
+async function pushAccountUpdate(c: Context<App>, account: Account): Promise<void> {
+	try {
+		const hub = c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE)
+		const publicDto = toAccountDto(account)
+		await hub.notifyPlayer(account.accountId, 'SelfAccountUpdate', toSelfAccountDto(account))
+		await hub.notifyPlayer(account.accountId, 'AccountUpdate', publicDto)
+		await hub.broadcast('AccountUpdate', publicDto)
+	} catch (err) {
+		logger.error('failed to push account update notifications', {
+			accountId: account.accountId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -108,16 +148,7 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		// Load the stored account, falling back to a synthesized default.
 		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
-		// `juniorState` (an enum) and `parentAccountId` are OMITTED when null —
-		// emitting `"juniorState":null` makes the client's enum parser throw
-		// ("Can't parse JSON to Enum format"). `email`/`birthday` are kept as null
-		// (they aren't enums, so null is fine).
-		return c.json({
-			...toAccountDto(account),
-			email: account.email ?? null,
-			birthday: null,
-			availableUsernameChanges: account.availableUsernameChanges ?? DEFAULT_USERNAME_CHANGES,
-		})
+		return c.json(toSelfAccountDto(account))
 	})
 
 	// ---- Bulk / single lookup ------------------------------------------------
@@ -176,6 +207,10 @@ const app = new Hono<App>()
 		return c.json({ accountId: id, disallowInAppPurchases: false })
 	})
 
+	// Privacy settings for an account. The client deserializes this into an
+	// object, so it must return `{}` (not `[]`).
+	.get('/accountprivacysettings/:id', (c) => c.json({}))
+
 	// ---- Profile mutations ---------------------------------------------------
 	// Set the player's display name (persisted on the account row).
 	.put('/account/me/displayname', async (c) => {
@@ -183,7 +218,8 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		const displayName = (await formField(c, 'displayName')).trim()
 		if (displayName === '') return c.body(null, 400)
-		await updateAccount(c.env.DB, id, { displayName })
+		const account = await updateAccount(c.env.DB, id, { displayName })
+		await pushAccountUpdate(c, account)
 		return c.json({ success: true })
 	})
 
@@ -214,6 +250,7 @@ const app = new Hono<App>()
 			username,
 			availableUsernameChanges: remaining - 1,
 		})
+		await pushAccountUpdate(c, updated)
 		return usernameResult(c, '', toAccountDto(updated))
 	})
 
@@ -261,7 +298,8 @@ const app = new Hono<App>()
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const bio = await formField(c, 'bio')
-		await updateAccount(c.env.DB, id, { bio })
+		const account = await updateAccount(c.env.DB, id, { bio })
+		await pushAccountUpdate(c, account)
 		return c.json({ success: true })
 	})
 
@@ -270,9 +308,10 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		const imageName = await formField(c, 'imageName')
 		if (!imageName) return c.body(null, 400)
-		// Persist the new avatar key on the account row (the C# also fires an
-		// AccountUpdate websocket — no notify binding here, so it's omitted).
-		await updateAccount(c.env.DB, id, { profileImage: imageName })
+		// Persist the new avatar key on the account row and fire the AccountUpdate
+		// websocket (the new profileImage rides along in the DTO payload).
+		const account = await updateAccount(c.env.DB, id, { profileImage: imageName })
+		await pushAccountUpdate(c, account)
 		return c.json({ success: true })
 	})
 

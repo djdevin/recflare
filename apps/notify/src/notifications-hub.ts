@@ -223,7 +223,7 @@ export class NotificationsHub extends DurableObject<Env> {
 	 */
 	async notifyPlayer(
 		playerId: number,
-		notificationType: number,
+		notificationType: string | number,
 		data?: Record<string, unknown>
 	): Promise<{ delivered: number; queued: boolean }> {
 		const payload = this.buildNotificationPayload(notificationType, data)
@@ -257,7 +257,7 @@ export class NotificationsHub extends DurableObject<Env> {
 
 	/** Broadcast a notification to every connected (handshaken) client. */
 	async broadcast(
-		notificationType: number,
+		notificationType: string | number,
 		data?: Record<string, unknown>
 	): Promise<{ delivered: number }> {
 		const payload = this.buildNotificationPayload(notificationType, data)
@@ -275,10 +275,11 @@ export class NotificationsHub extends DurableObject<Env> {
 
 	/**
 	 * Build the `Notification` argument: a JSON string `{ Id, Msg }`
-	 * (null values are dropped from `Msg`).
+	 * (null values are dropped from `Msg`). `Id` is a client-defined tag — a
+	 * string name (e.g. "AccountUpdate") or a numeric code.
 	 */
 	private buildNotificationPayload(
-		notificationType: number,
+		notificationType: string | number,
 		data?: Record<string, unknown>
 	): string {
 		const msg: Record<string, unknown> = {}
@@ -288,7 +289,7 @@ export class NotificationsHub extends DurableObject<Env> {
 				msg[key] = value
 			}
 		}
-		return JSON.stringify({ Id: notificationType ?? 0, Msg: msg })
+		return JSON.stringify({ Id: notificationType ?? '', Msg: msg })
 	}
 
 	private invocation(target: string, args: unknown[]): string {

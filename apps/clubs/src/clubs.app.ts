@@ -80,4 +80,12 @@ const app = new Hono<App>()
 	// The clubs the player is a member of (GetMyMembershipClubs). No DB → empty.
 	.get('/club/mine/member', (c) => c.json([]))
 
+	// The clubs the player created (GetMyCreatedClubs). No DB → empty.
+	.get('/club/mine/created', (c) => c.json([]))
+
+	// The set of club category tags a club can be filed under — a fixed list.
+	.get('/club/categoryTags', (c) =>
+		c.json(['Social', 'Creative', 'Competitive', 'Casual', 'Entertainment'])
+	)
+
 export default app

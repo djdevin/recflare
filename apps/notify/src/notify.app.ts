@@ -18,6 +18,14 @@ import type { App } from './context'
 /** The hub state is global → one DO instance. */
 const HUB_INSTANCE = 'global'
 
+/**
+ * A valid notification `Id` — a client-defined string tag (e.g. "AccountUpdate")
+ * or a numeric code. An empty string is treated as missing.
+ */
+function isNotificationType(value: unknown): value is string | number {
+	return (typeof value === 'string' && value !== '') || typeof value === 'number'
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -48,7 +56,7 @@ const app = new Hono<App>()
 	})
 
 	// The hub WebSocket. Upgrade requests are forwarded to the Durable Object.
-	.get('/hub/v1', (c) => {
+	.get('/hub/v1', async (c) => {
 		if ((c.req.header('upgrade') ?? '').toLowerCase() !== 'websocket') {
 			return c.json({ error: 'Expected a WebSocket upgrade request' }, 426)
 		}
@@ -60,9 +68,13 @@ const app = new Hono<App>()
 	// TODO: protect these before production.
 	.post('/internal/notify', async (c) => {
 		const body = await c.req
-			.json<{ playerId?: number; notificationType?: number; data?: Record<string, unknown> }>()
+			.json<{
+				playerId?: number
+				notificationType?: string | number
+				data?: Record<string, unknown>
+			}>()
 			.catch(() => null)
-		if (!body || typeof body.playerId !== 'number' || typeof body.notificationType !== 'number') {
+		if (!body || typeof body.playerId !== 'number' || !isNotificationType(body.notificationType)) {
 			return c.json({ error: 'playerId and notificationType are required' }, 400)
 		}
 		const result = await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
@@ -75,9 +87,9 @@ const app = new Hono<App>()
 
 	.post('/internal/broadcast', async (c) => {
 		const body = await c.req
-			.json<{ notificationType?: number; data?: Record<string, unknown> }>()
+			.json<{ notificationType?: string | number; data?: Record<string, unknown> }>()
 			.catch(() => null)
-		if (!body || typeof body.notificationType !== 'number') {
+		if (!body || !isNotificationType(body.notificationType)) {
 			return c.json({ error: 'notificationType is required' }, 400)
 		}
 		const result = await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).broadcast(
