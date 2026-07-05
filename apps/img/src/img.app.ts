@@ -8,6 +8,9 @@ import type { App, Env } from './context'
 /** Key id the client uses to look up the public half of the signing key. */
 const SIGNATURE_KEY_ID = 'KEY:RSA:p1.rec.net'
 
+/** Static asset served (200) when the requested key is missing from R2. */
+const FALLBACK_ASSET_PATH = '/DefaultProfileImage.jpg'
+
 // Import the signing key once per isolate. The key material is constant for the
 // lifetime of the Worker, so caching the promise is safe.
 let signingKey: Promise<CryptoKey | null> | undefined
@@ -39,6 +42,32 @@ async function signImage(env: Env, bytes: ArrayBuffer): Promise<string | null> {
 	return btoa(binary)
 }
 
+/**
+ * Serve a static asset `Response` with our standard cache headers, honouring
+ * `?sig=p1` by RSA-SHA1 signing the (buffered) body into `Content-Signature`.
+ */
+async function serveStaticAsset(
+	env: Env,
+	asset: Response,
+	wantsSignature: boolean
+): Promise<Response> {
+	const headers = new Headers()
+	const contentType = asset.headers.get('content-type')
+	if (contentType) headers.set('content-type', contentType)
+	headers.set('cache-control', 'public, max-age=3600')
+
+	if (wantsSignature) {
+		const bytes = await asset.arrayBuffer()
+		const signature = await signImage(env, bytes)
+		if (signature) {
+			headers.set('content-signature', `key-id=${SIGNATURE_KEY_ID}; data=${signature}`)
+		}
+		return new Response(bytes, { headers })
+	}
+
+	return new Response(asset.body, { headers })
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -66,12 +95,28 @@ const app = new Hono<App>()
 		const key = c.req.param('key')
 		if (key.includes('..')) return c.body(null, 400)
 
+		const wantsSignature = c.req.query('sig') === 'p1'
+
+		// Prefer a bundled static asset when one exists for this key, before hitting
+		// R2. This lets us ship canonical images (e.g. room thumbnails in `static/`)
+		// that always win over whatever, if anything, is in the bucket.
+		const staticAsset = await c.env.ASSETS.fetch(new URL(`/${key}`, c.req.url))
+		if (staticAsset.ok) {
+			return serveStaticAsset(c.env, staticAsset, wantsSignature)
+		}
+
 		const ifNoneMatch = c.req.header('if-none-match')?.replace(/"/g, '')
 		const object = await c.env.IMAGES.get(
 			key,
 			ifNoneMatch ? { onlyIf: { etagDoesNotMatch: ifNoneMatch } } : undefined
 		)
-		if (!object) return c.notFound()
+		if (!object) {
+			// Missing from both static and R2 → serve the bundled DefaultProfileImage.jpg
+			// static asset so clients still get a valid image instead of a 404. Honour
+			// `?sig=p1` the same way so signed clients can verify the fallback.
+			const asset = await c.env.ASSETS.fetch(new URL(FALLBACK_ASSET_PATH, c.req.url))
+			return serveStaticAsset(c.env, asset, wantsSignature)
+		}
 
 		const headers = new Headers()
 		object.writeHttpMetadata(headers)
@@ -81,7 +126,7 @@ const app = new Hono<App>()
 		// Precondition matched (If-None-Match) → R2 returns no body.
 		if (!('body' in object)) return new Response(null, { status: 304, headers })
 
-		if (c.req.query('sig') === 'p1') {
+		if (wantsSignature) {
 			const bytes = await object.arrayBuffer()
 			const signature = await signImage(c.env, bytes)
 			if (signature) {

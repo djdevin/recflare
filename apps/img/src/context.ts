@@ -6,6 +6,8 @@ export type Env = SharedHonoEnv & {
 	DB: D1Database
 	/** R2 bucket holding the served image objects, keyed by filename. */
 	IMAGES: R2Bucket
+	/** Static assets (fallback images) served from `static/`. */
+	ASSETS: Fetcher
 	/**
 	 * RSA-2048 private key (PKCS8 DER, base64) used to sign image responses
 	 * requested with `?sig=p1`. Optional — when absent, responses are unsigned.

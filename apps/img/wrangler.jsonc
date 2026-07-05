@@ -4,6 +4,15 @@
 	"main": "src/img.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
+	// Static fallback assets (e.g. DefaultProfileImage.jpg served when a key is
+	// missing from R2). `run_worker_first` keeps the Worker in control of routing
+	// so image requests still hit R2/signing; assets are only fetched explicitly
+	// via the ASSETS binding.
+	"assets": {
+		"directory": "./static",
+		"binding": "ASSETS",
+		"run_worker_first": true
+	},
 	// Images are stored as objects in an R2 bucket and streamed back by key.
 	"r2_buckets": [
 		{

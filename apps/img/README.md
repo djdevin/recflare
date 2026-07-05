@@ -9,7 +9,10 @@ key:
 - `GET /<key>` — streams the matching R2 object (e.g.
   `GET /DefaultProfileImage.jpg`). The key may contain slashes for nested
   objects. Content-Type comes from the object's stored HTTP metadata. Supports
-  conditional requests via `If-None-Match` (returns `304`). Missing keys `404`.
+  conditional requests via `If-None-Match` (returns `304`). Missing keys fall
+  back to the bundled `static/DefaultProfileImage.jpg` asset (served `200` via
+  the `ASSETS` binding), so clients always get a valid image. The fallback also
+  honours `?sig=p1` and returns a `Content-Signature` header.
 - `GET /<key>?sig=p1` — same, but the response body is RSA-SHA1 signed and the
   signature returned in a `Content-Signature: key-id=KEY:RSA:p1.rec.net; data=<base64>`
   header. The client uses this to verify image integrity. Signing buffers the
