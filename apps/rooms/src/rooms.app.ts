@@ -56,8 +56,28 @@ function allIds(idParam: string): number[] {
 		.filter((n) => !Number.isNaN(n))
 }
 
-/** Room permissions + (empty) Photon token the client needs to spawn into a room. */
-function photonAccessToken() {
+/** Account ids granted the global (Role 0) maker pen — the reference server's
+ * hardcoded moderator/dev accounts. */
+const MAKER_PEN_ACCOUNT_IDS = new Set([1, 2, 3])
+
+/** Presence KV key (owned by the `match` worker); keep in sync with match's `presenceKey`. */
+const presenceKey = (id: number) => `presence:${id}`
+
+/** The slice of the match worker's presence record we read — the caller's current
+ * room instance. Mirrors the reference server's HeartbeatDB row. */
+interface PresenceView {
+	roomInstance?: { roomInstanceId?: number } | null
+}
+
+/**
+ * Room permissions + Photon token the client needs to spawn into a room. The
+ * global (Role 0) maker pen is added only for the hardcoded dev accounts, and
+ * `RoomInstanceId` is the caller's current instance from presence (null when
+ * they aren't in one). `PhotonAccessToken` stays empty — the reference server
+ * signs it via `ClientSecurity`, whose secret/algorithm we don't have; our
+ * Photon setup accepts an empty token.
+ */
+function photonAccessToken(accountId: number, roomInstanceId: number | null) {
 	const perm = (Permission: string, Role: number, Override: boolean) => ({
 		Override,
 		Permission,
@@ -65,23 +85,43 @@ function photonAccessToken() {
 		Type: 0,
 		Value: 'True',
 	})
-	return {
-		Permissions: [
-			perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
-			perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
-			perm('CAN_SAVE_INVENTIONS', 0, true),
-			perm('CAN_SPAWN_INVENTIONS', 0, true),
-			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
-			perm('CAN_USE_MAKER_PEN', 30, false),
-			perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
-			perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
-			perm('CAN_SAVE_INVENTIONS', 30, true),
-			perm('CAN_SPAWN_INVENTIONS', 30, true),
-			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
-		],
-		PhotonAccessToken: '',
-		RoomInstanceId: 1,
+	const permissions = [
+		perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
+		perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
+		perm('CAN_SAVE_INVENTIONS', 0, true),
+		perm('CAN_SPAWN_INVENTIONS', 0, true),
+		perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
+		perm('CAN_USE_MAKER_PEN', 30, false),
+		perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
+		perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
+		perm('CAN_SAVE_INVENTIONS', 30, true),
+		perm('CAN_SPAWN_INVENTIONS', 30, true),
+		perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
+	]
+	if (MAKER_PEN_ACCOUNT_IDS.has(accountId)) {
+		permissions.unshift(perm('CAN_USE_MAKER_PEN', 0, true))
 	}
+	return {
+		Permissions: permissions,
+		PhotonAccessToken: '',
+		RoomInstanceId: roomInstanceId,
+	}
+}
+
+/**
+ * Photon access-token handler (served bare and under `/roomserver`). Auth-gated:
+ * resolves the caller, reads their current room instance from the shared
+ * presence KV, and returns the permissions + token.
+ */
+async function handlePhotonAccessToken(c: Context<App>) {
+	const accountId = await authedAccountId(c)
+	if (accountId === null) return unauthorized(c)
+	const presence = await c.env.RECFLARE_MATCH_PRESENCE.get<PresenceView>(
+		presenceKey(accountId),
+		'json'
+	)
+	const roomInstanceId = presence?.roomInstance?.roomInstanceId ?? null
+	return c.json(photonAccessToken(accountId, roomInstanceId))
 }
 
 /** The Bearer token's account id (`sub`), or null when there's no valid token. */
@@ -436,7 +476,7 @@ const app = new Hono<App>()
 
 	// Photon access token + room permissions the client needs to spawn into a
 	// room. The client calls it on the rooms host both bare and under `/roomserver`.
-	.get('/photon_access_token', (c) => c.json(photonAccessToken()))
-	.get('/roomserver/photon_access_token', (c) => c.json(photonAccessToken()))
+	.get('/photon_access_token', handlePhotonAccessToken)
+	.get('/roomserver/photon_access_token', handlePhotonAccessToken)
 
 export default app

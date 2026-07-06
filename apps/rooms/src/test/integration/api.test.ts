@@ -388,6 +388,7 @@ describe('rooms endpoints', () => {
 					Name: string
 					CreatorAccountId: number
 					Tags?: Array<{ Tag: string }>
+					Roles: Array<{ AccountId: number; Role: number; InvitedRole: number }>
 				} | null
 			}
 
@@ -401,6 +402,11 @@ describe('rooms endpoints', () => {
 		expect(ok.value!.RoomId).toBeGreaterThan(51)
 		// The `base` template tag is dropped so clones aren't listed as base rooms.
 		expect((ok.value!.Tags ?? []).some((t) => t.Tag === 'base')).toBe(false)
+		// Ownership is reset to the cloner: sole owner (Role 255), and none of the
+		// source base room's roles (accounts 1/2) carry over.
+		expect(ok.value!.Roles).toEqual([
+			{ AccountId: 801, Role: 255, LastChangedByAccountId: null, InvitedRole: 0 },
+		])
 
 		// It persists and is fetchable by its new id.
 		const fetched = (await (await SELF.fetch(`${ORIGIN}/rooms/${ok.value!.RoomId}`)).json()) as {
@@ -577,12 +583,57 @@ describe('rooms endpoints', () => {
 		expect('allowNewUsers' in (fetched as object)).toBe(false)
 	})
 
-	it('GET /photon_access_token (bare + /roomserver) returns permissions', async () => {
+	it('GET /photon_access_token 401s without a token', async () => {
 		for (const path of ['/photon_access_token', '/roomserver/photon_access_token']) {
 			const res = await SELF.fetch(`${ORIGIN}${path}`)
+			expect(res.status).toBe(401)
+		}
+	})
+
+	it('GET /photon_access_token (bare + /roomserver) returns permissions + presence instance', async () => {
+		// Seed the caller's presence so RoomInstanceId reflects their current instance.
+		await env.RECFLARE_MATCH_PRESENCE.put(
+			'presence:777',
+			JSON.stringify({ roomInstance: { roomInstanceId: 1000042 } })
+		)
+		const headers = await bearer('777')
+		for (const path of ['/photon_access_token', '/roomserver/photon_access_token']) {
+			const res = await SELF.fetch(`${ORIGIN}${path}`, { headers })
 			expect(res.status).toBe(200)
-			const body = (await res.json()) as { Permissions: unknown[]; RoomInstanceId: number }
-			expect(body.Permissions.length).toBeGreaterThan(0)
+			const body = (await res.json()) as {
+				Permissions: Array<{ Permission: string; Role: number }>
+				PhotonAccessToken: string
+				RoomInstanceId: number | null
+			}
+			expect(body.Permissions.length).toBe(11)
+			expect(body.RoomInstanceId).toBe(1000042)
+			// A non-dev account does NOT get the global (Role 0) maker pen.
+			expect(
+				body.Permissions.some((p) => p.Permission === 'CAN_USE_MAKER_PEN' && p.Role === 0)
+			).toBe(false)
+		}
+	})
+
+	it('GET /photon_access_token returns null RoomInstanceId when the caller has no presence', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/photon_access_token`, { headers: await bearer('888') })
+		expect(res.status).toBe(200)
+		expect(((await res.json()) as { RoomInstanceId: number | null }).RoomInstanceId).toBeNull()
+	})
+
+	it('GET /photon_access_token grants the global maker pen to dev accounts (1/2/3)', async () => {
+		for (const sub of ['1', '2', '3']) {
+			const res = await SELF.fetch(`${ORIGIN}/photon_access_token`, { headers: await bearer(sub) })
+			expect(res.status).toBe(200)
+			const body = (await res.json()) as {
+				Permissions: Array<{ Permission: string; Role: number; Override: boolean }>
+			}
+			// The global maker pen is prepended → first entry, Role 0, Override true.
+			expect(body.Permissions[0]).toMatchObject({
+				Permission: 'CAN_USE_MAKER_PEN',
+				Role: 0,
+				Override: true,
+			})
+			expect(body.Permissions.length).toBe(12)
 		}
 	})
 

@@ -37,6 +37,17 @@ export const SCHEMA_DDL: string[] = [
 /** A stored room — the parsed JSON blob (full client-facing room response). */
 export type Room = Record<string, unknown>
 
+/** A room role assignment (the client's RoomRole shape). */
+interface RoomRole {
+	AccountId: number
+	Role: number
+	LastChangedByAccountId: number | null
+	InvitedRole: number
+}
+
+/** Owner role value (max byte) — the room creator's tier. */
+const ROLE_OWNER = 255
+
 /**
  * Clone an existing room into a new one owned by `accountId`. Copies the source
  * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
@@ -64,6 +75,13 @@ export async function cloneRoom(
 			)
 		: source.Tags
 
+	// Ownership is reset to the cloner — the source room's Roles (its creator and
+	// any co-owners, e.g. the seeded base-room roles for accounts 1/2) must NOT
+	// carry over, or the clone would still list the template's owner as owner.
+	const roles: RoomRole[] = [
+		{ AccountId: accountId, Role: ROLE_OWNER, LastChangedByAccountId: null, InvitedRole: 0 },
+	]
+
 	const cloned: Room = {
 		...source,
 		RoomId: newRoomId,
@@ -71,6 +89,7 @@ export async function cloneRoom(
 		CreatorAccountId: accountId,
 		IsDorm: false,
 		Tags: tags,
+		Roles: roles,
 		CreatedAt: new Date().toISOString(),
 	}
 

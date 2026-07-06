@@ -1,0 +1,27 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "storage",
+	"main": "src/storage.app.ts",
+	"compatibility_date": "2025-09-20",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	// Shared CDN R2 bucket (owned by the `cdn` worker). Uploads land here under a
+	// per-FileType subfolder; the `cdn` worker serves them back.
+	"r2_buckets": [
+		{
+			"binding": "CDN_ASSETS",
+			"bucket_name": "recflare-cdn"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1 // 100%
+		}
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

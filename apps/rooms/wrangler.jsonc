@@ -19,6 +19,14 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// Shared player-presence KV (owned by the `match` worker). Read-only here to
+	// resolve the caller's current room instance for the photon access token.
+	"kv_namespaces": [
+		{
+			"binding": "RECFLARE_MATCH_PRESENCE",
+			"id": "local"
+		}
+	],
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {
