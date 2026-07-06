@@ -9,6 +9,11 @@ export type Env = SharedHonoEnv & {
 	// the new player's presence is seeded to the Orientation room so the match
 	// heartbeat keeps them there instead of bouncing them to the dorm.
 	RECFLARE_MATCH_PRESENCE: KVNamespace
+	// HS256 signing key for issued access tokens. Set as a Cloudflare secret
+	// (`wrangler secret put JWT_SECRET`) in deployed environments and via `.dev.vars`
+	// locally — never committed. `keep_vars` in wrangler.jsonc stops deploys from
+	// clearing it.
+	JWT_SECRET: string
 }
 
 /** Variables can be extended */

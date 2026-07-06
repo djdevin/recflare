@@ -1,10 +1,9 @@
 /**
  * Minimal HS256 JWT generation.
  *
- * No real signing-key binding yet — uses a placeholder dev secret. Swap this for
- * a secret binding (e.g. `c.env.JWT_SECRET`) before this is used for anything real.
+ * The signing key is supplied by the caller from the `JWT_SECRET` binding
+ * (a Cloudflare secret in deployed envs, `.dev.vars` locally) — see context.ts.
  */
-const DEV_SECRET = 'dev-insecure-signing-key-change-me'
 
 /** Token lifetime in seconds (mirrored in the `expires_in` response field). */
 export const TOKEN_TTL_SECONDS = 3600
@@ -32,7 +31,7 @@ function base64urlToBytes(input: string): Uint8Array {
  */
 export async function validateAndGetAccountId(
 	token: string,
-	secret: string = DEV_SECRET
+	secret: string
 ): Promise<string | null> {
 	const parts = token.split('.')
 	if (parts.length !== 3) return null
@@ -88,7 +87,7 @@ export async function generateToken(
 	accountId: string,
 	platformId: string,
 	platform: string,
-	secret: string = DEV_SECRET
+	secret: string
 ): Promise<string> {
 	const now = Math.floor(Date.now() / 1000)
 	const header = { alg: 'HS256', typ: 'JWT' }

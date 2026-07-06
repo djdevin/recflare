@@ -13,10 +13,21 @@ KV/D1/DO bindings yet.
 | POST   | `/connect/token`                           | OAuth token endpoint, issues a JWT |
 | GET    | `/role/developer/:id`                      | Developer role lookup (TODO)       |
 
+## Signing key
+
+Tokens are signed HS256 with the `JWT_SECRET` binding (see `src/jwt.ts`). It's a
+Cloudflare secret in deployed environments and read from `.dev.vars` locally
+(gitignored) — never committed. `"keep_vars": true` in `wrangler.jsonc` keeps
+deploys from clearing it.
+
+Set the deployed secret once (persists across deploys):
+
+```sh
+bunx wrangler secret put JWT_SECRET
+```
+
 ## Notes / TODO
 
-- `JWT` is signed with a placeholder dev secret in `src/jwt.ts`. Move to a secret
-  binding before real use.
 - `/eac/challenge` content is inlined in `src/auth.app.ts` (Workers have no
   filesystem) — replace `EAC_CHALLENGE` with the real challenge text.
 - `/cachedlogin/...` and the `RoomInstance` cleanup in `/connect/token` need a DB

@@ -26,6 +26,10 @@
 			"id": "local"
 		}
 	],
+	// Preserve environment variables and secrets already set in Cloudflare (e.g.
+	// JWT_SECRET, managed via `wrangler secret put`) instead of clearing them on
+	// deploy — keeps the signing key out of source.
+	"keep_vars": true,
 	"logpush": false,
 	"upload_source_maps": true,
 	"observability": {

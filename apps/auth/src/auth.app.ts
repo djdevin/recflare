@@ -97,7 +97,7 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 async function authedId(c: Context<App>): Promise<number | null> {
 	const authHeader = c.req.header('Authorization') ?? ''
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-	const sub = await validateAndGetAccountId(authHeader.slice('Bearer '.length))
+	const sub = await validateAndGetAccountId(authHeader.slice('Bearer '.length), c.env.JWT_SECRET)
 	const id = sub ? Number.parseInt(sub, 10) : Number.NaN
 	return Number.isNaN(id) ? null : id
 }
@@ -153,7 +153,7 @@ const app = new Hono<App>()
 			const account = await createAccount(c.env.DB, { platforms: platformInt || 0 })
 			accountId = String(account.accountId)
 			// Place the new player in Orientation (they don't matchmake into it).
-			await placeNewPlayerInOrientation(c.env, account.accountId)
+			//await placeNewPlayerInOrientation(c.env, account.accountId)
 		} else {
 			const posted = typeof body.account_id === 'string' ? body.account_id.trim() : ''
 			if (!/^\d+$/.test(posted)) {
@@ -165,10 +165,7 @@ const app = new Hono<App>()
 			accountId = posted
 		}
 
-		const accessToken = await generateToken(accountId, platformId, platform)
-
-		// TODO: also create the player's dorm on create_account, and remove any
-		// RoomInstance owned by accountId on login.
+		const accessToken = await generateToken(accountId, platformId, platform, c.env.JWT_SECRET)
 
 		return c.json({
 			access_token: accessToken,
