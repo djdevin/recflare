@@ -5,6 +5,7 @@ import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
 import {
+	addRoomTag,
 	cloneRoom,
 	findSubRoom,
 	getBaseRooms,
@@ -500,6 +501,43 @@ const app = new Hono<App>()
 		}
 
 		await setRoomName(c.env.DB, roomId, name)
+		return roomResult(c, { Success: true })
+	})
+
+	// Add a tag to a room. Auth-gated (401) and owner-only. Body is the `tag` form
+	// field; the tag is added as a user tag (Type 0), deduped case-insensitively.
+	// Business results use the `{ Success, Value, ErrorId, Error }` envelope at 200.
+	.put('/rooms/:roomId{[0-9]+}/tags', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (room.CreatorAccountId !== accountId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const tag = typeof body.tag === 'string' ? body.tag.trim() : ''
+		if (tag === '') {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.InvalidTag',
+				Error: 'You must provide a tag!',
+			})
+		}
+		await addRoomTag(c.env.DB, roomId, room, tag)
 		return roomResult(c, { Success: true })
 	})
 

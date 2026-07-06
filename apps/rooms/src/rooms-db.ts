@@ -125,6 +125,29 @@ export async function setRoomImage(db: D1Database, roomId: number, imageName: st
 		.run()
 }
 
+/**
+ * Add a user tag (`Type: 0`) to a room's `Tags`, skipping it when already present
+ * (case-insensitive). The caller supplies the already-loaded room (owner-checked)
+ * to avoid a re-read; the whole room JSON is rewritten. Returns the updated room.
+ */
+export async function addRoomTag(
+	db: D1Database,
+	roomId: number,
+	room: Room,
+	tag: string
+): Promise<Room> {
+	const tags = Array.isArray(room.Tags) ? (room.Tags as Array<Record<string, unknown>>) : []
+	if (!tags.some((t) => String(t?.Tag).toLowerCase() === tag.toLowerCase())) {
+		tags.push({ Tag: tag, Type: 0 })
+	}
+	const updated: Room = { ...room, Tags: tags }
+	await db
+		.prepare('UPDATE rooms SET data = ?2 WHERE room_id = ?1')
+		.bind(roomId, JSON.stringify(updated))
+		.run()
+	return updated
+}
+
 /** Find a subroom (by SubRoomId) inside a room's `SubRooms` array, or undefined. */
 export function findSubRoom(room: Room, subRoomId: number): Record<string, unknown> | undefined {
 	const subRooms = Array.isArray(room.SubRooms)

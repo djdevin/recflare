@@ -640,6 +640,40 @@ describe('rooms endpoints', () => {
 		expect(await bodyOf(coOwner)).toMatchObject({ SubRoomId: 2, CreatorAccountId: 1 })
 	})
 
+	it('PUT /rooms/:id/tags is auth-gated, owner-only, dedupes, and persists', async () => {
+		// No token → 401.
+		expect((await putForm('/rooms/2/tags', { tag: 'quest' })).status).toBe(401)
+		// Not the owner → NotOwner envelope.
+		expect(await bodyOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '999'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.NotOwner',
+		})
+		// Unknown room → DoesntExist.
+		expect(await bodyOf(await putForm('/rooms/99999/tags', { tag: 'quest' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.DoesntExist',
+		})
+		// Empty tag → InvalidTag.
+		expect(await bodyOf(await putForm('/rooms/2/tags', { tag: '  ' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.InvalidTag',
+		})
+
+		// Owner adds a tag → it persists as a Type-0 user tag.
+		expect(await bodyOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '1'))).toMatchObject({
+			Success: true,
+		})
+		const tagsOf = async () =>
+			((await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+				Tags: Array<{ Tag: string; Type: number }>
+			}).Tags
+		expect(await tagsOf()).toContainEqual({ Tag: 'quest', Type: 0 })
+
+		// Adding the same tag again (different case) is a no-op — no duplicate.
+		await putForm('/rooms/2/tags', { tag: 'QUEST' }, '1')
+		expect((await tagsOf()).filter((t) => t.Tag.toLowerCase() === 'quest')).toHaveLength(1)
+	})
+
 	it('PUT /rooms/:id/name is auth-gated, owner-only, unique, and persists', async () => {
 		// No token → 401 (auth gate).
 		expect((await putForm('/rooms/2/name', { name: 'Whatever' })).status).toBe(401)
