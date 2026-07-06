@@ -39,13 +39,29 @@ beforeAll(async () => {
 		`CREATE TABLE IF NOT EXISTS rooms (
 			data TEXT NOT NULL,
 			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
-			name_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Name'))) VIRTUAL
+			name_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Name'))) VIRTUAL,
+			creator_account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.CreatorAccountId')) VIRTUAL,
+			is_dorm INTEGER GENERATED ALWAYS AS (json_extract(data, '$.IsDorm')) VIRTUAL
 		)`
 	).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
 	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
 	// Room instances (owned by the rooms worker) — matchmaking finds/creates here.
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+
+	// Accounts table (owned by the auth worker) — dorm creation reads the username
+	// to name the room. Seed the players the dorm tests authenticate as.
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS accounts (
+			data TEXT NOT NULL,
+			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL
+		)`
+	).run()
+	const insertAccount = env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+	await env.DB.batch([
+		insertAccount.bind(JSON.stringify({ accountId: 42, username: 'Tester' })),
+		insertAccount.bind(JSON.stringify({ accountId: 43, username: 'Roomie' })),
+	])
 })
 
 // Mint a token the way the `auth` worker does, using the same dev secret, so the
@@ -221,23 +237,39 @@ describe('auth-gated endpoints', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('POST /goto/room/dormroom returns the dorm instance', async () => {
+	test('POST /goto/room/dormroom creates and returns the player’s personal dorm', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/goto/room/dormroom`, {
 			method: 'POST',
-			headers: await bearer(),
+			headers: await bearer('42'),
 		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
 			errorCode: number
-			roomInstance: { name: string; location: string; isPrivate: boolean; roomId: number }
+			roomInstance: {
+				name: string
+				location: string
+				isPrivate: boolean
+				roomId: number
+				photonRoomId: string
+			}
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
-			name: '^DormRoom',
+			// Named after the owner: `@<username>'s Dorm` (no `^` — the `@` is its prefix).
+			name: "@Tester's Dorm",
 			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 			isPrivate: true,
-			roomId: 1,
 		})
+		// The dorm gets its own unique Photon room id (isolated from other dorms).
+		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
+		// A personal dorm room was created (not the seeded template RoomId 1)…
+		const roomId = body.roomInstance.roomId
+		expect(roomId).toBeGreaterThan(2)
+		// …owned by the player and flagged IsDorm so they can save it.
+		const row = await env.DB.prepare('SELECT data FROM rooms WHERE room_id = ?1')
+			.bind(roomId)
+			.first<{ data: string }>()
+		expect(JSON.parse(row!.data)).toMatchObject({ CreatorAccountId: 42, IsDorm: true })
 	})
 
 	test('POST /goto/room/:id resolves a real room scene from D1', async () => {
@@ -300,22 +332,41 @@ describe('auth-gated endpoints', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('POST /matchmake/dorm returns the dorm instance', async () => {
+	test('POST /matchmake/dorm returns the same personal dorm (idempotent)', async () => {
+		// First entry (fresh account 43) creates the dorm; a second returns the same one.
+		const first = (await (
+			await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, {
+				method: 'POST',
+				headers: await bearer('43'),
+			})
+		).json()) as { roomInstance: { roomId: number; photonRoomId: string; roomInstanceId: number } }
+		expect(first.roomInstance.roomId).toBeGreaterThan(2)
+
 		const res = await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, {
 			method: 'POST',
-			headers: await bearer(),
+			headers: await bearer('43'),
 		})
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
 			errorCode: number
-			roomInstance: { name: string; location: string; isPrivate: boolean; roomId: number }
+			roomInstance: {
+				name: string
+				location: string
+				isPrivate: boolean
+				roomId: number
+				photonRoomId: string
+				roomInstanceId: number
+			}
 		}
 		expect(body.errorCode).toBe(0)
 		expect(body.roomInstance).toMatchObject({
-			name: '^DormRoom',
+			name: "@Roomie's Dorm",
 			location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 			isPrivate: true,
-			roomId: 1,
+			// Same dorm room + reused instance (stable id + Photon room), not a new one.
+			roomId: first.roomInstance.roomId,
+			photonRoomId: first.roomInstance.photonRoomId,
+			roomInstanceId: first.roomInstance.roomInstanceId,
 		})
 	})
 
@@ -410,7 +461,9 @@ describe('auth-gated endpoints', () => {
 			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
 		).json()) as { roomInstance: { name: string } | null; isOnline: boolean }
 		expect(hb.isOnline).toBe(true)
-		expect(hb.roomInstance?.name).toBe('^DormRoom')
+		// Presence is preserved: the heartbeat replays their personal dorm. Account 9
+		// has no seeded username, so the name falls back to `@Player9's Dorm`.
+		expect(hb.roomInstance?.name).toBe("@Player9's Dorm")
 	})
 
 	test('GET /player?id reports stored presence per id', async () => {

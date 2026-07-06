@@ -4,8 +4,12 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
-import { createRoomInstance, getJoinableInstance } from './room-instance-db'
-import { getRoomById, getRoomByName } from './rooms-db'
+import {
+	createRoomInstance,
+	getJoinableInstance,
+	getRoomInstancesByRoom,
+} from './room-instance-db'
+import { getOrCreateDormRoom, getRoomById, getRoomByName } from './rooms-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
@@ -172,16 +176,17 @@ function instanceFieldsFromRoom(room: Room) {
 		Record<string, unknown> | undefined
 	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
-	// All room instance names are prefixed with `^` (the username prefix `@` is a
-	// separate thing, e.g. a dorm is `^@user's Dorm`). The client uses this prefix
-	// to resolve the instance; without it the new scene won't load. Matches Stella.
+	// Room instance names are prefixed with `^` so the client resolves the instance
+	// (without it the new scene won't load). Personal dorms are the exception: they
+	// carry the owner prefix `@<user>'s Dorm` and must NOT also get a `^`.
 	const rawName = str(room.Name, 'Room')
+	const name = rawName.startsWith('^') || rawName.startsWith('@') ? rawName : `^${rawName}`
 	return {
 		roomId: num(room.RoomId, 1),
 		subRoomId: num(sub?.SubRoomId, 1),
 		location: str(sub?.UnitySceneId),
 		dataBlob: str(sub?.DataBlob),
-		name: rawName.startsWith('^') ? rawName : `^${rawName}`,
+		name,
 		maxCapacity: num(sub?.MaxPlayers, 4),
 		roomInstanceType: room.IsDorm === true ? 2 : 0,
 		isDorm: room.IsDorm === true,
@@ -264,6 +269,35 @@ async function resolveRoomInstance(
 		})
 	}
 	return roomInstanceFromRoom(room, isPrivate, instance.roomInstanceId, instance.photonRoomId)
+}
+
+/**
+ * The authed player's personal dorm instance. Gets-or-creates their dorm room,
+ * then backs it with a single persistent private `room_instance` so the dorm has
+ * a stable, unique Photon room id (dorms are isolated from each other) that
+ * survives re-entry. The room's current scene/saved data is re-read each time, so
+ * edits show up on the next visit.
+ */
+async function playerDormInstance(c: Context<App>, accountId: number): Promise<RoomInstance> {
+	const room = await getOrCreateDormRoom(c.env.DB, accountId)
+	const f = instanceFieldsFromRoom(room)
+	// Reuse the dorm's one instance (private, so getJoinableInstance won't find it).
+	let instance = (await getRoomInstancesByRoom(c.env.DB, f.roomId))[0]
+	if (!instance) {
+		instance = await createRoomInstance(c.env.DB, {
+			ownerAccountId: accountId,
+			roomId: f.roomId,
+			subRoomId: f.subRoomId,
+			location: f.location,
+			dataBlob: f.dataBlob,
+			photonRoomId: crypto.randomUUID(),
+			name: f.name,
+			maxCapacity: f.maxCapacity,
+			isPrivate: true,
+			roomInstanceType: f.roomInstanceType,
+		})
+	}
+	return roomInstanceFromRoom(room, true, instance.roomInstanceId, instance.photonRoomId)
 }
 
 const app = new Hono<App>()
@@ -388,7 +422,7 @@ const app = new Hono<App>()
 		const joinMode = await readJoinMode(c)
 		const instance =
 			room.toLowerCase() === 'dormroom'
-				? dormRoomInstance()
+				? await playerDormInstance(c, id)
 				: await resolveRoomInstance(c, room, joinMode === 2, id)
 		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
@@ -410,7 +444,8 @@ const app = new Hono<App>()
 				return c.json({ errorCode: 0, roomInstance: presence.roomInstance })
 			}
 		}
-		const instance = dormRoomInstance()
+		// Authed but no presence → their personal dorm; unauthenticated → offline dorm.
+		const instance = id !== null ? await playerDormInstance(c, id) : dormRoomInstance()
 		if (id !== null) await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
@@ -434,7 +469,7 @@ const app = new Hono<App>()
 		// The dorm check here is "dorm" (goto/room uses "dormroom").
 		const instance =
 			room.toLowerCase() === 'dorm'
-				? dormRoomInstance()
+				? await playerDormInstance(c, id)
 				: await resolveRoomInstance(c, room, joinMode === 2, id)
 		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 		await enterRoom(c, id, instance)
@@ -444,7 +479,8 @@ const app = new Hono<App>()
 	// Offline dorm — also persisted as presence so the heartbeat stays in sync.
 	.post('/goto/none', async (c) => {
 		const id = await authedId(c)
-		const instance = dormRoomInstance()
+		// Authed → their personal dorm; unauthenticated → the offline dorm.
+		const instance = id !== null ? await playerDormInstance(c, id) : dormRoomInstance()
 		if (id !== null) await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})

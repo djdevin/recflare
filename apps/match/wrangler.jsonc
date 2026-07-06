@@ -14,8 +14,9 @@
 			"id": "local"
 		}
 	],
-	// Shared `recflare` DB (bound read-only here). The "local" placeholder is replaced
-	// with the real id from RECFLARE_D1 (see .env) at deploy time.
+	// Shared `recflare` DB. Mostly read (room scenes for matchmaking); also writes a
+	// player's personal dorm room on first dorm entry (see getOrCreateDormRoom). The
+	// "local" placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",
