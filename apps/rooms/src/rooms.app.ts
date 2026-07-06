@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
 import {
 	cloneRoom,
+	findSubRoom,
 	getBaseRooms,
 	getFavoritedRooms,
 	getHotRooms,
@@ -20,8 +21,10 @@ import {
 	removeCheer,
 	removeFavorite,
 	getVisitedRooms,
+	saveSubRoomData,
 	searchRooms,
 	setRoomDescription,
+	setRoomImage,
 	setRoomName,
 	toggleCheer,
 	toggleFavorite,
@@ -136,6 +139,53 @@ async function authedAccountId(c: Context<App>): Promise<number | null> {
 /** 401 for the auth-gated `*by/me` endpoints — no stub-account fallback. */
 function unauthorized(c: Context<App>) {
 	return c.json({ error: 'Unauthorized' }, 401)
+}
+
+/**
+ * Room role values the reference treats as edit-capable: Creator (255) and
+ * CoOwner. (CoOwner's numeric value is a best guess from the seed data — base
+ * rooms give the co-owner account Role 30.)
+ */
+const EDIT_ROLES = new Set([255, 30])
+
+/**
+ * Whether an account may edit a room's data — its creator, or a holder of a
+ * Creator/CoOwner role. Mirrors the reference's SetRoomData permission check.
+ */
+function canEditRoomData(room: Record<string, unknown>, accountId: number): boolean {
+	if (room.CreatorAccountId === accountId) return true
+	const roles = Array.isArray(room.Roles) ? (room.Roles as Array<Record<string, unknown>>) : []
+	return roles.some(
+		(r) => r.AccountId === accountId && typeof r.Role === 'number' && EDIT_ROLES.has(r.Role)
+	)
+}
+
+/** The notifications hub is a single global DO instance (see the `notify` worker). */
+const HUB_INSTANCE = 'global'
+
+/**
+ * Push a RoomUpdate notification to a player after their room changes, mirroring
+ * the reference server's `HubSendToPlayer(playerId, NotifFrame("RoomUpdate", room))`.
+ * Hub failures are logged and swallowed — the room write has already committed,
+ * so a hub hiccup must not fail the request.
+ */
+async function pushRoomUpdate(
+	c: Context<App>,
+	playerId: number,
+	room: Record<string, unknown>
+): Promise<void> {
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			playerId,
+			'RoomUpdate',
+			room
+		)
+	} catch (err) {
+		logger.error('failed to push RoomUpdate notification', {
+			playerId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
 }
 
 /**
@@ -451,6 +501,115 @@ const app = new Hono<App>()
 
 		await setRoomName(c.env.DB, roomId, name)
 		return roomResult(c, { Success: true })
+	})
+
+	// Set a room's image. Auth-gated (401) and owner-only. Body is the `imageName`
+	// form field (a key from the storage/image upload). Business results use the
+	// `{ Success, Value, ErrorId, Error }` envelope at HTTP 200.
+	.put('/rooms/:roomId{[0-9]+}/image', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (room.CreatorAccountId !== accountId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const imageName = typeof body.imageName === 'string' ? body.imageName.trim() : ''
+		if (imageName === '') {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.InvalidImage',
+				Error: 'You must provide an image!',
+			})
+		}
+		await setRoomImage(c.env.DB, roomId, imageName)
+		// Notify the owner so their client refreshes the room (RoomUpdate carries the
+		// updated room). The reference sends the post-update room, so merge the change.
+		await pushRoomUpdate(c, accountId, { ...room, ImageName: imageName })
+		return roomResult(c, { Success: true })
+	})
+
+	// A subroom's data descriptor (the SubRoom object from the room's SubRooms
+	// array). Public — the client fetches it while loading the room. 404 when the
+	// room or subroom is unknown.
+	.get('/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/data', async (c) => {
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		const sub = room ? findSubRoom(room, subRoomId) : undefined
+		return sub ? c.json(sub) : c.notFound()
+	})
+
+	// Save a subroom's data (room save). Auth-gated (401 with empty body). Editable
+	// by the room creator or a Creator/CoOwner role holder. Points the subroom at
+	// the uploaded data blobs and records the room-level save fields, notifies the
+	// owner, and returns the updated ROOM in the lowercase `{ success, error, value }`
+	// envelope the reference's SetRoomData uses.
+	.post('/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/data', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return c.body(null, 401)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (!canEditRoomData(room, accountId)) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.PermissionDenied',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.json().catch(() => ({}))) as {
+			RoomData?: { Filename?: string }
+			SubRoomData?: { Filename?: string }
+			Description?: string
+			PersistenceVersion?: number
+			InventionUsage?: string
+		}
+
+		const updated = await saveSubRoomData(c.env.DB, roomId, subRoomId, accountId, {
+			subRoomDataFilename: body.SubRoomData?.Filename,
+			roomDataFilename: body.RoomData?.Filename,
+			description: typeof body.Description === 'string' ? body.Description : undefined,
+			persistenceVersion:
+				typeof body.PersistenceVersion === 'number' ? body.PersistenceVersion : undefined,
+			inventionUsage: typeof body.InventionUsage === 'string' ? body.InventionUsage : undefined,
+		})
+		if (!updated) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+
+		// RoomUpdate carries the full room, but the HTTP response is the saved SUBROOM
+		// itself — no envelope. The client deserializes the body directly as the subroom.
+		await pushRoomUpdate(c, accountId, updated)
+		return c.json(findSubRoom(updated, subRoomId) ?? {})
 	})
 
 	// Rooms similar to the given room (sharing tags). Paginated via skip/take (take

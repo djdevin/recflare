@@ -117,6 +117,73 @@ export async function setRoomName(db: D1Database, roomId: number, name: string):
 		.run()
 }
 
+/** Set a room's ImageName in place (the caller is responsible for the owner check). */
+export async function setRoomImage(db: D1Database, roomId: number, imageName: string): Promise<void> {
+	await db
+		.prepare("UPDATE rooms SET data = json_set(data, '$.ImageName', ?2) WHERE room_id = ?1")
+		.bind(roomId, imageName)
+		.run()
+}
+
+/** Find a subroom (by SubRoomId) inside a room's `SubRooms` array, or undefined. */
+export function findSubRoom(room: Room, subRoomId: number): Record<string, unknown> | undefined {
+	const subRooms = Array.isArray(room.SubRooms)
+		? (room.SubRooms as Array<Record<string, unknown>>)
+		: []
+	return subRooms.find((s) => s.SubRoomId === subRoomId)
+}
+
+/** Fields from the client's room-save POST body. */
+export interface SaveSubRoomDataInput {
+	/** Uploaded blob key for this subroom's scene data (becomes the subroom's DataBlob). */
+	subRoomDataFilename?: string
+	/** Uploaded blob key for the room-level data. */
+	roomDataFilename?: string
+	description?: string
+	persistenceVersion?: number
+	inventionUsage?: string
+}
+
+/**
+ * Persist a room-save against a specific subroom: point the subroom at its newly
+ * uploaded data blob (what the loader later downloads) and record the room-level
+ * fields from the save. Returns the updated room, or null when the room or
+ * subroom doesn't exist. The whole room JSON is rewritten (subrooms live in it).
+ */
+export async function saveSubRoomData(
+	db: D1Database,
+	roomId: number,
+	subRoomId: number,
+	accountId: number,
+	input: SaveSubRoomDataInput
+): Promise<Room | null> {
+	const room = await getRoomById(db, roomId)
+	if (!room) return null
+	const sub = findSubRoom(room, subRoomId)
+	if (!sub) return null
+
+	// Populate the subroom's creator on first save — it starts null, and the
+	// client NREs on a null CreatorAccountId. Only the owner reaches this path.
+	if (sub.CreatorAccountId == null) sub.CreatorAccountId = accountId
+
+	// Point the subroom at the newly-uploaded data blobs and stamp the save.
+	if (input.subRoomDataFilename) sub.DataBlob = input.subRoomDataFilename
+	if (input.roomDataFilename) sub.RoomDataBlob = input.roomDataFilename
+	sub.DataSavedAt = new Date().toISOString()
+	if (input.persistenceVersion !== undefined) sub.PersistenceVersion = input.persistenceVersion
+
+	// Room-level fields carried by the save.
+	if (typeof input.description === 'string') room.Description = input.description
+	if (input.persistenceVersion !== undefined) room.PersistenceVersion = input.persistenceVersion
+	if (input.inventionUsage !== undefined) room.InventionUsage = input.inventionUsage
+
+	await db
+		.prepare('UPDATE rooms SET data = ?2 WHERE room_id = ?1')
+		.bind(roomId, JSON.stringify(room))
+		.run()
+	return room
+}
+
 interface RoomRow {
 	data: string
 }

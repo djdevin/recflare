@@ -19,9 +19,13 @@ import type { App } from './context'
  * stored under. `Unknown` (0) is intentionally absent: like the reference
  * server's `makeUploadName`, an unrecognized type has no destination and is
  * rejected rather than stored.
+ *
+ * RoomSave (1) lands under `room/` (not `roomsave/`) so the `cdn` worker's
+ * `GET /room/:dataBlob` route serves the blob back — both bind the same
+ * `recflare-cdn` bucket, so the key prefixes must match.
  */
 const UPLOAD_SUBFOLDER: Record<number, string> = {
-	1: 'roomsave',
+	1: 'room',
 	2: 'holotar',
 	3: 'image',
 	4: 'video',

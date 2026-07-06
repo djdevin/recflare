@@ -27,6 +27,17 @@
 			"id": "local"
 		}
 	],
+	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by
+	// the `notify` worker). We only invoke its RPC methods; no migration here.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {

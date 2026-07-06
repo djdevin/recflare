@@ -32,6 +32,15 @@ const TEST_ROOMS = [
 		CreatorAccountId: 1,
 		SubRooms: [{ SubRoomId: 2 }],
 	},
+	{
+		// Owned by account 1; account 42 holds Role 30 (a co-owner) for verifyRole tests.
+		RoomId: 3,
+		Name: 'RoleRoom',
+		IsDorm: false,
+		CreatorAccountId: 1,
+		SubRooms: [{ SubRoomId: 3 }],
+		Roles: [{ AccountId: 42, Role: 30, LastChangedByAccountId: null, InvitedRole: 0 }],
+	},
 ]
 
 beforeAll(async () => {
@@ -313,6 +322,37 @@ describe('room server', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk?name=reccenter`)
 		const rooms = (await res.json()) as Array<{ Name: string }>
 		expect(rooms.map((r) => r.Name)).toEqual(['RecCenter'])
+	})
+
+	test('POST /api/rooms/v1/verifyRole checks creator + room roles', async () => {
+		const verify = async (
+			fields: Record<string, string>,
+			sub?: string
+		): Promise<boolean> => {
+			const res = await exports.default.fetch(`${ORIGIN}/api/rooms/v1/verifyRole`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					...(sub ? await bearer(sub) : {}),
+				},
+				body: new URLSearchParams(fields).toString(),
+			})
+			expect(res.status).toBe(200)
+			return (await res.json()) as boolean
+		}
+
+		// No token → false.
+		expect(await verify({ roomId: '2', role: '255' })).toBe(false)
+		// Creator (account 1 owns room 2) → true regardless of role.
+		expect(await verify({ roomId: '2', role: '255', context: 'MakerPen' }, '1')).toBe(true)
+		// Non-creator with no role in the room → false.
+		expect(await verify({ roomId: '2', role: '30' }, '42')).toBe(false)
+		// Account 42 holds Role 30 in room 3 → passes when requesting ≤ 30…
+		expect(await verify({ roomId: '3', role: '30' }, '42')).toBe(true)
+		// …but not a higher role.
+		expect(await verify({ roomId: '3', role: '255' }, '42')).toBe(false)
+		// Unknown room → false.
+		expect(await verify({ roomId: '99999', role: '0' }, '42')).toBe(false)
 	})
 
 	test('GET /roomserver/photon_access_token returns permissions + instance id', async () => {

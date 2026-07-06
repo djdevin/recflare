@@ -519,6 +519,127 @@ describe('rooms endpoints', () => {
 		expect(room.Description).toBe('blah blah blah')
 	})
 
+	it('PUT /rooms/:id/image is auth-gated, owner-only, and persists', async () => {
+		const imageName = '644064b03bd64a8291cde284629e9ca9.jpg'
+		// No token → 401 (auth gate).
+		expect((await putForm('/rooms/2/image', { imageName })).status).toBe(401)
+		// Not the owner (RecCenter is owned by account 1) → 200 envelope, Success:false.
+		expect(await bodyOf(await putForm('/rooms/2/image', { imageName }, '999'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.NotOwner',
+		})
+		// Unknown room → Rooms.DoesntExist envelope.
+		expect(await bodyOf(await putForm('/rooms/99999/image', { imageName }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.DoesntExist',
+		})
+		// Empty image → Success:false.
+		expect(await bodyOf(await putForm('/rooms/2/image', { imageName: '  ' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.InvalidImage',
+		})
+
+		// Owner sets it, and it persists.
+		const ok = await putForm('/rooms/2/image', { imageName }, '1')
+		expect(ok.status).toBe(200)
+		expect(await bodyOf(ok)).toMatchObject({ Success: true })
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { ImageName: string }
+		expect(room.ImageName).toBe(imageName)
+	})
+
+	it('GET /rooms/:id/subrooms/:sid/data returns the subroom descriptor (404 when unknown)', async () => {
+		// Room 2 has SubRoomId 2 in the seed.
+		const res = await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/data`)
+		expect(res.status).toBe(200)
+		expect((await res.json()) as { SubRoomId: number }).toMatchObject({ SubRoomId: 2 })
+
+		// Unknown subroom → 404.
+		expect((await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/9999/data`)).status).toBe(404)
+		// Unknown room → 404.
+		expect((await SELF.fetch(`${ORIGIN}/rooms/99999/subrooms/2/data`)).status).toBe(404)
+	})
+
+	it('POST /rooms/:id/subrooms/:sid/data is auth-gated, owner-only, and saves the blobs', async () => {
+		const save = {
+			UnityAssetId: null,
+			RoomData: { Filename: '5c618c920f6247efb8327e327d0b4417', Hash: null, OwnershipProof: null },
+			SubRoomData: {
+				Filename: 'a84167b16796452ab70ee8a6a5b1dc5f',
+				Hash: null,
+				OwnershipProof: null,
+			},
+			InventionUsage: 'CAE=',
+			PersistenceVersion: 41,
+			Description: 'mydescription here',
+			AutoPublish: true,
+		}
+		// No token → 401.
+		expect(
+			(
+				await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/data`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(save),
+				})
+			).status
+		).toBe(401)
+
+		const authed = async (roomId: number, subRoomId: number, sub = '1') =>
+			SELF.fetch(`${ORIGIN}/rooms/${roomId}/subrooms/${subRoomId}/data`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...(await bearer(sub)) },
+				body: JSON.stringify(save),
+			})
+
+		// The response uses the PascalCase `{ Success, Value, ErrorId, Error }` envelope.
+		// Wrong owner (no role) → PermissionDenied.
+		expect(await bodyOf(await authed(2, 2, '999'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.PermissionDenied',
+		})
+		// Unknown room → DoesntExist.
+		expect(await bodyOf(await authed(99999, 2, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.DoesntExist',
+		})
+
+		// Owner saves → 200 with the saved SUBROOM as the bare body (no envelope),
+		// carrying the new blobs and populated creator.
+		const ok = await authed(2, 2, '1')
+		expect(ok.status).toBe(200)
+		expect(await bodyOf(ok)).toMatchObject({
+			SubRoomId: 2,
+			DataBlob: 'a84167b16796452ab70ee8a6a5b1dc5f',
+			RoomDataBlob: '5c618c920f6247efb8327e327d0b4417',
+			CreatorAccountId: 1,
+			PersistenceVersion: 41,
+		})
+
+		// It also persists — the GET returns the subroom with the new blob + creator.
+		const sub = (await (await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/data`)).json()) as {
+			SubRoomId: number
+			DataBlob: string
+			CreatorAccountId: number
+		}
+		expect(sub).toMatchObject({
+			SubRoomId: 2,
+			DataBlob: 'a84167b16796452ab70ee8a6a5b1dc5f',
+			CreatorAccountId: 1,
+		})
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+			Description: string
+			PersistenceVersion: number
+		}
+		expect(room.Description).toBe('mydescription here')
+		expect(room.PersistenceVersion).toBe(41)
+
+		// A CoOwner (account 2 holds Role 30 in the seeded rooms) may also save — 200
+		// with the subroom body. The creator stays account 1 (not clobbered).
+		const coOwner = await authed(2, 2, '2')
+		expect(coOwner.status).toBe(200)
+		expect(await bodyOf(coOwner)).toMatchObject({ SubRoomId: 2, CreatorAccountId: 1 })
+	})
+
 	it('PUT /rooms/:id/name is auth-gated, owner-only, unique, and persists', async () => {
 		// No token → 401 (auth gate).
 		expect((await putForm('/rooms/2/name', { name: 'Whatever' })).status).toBe(401)

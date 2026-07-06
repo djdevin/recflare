@@ -79,7 +79,8 @@ it('POST /upload stores a RoomMetadata (FileType 6) file under roommetadata/ and
 it('POST /upload folders each FileType under its own subfolder', async () => {
 	const headers = await bearer()
 	const cases: Array<[string, string]> = [
-		['1', 'roomsave'],
+		// RoomSave lands under `room/` so the cdn worker's /room/:dataBlob serves it.
+		['1', 'room'],
 		['3', 'image'],
 		['5', 'invention'],
 	]

@@ -574,6 +574,41 @@ const app = new Hono<App>({ strict: false })
 		})
 	)
 
+	// Verify the caller holds at least `role` in a room. Params come from the form
+	// body (falling back to the query string). Returns a bare `true`/`false`: the
+	// room creator always passes; otherwise the caller needs a Roles entry with
+	// `Role >= role`. Any failure (no token, unknown room, insufficient role) is
+	// `false`. The `context` field (e.g. MakerPen) is accepted and ignored.
+	.post('/api/rooms/v1/verifyRole', async (c) => {
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const param = (name: string): string => {
+			const form = body[name]
+			if (typeof form === 'string' && form !== '') return form
+			return c.req.query(name) ?? ''
+		}
+		const roomId = Number.parseInt(param('roomId'), 10)
+		const role = Number.parseInt(param('role'), 10)
+
+		const accountId = await authedId(c)
+		if (accountId === null || Number.isNaN(roomId)) return c.json(false)
+
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return c.json(false)
+
+		// The creator always passes.
+		if (room.CreatorAccountId === accountId) return c.json(true)
+
+		// Otherwise the caller needs a room role at least as high as requested.
+		const roles = Array.isArray(room.Roles)
+			? (room.Roles as Array<Record<string, unknown>>)
+			: []
+		const hasRole = roles.some(
+			(r) =>
+				r.AccountId === accountId && typeof r.Role === 'number' && r.Role >= (role || 0)
+		)
+		return c.json(hasRole)
+	})
+
 	// ---- Room server ----------------------------------------------------------
 	// Room data is read from the shared `recflare` D1 (owned by the rooms worker).
 	// Register specific paths before the `/:id` param route.
