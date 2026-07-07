@@ -1,4 +1,4 @@
-import { PhotonImage, resize, SamplingFilter } from '@cf-wasm/photon'
+import { crop, PhotonImage, resize, SamplingFilter } from '@cf-wasm/photon'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
@@ -12,16 +12,25 @@ const SIGNATURE_KEY_ID = 'KEY:RSA:p1.rec.net'
 /** Static asset served (200) when the requested key is missing from R2. */
 const FALLBACK_ASSET_PATH = '/DefaultProfileImage.jpg'
 
+/**
+ * Cache-Control for served images. Uploaded images are immutable once written,
+ * so cache for a year and mark `immutable` so browsers never revalidate. A new
+ * image simply uses a new key.
+ */
+const CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 /** Upper bound on a requested output dimension; guards against abuse. */
 const MAX_DIMENSION = 4096
 
 /** JPEG quality used when re-encoding a resized image. */
 const RESIZE_JPEG_QUALITY = 90
 
-/** A requested resize, from `?width=`/`?height=`. At least one is set. */
+/** A requested transform, from `?width=`/`?height=`/`?cropSquare=1`. At least one applies. */
 interface Transform {
 	width?: number
 	height?: number
+	/** Center-crop the source to a square before resizing (`?cropSquare=1`). */
+	cropSquare: boolean
 }
 
 /** Parse a positive-integer dimension query param, or `undefined` if invalid/absent. */
@@ -33,37 +42,55 @@ function parseDimension(value: string | undefined): number | undefined {
 }
 
 /** Build a `Transform` from the request query, or `null` when none is requested. */
-function parseTransform(width: string | undefined, height: string | undefined): Transform | null {
+function parseTransform(
+	width: string | undefined,
+	height: string | undefined,
+	cropSquare: string | undefined
+): Transform | null {
 	const w = parseDimension(width)
 	const h = parseDimension(height)
-	if (w === undefined && h === undefined) return null
-	return { width: w, height: h }
+	const square = cropSquare === '1'
+	if (w === undefined && h === undefined && !square) return null
+	return { width: w, height: h, cropSquare: square }
 }
 
 /**
- * Decode `input`, resize (preserving aspect ratio when only one dimension is
- * given), and re-encode as JPEG. Runs the Photon WASM codec in-isolate — there
- * is no caching yet, so every request pays the full decode/resize/encode cost.
+ * Decode `input`, apply the requested transform (optional center-crop to a
+ * square, then resize preserving aspect ratio when only one dimension is given),
+ * and re-encode as JPEG. Runs the Photon WASM codec in-isolate; edge caching
+ * (see `wrangler.jsonc`) means each variant only pays this cost once.
  */
 function resizeImage(input: Uint8Array, transform: Transform): Uint8Array {
-	const img = PhotonImage.new_from_byteslice(input)
+	let img = PhotonImage.new_from_byteslice(input)
+	// Every PhotonImage we allocate (source + each stage) must be freed.
+	const owned = [img]
 	try {
-		const srcW = img.get_width()
-		const srcH = img.get_height()
+		if (transform.cropSquare) {
+			const w = img.get_width()
+			const h = img.get_height()
+			const side = Math.min(w, h)
+			const x = Math.floor((w - side) / 2)
+			const y = Math.floor((h - side) / 2)
+			img = crop(img, x, y, x + side, y + side)
+			owned.push(img)
+		}
+
 		let { width, height } = transform
-		if (width !== undefined && height === undefined) {
-			height = Math.max(1, Math.round((srcH / srcW) * width))
-		} else if (height !== undefined && width === undefined) {
-			width = Math.max(1, Math.round((srcW / srcH) * height))
+		if (width !== undefined || height !== undefined) {
+			const srcW = img.get_width()
+			const srcH = img.get_height()
+			if (width !== undefined && height === undefined) {
+				height = Math.max(1, Math.round((srcH / srcW) * width))
+			} else if (height !== undefined && width === undefined) {
+				width = Math.max(1, Math.round((srcW / srcH) * height))
+			}
+			img = resize(img, width!, height!, SamplingFilter.Lanczos3)
+			owned.push(img)
 		}
-		const resized = resize(img, width!, height!, SamplingFilter.Lanczos3)
-		try {
-			return resized.get_bytes_jpeg(RESIZE_JPEG_QUALITY)
-		} finally {
-			resized.free()
-		}
+
+		return img.get_bytes_jpeg(RESIZE_JPEG_QUALITY)
 	} finally {
-		img.free()
+		for (const image of owned) image.free()
 	}
 }
 
@@ -142,7 +169,7 @@ async function serveStaticAsset(
 	const headers = new Headers()
 	const contentType = asset.headers.get('content-type')
 	if (contentType) headers.set('content-type', contentType)
-	headers.set('cache-control', 'public, max-age=3600')
+	headers.set('cache-control', CACHE_CONTROL)
 
 	if (transform || wantsSignature) {
 		const bytes = await asset.arrayBuffer()
@@ -180,7 +207,11 @@ const app = new Hono<App>()
 		if (key.includes('..')) return c.body(null, 400)
 
 		const wantsSignature = c.req.query('sig') === 'p1'
-		const transform = parseTransform(c.req.query('width'), c.req.query('height'))
+		const transform = parseTransform(
+			c.req.query('width'),
+			c.req.query('height'),
+			c.req.query('cropSquare')
+		)
 
 		// Prefer a bundled static asset when one exists for this key, before hitting
 		// R2. This lets us ship canonical images (e.g. room thumbnails in `static/`)
@@ -209,7 +240,7 @@ const app = new Hono<App>()
 		const headers = new Headers()
 		object.writeHttpMetadata(headers)
 		headers.set('etag', object.httpEtag)
-		headers.set('cache-control', 'public, max-age=3600')
+		headers.set('cache-control', CACHE_CONTROL)
 
 		// Precondition matched (If-None-Match) → R2 returns no body.
 		if (!('body' in object)) return new Response(null, { status: 304, headers })

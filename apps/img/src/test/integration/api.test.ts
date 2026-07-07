@@ -1,3 +1,4 @@
+import { PhotonImage } from '@cf-wasm/photon'
 import { env, SELF } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -11,32 +12,14 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
-/** Read the pixel dimensions out of a JPEG's SOF marker, independent of Photon. */
+/** Decode a JPEG and read back its pixel dimensions. */
 function jpegSize(bytes: Uint8Array): { width: number; height: number } {
-	let i = 2 // skip SOI (FFD8)
-	while (i + 1 < bytes.length) {
-		if (bytes[i] !== 0xff) {
-			i++
-			continue
-		}
-		const marker = bytes[i + 1]
-		// Standalone markers carry no length payload.
-		if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
-			i += 2
-			continue
-		}
-		const len = (bytes[i + 2] << 8) | bytes[i + 3]
-		const isSOF =
-			marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
-		if (isSOF) {
-			return {
-				height: (bytes[i + 5] << 8) | bytes[i + 6],
-				width: (bytes[i + 7] << 8) | bytes[i + 8],
-			}
-		}
-		i += 2 + len
+	const img = PhotonImage.new_from_byteslice(bytes)
+	try {
+		return { width: img.get_width(), height: img.get_height() }
+	} finally {
+		img.free()
 	}
-	throw new Error('no SOF marker found')
 }
 
 // A tiny valid JPEG magic-number blob — enough to assert round-tripping.
@@ -181,6 +164,29 @@ describe('img endpoints', () => {
 		expect(resized.width).toBe(512)
 		// Height scales with the source aspect ratio (allow 1px rounding).
 		expect(resized.height).toBeCloseTo(Math.round((original.height / original.width) * 512), -0.5)
+	})
+
+	it('center-crops to a square and resizes with ?cropSquare=1&width', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?width=256&cropSquare=1`)
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toBe('image/jpeg')
+
+		const size = jpegSize(new Uint8Array(await res.arrayBuffer()))
+		expect(size.width).toBe(256)
+		expect(size.height).toBe(256)
+	})
+
+	it('crops to a square at native size with ?cropSquare=1 alone', async () => {
+		const full = jpegSize(
+			new Uint8Array(await (await SELF.fetch(`${ORIGIN}/RecCenter.jpg`)).arrayBuffer())
+		)
+		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?cropSquare=1`)
+		expect(res.status).toBe(200)
+
+		const size = jpegSize(new Uint8Array(await res.arrayBuffer()))
+		expect(size.width).toBe(size.height)
+		// The square's side is the shorter source dimension.
+		expect(size.width).toBe(Math.min(full.width, full.height))
 	})
 
 	it('ignores an invalid ?width and serves the original', async () => {
