@@ -15,16 +15,9 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
-// The /roomserver/rooms/* routes read from the shared recflare D1. Set up the
-// schema (matching the rooms worker's migration) + a couple of rooms for tests.
+// `/api/rooms/v1/verifyRole` reads room roles from the shared recflare D1. Set
+// up the schema (matching the rooms worker's migration) + a couple of rooms.
 const TEST_ROOMS = [
-	{
-		RoomId: 1,
-		Name: 'DormRoom',
-		IsDorm: true,
-		CreatorAccountId: 1,
-		SubRooms: [{ SubRoomId: 1, UnitySceneId: '76d98498-60a1-430c-ab76-b54a29b7a163' }],
-	},
 	{
 		RoomId: 2,
 		Name: 'RecCenter',
@@ -307,25 +300,7 @@ describe('auth-gated endpoints', () => {
 	})
 })
 
-describe('room server', () => {
-	test('GET /roomserver/rooms/bulk requires id or name', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk`)
-		expect(res.status).toBe(400)
-	})
-
-	test('GET /roomserver/rooms/bulk with id returns rooms from D1', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk?id=1,2`)
-		expect(res.status).toBe(200)
-		const rooms = (await res.json()) as Array<{ RoomId: number; Name: string }>
-		expect(rooms.map((r) => r.RoomId).sort((a, b) => a - b)).toEqual([1, 2])
-	})
-
-	test('GET /roomserver/rooms/bulk?name= resolves from D1', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/bulk?name=reccenter`)
-		const rooms = (await res.json()) as Array<{ Name: string }>
-		expect(rooms.map((r) => r.Name)).toEqual(['RecCenter'])
-	})
-
+describe('rooms', () => {
 	test('POST /api/rooms/v1/verifyRole checks creator + room roles', async () => {
 		const verify = async (fields: Record<string, string>, sub?: string): Promise<boolean> => {
 			const res = await exports.default.fetch(`${ORIGIN}/api/rooms/v1/verifyRole`, {
@@ -352,46 +327,6 @@ describe('room server', () => {
 		expect(await verify({ roomId: '3', role: '255' }, '42')).toBe(false)
 		// Unknown room → false.
 		expect(await verify({ roomId: '99999', role: '0' }, '42')).toBe(false)
-	})
-
-	test('GET /roomserver/photon_access_token returns permissions + instance id', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/photon_access_token`)
-		expect(res.status).toBe(200)
-		const body = (await res.json()) as {
-			Permissions: unknown[]
-			PhotonAccessToken: string
-			RoomInstanceId: number
-		}
-		expect(Array.isArray(body.Permissions)).toBe(true)
-		expect(body.Permissions.length).toBeGreaterThan(0)
-		expect(body).toMatchObject({ PhotonAccessToken: '', RoomInstanceId: 1 })
-	})
-
-	test('GET /roomserver/rooms/hot returns an empty result set', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/hot`)
-		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
-	})
-
-	test('GET /roomserver/rooms/:id returns the room from D1', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/1`)
-		expect(res.status).toBe(200)
-		const room = (await res.json()) as {
-			RoomId: number
-			IsDorm: boolean
-			SubRooms: Array<{ UnitySceneId: string }>
-		}
-		expect(room).toMatchObject({ RoomId: 1, IsDorm: true })
-		expect(room.SubRooms[0].UnitySceneId).toBe('76d98498-60a1-430c-ab76-b54a29b7a163')
-	})
-
-	test('GET /roomserver/rooms/:id 404s for an unknown room', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/99999`)
-		expect(res.status).toBe(404)
-	})
-
-	test('GET /roomserver/rooms/:id/interactionby/me', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/roomserver/rooms/5/interactionby/me`)
-		expect(await res.json()).toEqual({ Cheered: false, Favorited: false })
 	})
 })
 

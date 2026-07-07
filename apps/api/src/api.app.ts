@@ -17,7 +17,7 @@ import {
 	getPlayerFeed,
 } from './images-db'
 import { validateAndGetAccountId } from './jwt'
-import { getRoomById, getRoomByName, getRoomsByCreator, getRoomsByIds } from './rooms-db'
+import { getRoomById } from './rooms-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
@@ -85,39 +85,6 @@ function queryIds(c: Context<App>): number[] {
 	)
 }
 
-/**
- * Photon access-token response (`/roomserver/photon_access_token`). The 2023
- * client calls this to get its room permissions + the instance id it's spawning
- * into; a 404 here leaves the player stuck on a black screen. `PhotonAccessToken`
- * is empty — the client uses its baked-in Photon credentials. Our synthesized
- * instances always use roomInstanceId 1.
- */
-function photonAccessToken() {
-	const perm = (Permission: string, Role: number, Override: boolean) => ({
-		Override,
-		Permission,
-		Role,
-		Type: 0,
-		Value: 'True',
-	})
-	return {
-		Permissions: [
-			perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
-			perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
-			perm('CAN_SAVE_INVENTIONS', 0, true),
-			perm('CAN_SPAWN_INVENTIONS', 0, true),
-			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 0, true),
-			perm('CAN_USE_MAKER_PEN', 30, false),
-			perm('CAN_USE_ROOM_RESET_BUTTON', 30, true),
-			perm('CAN_USE_DELETE_ALL_BUTTON', 30, true),
-			perm('CAN_SAVE_INVENTIONS', 30, true),
-			perm('CAN_SPAWN_INVENTIONS', 30, true),
-			perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
-		],
-		PhotonAccessToken: '',
-		RoomInstanceId: 1,
-	}
-}
 
 /** Default reputation for an account — the fallback used with no DB. */
 function defaultReputation(id: number) {
@@ -604,42 +571,6 @@ const app = new Hono<App>({ strict: false })
 			(r) => r.AccountId === accountId && typeof r.Role === 'number' && r.Role >= (role || 0)
 		)
 		return c.json(hasRole)
-	})
-
-	// ---- Room server ----------------------------------------------------------
-	// Room data is read from the shared `recflare` D1 (owned by the rooms worker).
-	// Register specific paths before the `/:id` param route.
-	.get('/roomserver/rooms/bulk', async (c) => {
-		const idParam = c.req.query('id')
-		const nameParam = c.req.query('name')
-		if (!idParam && !nameParam) {
-			return c.text("Either 'id' or 'name' query parameter is required", 400)
-		}
-		if (idParam) {
-			const ids = idParam
-				.split(',')
-				.map((s) => Number.parseInt(s.trim(), 10))
-				.filter((n) => !Number.isNaN(n))
-			return c.json(await getRoomsByIds(c.env.DB, ids))
-		}
-		const room = await getRoomByName(c.env.DB, nameParam ?? '')
-		return c.json(room ? [room] : [])
-	})
-	// Photon access token + room permissions the client needs to spawn into a room.
-	.get('/roomserver/photon_access_token', (c) => c.json(photonAccessToken()))
-	.get('/roomserver/rooms/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
-	.get('/roomserver/roomsandplaylists/hot', (c) => c.json({ Results: [], TotalResults: 0 }))
-	.get('/roomserver/rooms/createdby/me', async (c) =>
-		c.json(await getRoomsByCreator(c.env.DB, (await authedId(c)) ?? 1))
-	)
-	.get('/roomserver/rooms/:id/interactionby/me', (c) =>
-		c.json({ Cheered: false, Favorited: false })
-	)
-	.get('/roomserver/rooms/:id', async (c) => {
-		const roomId = Number.parseInt(c.req.param('id'), 10)
-		if (Number.isNaN(roomId)) return c.notFound()
-		const room = await getRoomById(c.env.DB, roomId)
-		return room ? c.json(room) : c.notFound()
 	})
 
 export default app
