@@ -1,0 +1,1044 @@
+{
+    "StoreItems": [
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3052,
+                    "FriendlyName": "Knight Helmet (Green)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "e614df5d-3cfe-4bca-b9c2-30c267b9c94e,PMa9370LPEig_7pKwCceEQ,0dd6596c-b4ea-4d55-a219-e1f44e4a376d,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 45,
+                    "ItemSetFriendlyName": "Knight (Green)"
+                }
+            ],
+            "PurchasableItemId": 1559,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 1500,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 1350,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3068,
+                    "FriendlyName": "Knight Gauntlet (Green)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "9bf9d502-8a3c-4b24-9565-0a2c2d9864fd,PMa9370LPEig_7pKwCceEQ,fd67ec40-f898-4df6-b846-8bf350f362b8,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 45,
+                    "ItemSetFriendlyName": "Knight (Green)"
+                }
+            ],
+            "PurchasableItemId": 1560,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 900,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 810,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3062,
+                    "FriendlyName": "Knight Armor (Green)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "739fd42a-8a8c-44a5-afa3-e0974802c6ae,PMa9370LPEig_7pKwCceEQ,51a1809d-becd-42e0-8dfb-188d6f07ba1c,f5270130-6634-4052-aa3e-9849ddf5314e",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 45,
+                    "ItemSetFriendlyName": "Knight (Green)"
+                }
+            ],
+            "PurchasableItemId": 1563,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 2000,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 1800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3058,
+                    "FriendlyName": "Knight Cape (Green)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "2e5afc40-7e25-418c-8b1b-316b8ef479a7,PMa9370LPEig_7pKwCceEQ,15099be7-38b7-4b0b-ac13-1bacedbf5fb2,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 45,
+                    "ItemSetFriendlyName": "Knight (Green)"
+                }
+            ],
+            "PurchasableItemId": 1564,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 3500,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 3150,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2270,
+                    "FriendlyName": "Royal Crown (Gold)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "40734c4d-e1fe-426c-8921-930f7463d8e8,,,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 832,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 9000,
+                    "StorefrontSaleData": {
+                        "SalePercent": 50,
+                        "SaleStartDate": "2021-04-04T21:00:00Z",
+                        "SaleEndDate": "2021-04-07T21:00:00Z"
+                    }
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 8100,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3054,
+                    "FriendlyName": "Royal Crown (Black)",
+                    "Tooltip": null,
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "40734c4d-e1fe-426c-8921-930f7463d8e8,QkfA71-1z0qOiZAVrbzhtA,hCeaYHy1TE2s6rTPxAQP9A,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 1575,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 9000,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 8100,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3053,
+                    "FriendlyName": "Royal Crown (White)",
+                    "Tooltip": null,
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "40734c4d-e1fe-426c-8921-930f7463d8e8,wCe2yC2U1kyYvPd8Z1rX2w,hCeaYHy1TE2s6rTPxAQP9A,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 1566,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 9000,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 8100,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2957,
+                    "FriendlyName": "Graphic Cap (Goblins)",
+                    "Tooltip": null,
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,pqLkLbri9Eu48eryQIFGMg,_yznwUwL80ejrS3vki0IKg,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 1435,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 850,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 765,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2013,
+                    "FriendlyName": "High Five Potion (Golden)",
+                    "Tooltip": "Give golden high fives for a time.",
+                    "ConsumableItemDesc": "-hy0qD-iUk-v4NHxNzanmg",
+                    "AvatarItemDesc": "",
+                    "AvatarItemType": null,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 0,
+                    "Context": 4004,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 573,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 30,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 27,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3051,
+                    "FriendlyName": "Archer Hat (Grey)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "d2d3264b-fbf6-40b5-9f10-c85ec737d112,61VZkFjB402brzWm4UsftA,1ba65dd5-9df9-4ff3-be96-f83a7abf67b3,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 46,
+                    "ItemSetFriendlyName": "Archer (Grey)"
+                }
+            ],
+            "PurchasableItemId": 1561,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 1500,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 1350,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3067,
+                    "FriendlyName": "Archer Gloves (Grey)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "5b01eaa3-0cac-40c0-b72a-b3f6a868ae0c,8hUBfmq28EixYjv92Xcrgg,7b187c06-7ba2-4f3c-bca9-fdf98146f385,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 46,
+                    "ItemSetFriendlyName": "Archer (Grey)"
+                }
+            ],
+            "PurchasableItemId": 1562,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3061,
+                    "FriendlyName": "Archer Tunic (Grey)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "c0e59f27-a13d-4bd9-b3b8-a38a360f649b,61VZkFjB402brzWm4UsftA,f88178b8-b204-4fa5-9dfd-6e438bf1e247,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 46,
+                    "ItemSetFriendlyName": "Archer (Grey)"
+                }
+            ],
+            "PurchasableItemId": 1565,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 2000,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 1800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3057,
+                    "FriendlyName": "Archer Quiver (Grey)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "5b6535f0-86cd-417a-bcce-a1ace9a5f260,imDGL6dhrka-KliYlfpdgw,6094370d-5e28-473a-b422-f3f1c75d5db8,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 46,
+                    "ItemSetFriendlyName": "Archer (Grey)"
+                }
+            ],
+            "PurchasableItemId": 1567,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 3500,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 3150,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2271,
+                    "FriendlyName": "Royal Cape (Red)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "a44766dc-19ad-4476-849c-5113a5faabd0,,,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 835,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 5000,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 4500,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2272,
+                    "FriendlyName": "Royal Dress (Blue)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "0ab6c95c-e157-48bd-a172-2642896b4ffc,,,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 50,
+                    "ItemSetFriendlyName": "Royal Dresses"
+                }
+            ],
+            "PurchasableItemId": 833,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2538,
+                    "FriendlyName": "Royal Dress (Green)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "0ab6c95c-e157-48bd-a172-2642896b4ffc,t1MeoroFOUioYmPfT9mCeA,PoMG28QAskagun1LSd4C_A,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 50,
+                    "ItemSetFriendlyName": "Royal Dresses"
+                }
+            ],
+            "PurchasableItemId": 1139,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2539,
+                    "FriendlyName": "Royal Dress (Red)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "0ab6c95c-e157-48bd-a172-2642896b4ffc,0ps19D7b_U2iejdKQFORyA,PoMG28QAskagun1LSd4C_A,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 50,
+                    "ItemSetFriendlyName": "Royal Dresses"
+                }
+            ],
+            "PurchasableItemId": 1140,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3063,
+                    "FriendlyName": "Royal Dress (Black)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "0ab6c95c-e157-48bd-a172-2642896b4ffc,pjkTGVHkIE-BzCVi1KAesQ,PoMG28QAskagun1LSd4C_A,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 50,
+                    "ItemSetFriendlyName": "Royal Dresses"
+                }
+            ],
+            "PurchasableItemId": 1569,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2273,
+                    "FriendlyName": "Royal Tabard (Blue)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "e13f6558-d49c-4314-820c-962ef48eb0c6,,,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 49,
+                    "ItemSetFriendlyName": "Royal Tabards"
+                }
+            ],
+            "PurchasableItemId": 834,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2536,
+                    "FriendlyName": "Royal Tabard (Green)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "e13f6558-d49c-4314-820c-962ef48eb0c6,rCeRk8Pdl0W5M47JAQPhpw,50NUFrDxbUKmXbyAHBenvQ,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 49,
+                    "ItemSetFriendlyName": "Royal Tabards"
+                }
+            ],
+            "PurchasableItemId": 1141,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 2537,
+                    "FriendlyName": "Royal Tabard (Red)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "e13f6558-d49c-4314-820c-962ef48eb0c6,5TJPDmvEBEOkP82ZWLFqtg,50NUFrDxbUKmXbyAHBenvQ,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 49,
+                    "ItemSetFriendlyName": "Royal Tabards"
+                }
+            ],
+            "PurchasableItemId": 1142,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3064,
+                    "FriendlyName": "Royal Tabard (Black)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "e13f6558-d49c-4314-820c-962ef48eb0c6,s2kCppLsN0uY7Hy6qjQc-g,50NUFrDxbUKmXbyAHBenvQ,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": 49,
+                    "ItemSetFriendlyName": "Royal Tabards"
+                }
+            ],
+            "PurchasableItemId": 1570,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 800,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 720,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3474,
+                    "FriendlyName": "Sus(picious) Goblin Shirt",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "97253092-90ba-4ff2-b137-6324ab244d11,4oywwjb3-kifr-um9x87Pw,11ZEZTFhy0ONpoXb3kiewQ,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 30,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 1821,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 850,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 765,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        },
+        {
+            "GiftDrops": [
+                {
+                    "GiftDropId": 3050,
+                    "FriendlyName": "Winter Cloak (Nightwatch)",
+                    "Tooltip": "",
+                    "ConsumableItemDesc": "",
+                    "AvatarItemDesc": "b9d08f9a-b23d-4d7e-978b-a0cd8adbfe9c,,,",
+                    "AvatarItemType": 0,
+                    "EquipmentPrefabName": "",
+                    "EquipmentModificationGuid": "",
+                    "IsQuery": false,
+                    "QueryRedirectContext": null,
+                    "QueryRedirectRarity": null,
+                    "Unique": false,
+                    "SubscribersOnly": false,
+                    "Rarity": 50,
+                    "Context": 0,
+                    "Currency": 0,
+                    "CurrencyType": 0,
+                    "ItemSetId": null,
+                    "ItemSetFriendlyName": ""
+                }
+            ],
+            "PurchasableItemId": 1592,
+            "Type": 0,
+            "Prices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 4500,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "SubscriberPrices": [
+                {
+                    "CurrencyType": 2,
+                    "Price": 4050,
+                    "StorefrontSaleData": null
+                }
+            ],
+            "IsFeatured": false,
+            "NewUntil": null
+        }
+    ],
+    "SubscriberDiscountPercent": 10,
+    "StorefrontType": 102,
+    "NextUpdate": "2222-02-22T22:22:00Z",
+    "NewUntil": "2020-01-28T21:00:00Z"
+}

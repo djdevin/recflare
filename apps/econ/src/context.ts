@@ -8,6 +8,8 @@ export type Env = SharedHonoEnv & {
 	JWT_SECRET: SecretsStoreSecret
 	/** Shared `recflare` D1 (accounts table) — stores the player's avatar. */
 	DB: D1Database
+	/** Static storefront catalogs (`static/storefronts/sf*.json`), fetched by path. */
+	ASSETS: Fetcher
 }
 
 /** Variables can be extended */
