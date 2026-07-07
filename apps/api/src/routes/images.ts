@@ -1,0 +1,153 @@
+import { Hono } from 'hono'
+
+import {
+	createImage,
+	getImageByName,
+	getImagesByPlayer,
+	getImagesByRoom,
+	getPlayerFeed,
+} from '../images-db'
+import { authedId, unauthorized } from '../http'
+
+import type { App } from '../context'
+
+/** Saved-image categories from the C# `SavedImageType` enum (`imgMeta.savedImageType`). */
+const SavedImageType = {
+	None: 0,
+	ShareCamera: 1,
+	OutfitThumbnail: 2,
+	RoomThumbnail: 3,
+	ProfileThumbnail: 4,
+	InventionThumbnail: 5,
+} as const
+
+// ---- Images ----------------------------------------------------------------
+export const imageRoutes = new Hono<App>({ strict: false })
+	.get('/api/images/v2/named', (c) => c.json([])) // TODO: hydrate from JSON/namedimages.json
+	.post('/api/images/v4/uploadsaved', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
+		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+		// The client posts the file as `image`; accept `file` too for safety.
+		const candidate = body.image ?? body.file
+		if (!(candidate instanceof File)) return c.json({ error: 'No file found in request' }, 400)
+		const file = candidate
+
+		// `imgMeta` is a JSON blob describing the upload (the C# `SavedImageMetaDTO`),
+		// posted as a multipart field. It carries the metadata we record on the image
+		// (savedImageType, roomId, accessibility, description, taggedPlayerIds, …).
+		let meta: Record<string, unknown> = {}
+		if (typeof body.imgMeta === 'string') {
+			try {
+				const parsed = JSON.parse(body.imgMeta)
+				if (parsed && typeof parsed === 'object') meta = parsed as Record<string, unknown>
+			} catch {
+				// Malformed imgMeta — treat as an untyped upload (still stored).
+			}
+		}
+		// imgMeta shape: {playerIds, savedImageType, roomId, playerEventId, accessibility}.
+		const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined)
+		const savedImageType = num(meta.savedImageType) ?? SavedImageType.None
+		// roomId / playerEventId use 0 or -1 as "none" — store null in that case.
+		const roomId = num(meta.roomId)
+		const playerEventId = num(meta.playerEventId)
+
+		const valid = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
+		const dot = file.name.lastIndexOf('.')
+		const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
+		const extension = valid.includes(ext) ? ext : '.jpg'
+
+		// Store the upload in the shared image bucket under a random key. The `img`
+		// worker serves it back by that key, which is the returned ImageName.
+		const name = crypto.randomUUID().replace(/-/g, '') + extension
+		await c.env.IMAGES.put(name, await file.arrayBuffer(), {
+			httpMetadata: { contentType: file.type || 'image/jpeg' },
+		})
+
+		// A profile thumbnail becomes the account's avatar — persist it on the
+		// account row (a JSON blob in the shared accounts table) so it sticks.
+		if (savedImageType === SavedImageType.ProfileThumbnail) {
+			await c.env.DB.prepare(
+				"UPDATE accounts SET data = json_set(data, '$.profileImage', ?2) WHERE account_id = ?1"
+			)
+				.bind(id, name)
+				.run()
+		}
+
+		// Record the image metadata (the `image` table the img worker owns), pulling
+		// the fields the client provided in imgMeta.
+		await createImage(c.env.DB, {
+			imageName: name,
+			playerId: id,
+			type: savedImageType,
+			accessibility: num(meta.accessibility),
+			roomId: roomId !== undefined && roomId > 0 ? roomId : null,
+			description: typeof meta.description === 'string' ? meta.description : null,
+			taggedPlayerIds: Array.isArray(meta.playerIds)
+				? meta.playerIds.filter((v): v is number => typeof v === 'number')
+				: undefined,
+			playerEventId: playerEventId !== undefined && playerEventId > 0 ? playerEventId : null,
+		})
+
+		return c.json({ ImageName: name })
+	})
+
+	// A room's photo feed — the public images taken in that room. `sort` orders the
+	// feed (1 = most cheered, else newest) and `filter` narrows by SavedImageType
+	// (0 = all). Paginated via skip/take (take defaults to 100). Returns a bare array.
+	.get('/api/images/v4/room/:roomId{[0-9]+}', async (c) => {
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const sort = Number.parseInt(c.req.query('sort') ?? '0', 10) || 0
+		const filter = Number.parseInt(c.req.query('filter') ?? '0', 10) || 0
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getImagesByRoom(c.env.DB, roomId, sort, filter, skip, take))
+	})
+
+	// A player's photos — the public images that player has taken, newest first.
+	// Paginated via skip/take (take defaults to 100). Returns a bare array.
+	.get('/api/images/v4/player/:playerId{[0-9]+}', async (c) => {
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getImagesByPlayer(c.env.DB, playerId, 0, skip, take))
+	})
+
+	// A player's photos with a sort option. `sort` orders the list (1 = most
+	// cheered, else newest). Paginated via skip/take (take defaults to 100). Bare array.
+	.get('/api/images/v5/player/:playerId{[0-9]+}', async (c) => {
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		const sort = Number.parseInt(c.req.query('sort') ?? '0', 10) || 0
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getImagesByPlayer(c.env.DB, playerId, sort, skip, take))
+	})
+
+	// A player's photo feed — the public images they took plus ones they're tagged
+	// in, newest first. Paginated via skip/take (take defaults to 100). Bare array.
+	.get('/api/images/v3/feed/player/:playerId{[0-9]+}', async (c) => {
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+		return c.json(await getPlayerFeed(c.env.DB, playerId, skip, take))
+	})
+
+	// Image metadata by filename. Returns the stored SavedImage record, or 404 when
+	// there's no metadata row for that name.
+	.get('/api/images/v6', async (c) => {
+		const name = c.req.query('name') ?? ''
+		if (name === '') return c.json({ error: 'name is required' }, 400)
+		const image = await getImageByName(c.env.DB, name)
+		return image ? c.json(image) : c.notFound()
+	})
+
+	// Cheer / un-cheer a saved image ({ SavedImageId, Cheer }). Auth-gated. Stubbed
+	// for now — accepted but not persisted; cheer storage is still TBD.
+	.post('/api/images/v1/cheer', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		// TODO: record the cheer against the image once cheer storage is designed.
+		await c.req.json().catch(() => null)
+		return c.json({ success: true })
+	})
