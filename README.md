@@ -194,9 +194,18 @@ nothing in version control needs editing. Authenticate wrangler first
 wrangler d1 create recflare
 wrangler kv namespace create RECFLARE_MATCH_PRESENCE
 wrangler kv namespace create RECFLARE_PLAYER_SETTINGS
+wrangler secrets-store store create recflare --scopes workers
 ```
 
 Take the IDs output from the commands and put them into `.env`. (or with CI: `RECFLARE_KV='{"RECFLARE_MATCH_PRESENCE":"<id>","RECFLARE_PLAYER_SETTINGS":"<id>"}'`)
+
+The secrets store holds the shared `JWT_SECRET` HS256 signing key — every worker
+binds it so tokens signed by `auth` verify everywhere. Record its id in `.env` as
+`RECFLARE_SECRETS_STORE`, then set the key value once (all workers share it):
+
+```bash
+wrangler secrets-store secret create <store-id> --name JWT_SECRET --scopes workers --remote
+```
 
 Then apply the schema. `just migrate` will set up the database and populate it with data. This runs non-interactively, so be careful!
 

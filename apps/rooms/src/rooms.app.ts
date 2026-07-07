@@ -19,9 +19,9 @@ import {
 	getRoomsByCreator,
 	getRoomsByIds,
 	getSimilarRooms,
+	getVisitedRooms,
 	removeCheer,
 	removeFavorite,
-	getVisitedRooms,
 	saveSubRoomData,
 	searchRooms,
 	setRoomDescription,
@@ -132,7 +132,10 @@ async function handlePhotonAccessToken(c: Context<App>) {
 async function authedAccountId(c: Context<App>): Promise<number | null> {
 	const authHeader = c.req.header('Authorization') ?? ''
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-	const sub = await validateAndGetAccountId(authHeader.slice('Bearer '.length))
+	const sub = await validateAndGetAccountId(
+		authHeader.slice('Bearer '.length),
+		await c.env.JWT_SECRET.get()
+	)
 	const id = sub ? Number.parseInt(sub, 10) : Number.NaN
 	return Number.isNaN(id) ? null : id
 }

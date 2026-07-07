@@ -45,11 +45,14 @@ HOST="$SUBDOMAIN.$DOMAIN"
 #   D1 — RECFLARE_D1: a single id (all workers share the one `recflare` database).
 #   KV — RECFLARE_KV: a JSON object keyed by binding name, since each KV namespace
 #        is distinct, e.g. {"RECFLARE_MATCH_PRESENCE":"…","RECFLARE_PLAYER_SETTINGS":"…"}.
+#   Secrets Store — RECFLARE_SECRETS_STORE: a single store id (all workers bind the
+#        one shared store for the JWT signing key).
 CONFIG="wrangler.jsonc"
 NEEDS_D1=$(grep -q '"database_id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
 NEEDS_KV=$(grep -q '"id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
+NEEDS_STORE=$(grep -q '"store_id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
 
-if [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ]; then
+if [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ] || [ -n "$NEEDS_STORE" ]; then
 	CONFIG="wrangler.generated.jsonc"
 	# Generated alongside the original so its relative paths (main, migrations_dir)
 	# still resolve. Gitignored; removed on exit so `wrangler dev` is unaffected.
@@ -98,6 +101,17 @@ if [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ]; then
 			}
 			{ print }
 		' wrangler.generated.jsonc >wrangler.generated.tmp || exit 1
+		mv wrangler.generated.tmp wrangler.generated.jsonc
+	fi
+
+	if [ -n "$NEEDS_STORE" ]; then
+		STORE_ID=${RECFLARE_SECRETS_STORE:-}
+		if [ -z "$STORE_ID" ]; then
+			echo "error: RECFLARE_SECRETS_STORE is not set — add the secrets store id to .env (see .env.example)" >&2
+			exit 1
+		fi
+		sed -E 's/("store_id"[[:space:]]*:[[:space:]]*")[^"]*(")/\1'"$STORE_ID"'\2/' \
+			wrangler.generated.jsonc >wrangler.generated.tmp
 		mv wrangler.generated.tmp wrangler.generated.jsonc
 	fi
 fi

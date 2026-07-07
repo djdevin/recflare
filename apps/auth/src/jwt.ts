@@ -81,7 +81,7 @@ const TOKEN_SCOPES = [
 ]
 
 /** Roles granted — the client needs `gameClient` to operate. */
-const TOKEN_ROLES = ['gameClient', 'developer', 'moderator']
+const TOKEN_ROLES = ['gameClient', /* 'developer', 'moderator', 'junior'*/];
 
 export async function generateToken(
 	accountId: string,

@@ -6,6 +6,7 @@ import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { createAccount, getPasswordHash, setPasswordHash } from './accounts-db'
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from './jwt'
 import { hashPassword, verifyPassword } from './password'
+import { consumeRefreshToken, issueRefreshToken } from './refresh-db'
 
 import type { Context } from 'hono'
 import type { App } from './context'
@@ -97,7 +98,10 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 async function authedId(c: Context<App>): Promise<number | null> {
 	const authHeader = c.req.header('Authorization') ?? ''
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-	const sub = await validateAndGetAccountId(authHeader.slice('Bearer '.length), c.env.JWT_SECRET)
+	const sub = await validateAndGetAccountId(
+		authHeader.slice('Bearer '.length),
+		await c.env.JWT_SECRET.get()
+	)
 	const id = sub ? Number.parseInt(sub, 10) : Number.NaN
 	return Number.isNaN(id) ? null : id
 }
@@ -139,21 +143,38 @@ const app = new Hono<App>()
 		// form body.
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 		const grantType = typeof body.grant_type === 'string' ? body.grant_type : ''
-		const platformId = typeof body.platform_id === 'string' ? body.platform_id : ''
+		// `platform`/`platform_id` come from the body for a fresh login; a refresh
+		// grant overrides them below with what was stored when the token was issued.
+		let platformId = typeof body.platform_id === 'string' ? body.platform_id : ''
 		// `platform` is the PlatformType int → its enum name (e.g. 0 → "Steam").
 		const platformInt = typeof body.platform === 'string' ? Number.parseInt(body.platform, 10) : NaN
-		const platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
+		let platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
 
-		// grant_type=create_account mints + persists a brand-new account (with an
-		// auto-assigned random username — players don't choose one initially) and the
-		// token's `sub` is its id. Otherwise the request MUST post a valid account_id —
-		// never fall back to a stub account (issuing account 1 to anyone would be bad).
+		// Resolve the account this token is for:
+		//  - create_account: mint + persist a brand-new account (auto-assigned random
+		//    username — players don't pick one initially); the token's `sub` is its id.
+		//  - refresh_token: redeem a stored (single-use) refresh token for its account +
+		//    platform, so an expiring session renews without re-login.
+		//  - otherwise: the request MUST post a valid account_id — never fall back to a
+		//    stub account (issuing account 1 to anyone would be bad).
 		let accountId: string
 		if (grantType === 'create_account') {
 			const account = await createAccount(c.env.DB, { platforms: platformInt || 0 })
 			accountId = String(account.accountId)
-			// Place the new player in Orientation (they don't matchmake into it).
-			//await placeNewPlayerInOrientation(c.env, account.accountId)
+			// Place the new player in Orientation (they don't explicitly matchmake into it).
+			await placeNewPlayerInOrientation(c.env, account.accountId)
+		} else if (grantType === 'refresh_token') {
+			const presented = typeof body.refresh_token === 'string' ? body.refresh_token : ''
+			const refreshed = presented ? await consumeRefreshToken(c.env.DB, presented) : null
+			if (!refreshed) {
+				return c.json(
+					{ error: 'invalid_grant', error_description: 'refresh_token is invalid or expired' },
+					400
+				)
+			}
+			accountId = String(refreshed.accountId)
+			platform = refreshed.platform
+			platformId = refreshed.platformId
 		} else {
 			const posted = typeof body.account_id === 'string' ? body.account_id.trim() : ''
 			if (!/^\d+$/.test(posted)) {
@@ -165,14 +186,27 @@ const app = new Hono<App>()
 			accountId = posted
 		}
 
-		const accessToken = await generateToken(accountId, platformId, platform, c.env.JWT_SECRET)
+		const accessToken = await generateToken(
+			accountId,
+			platformId,
+			platform,
+			await c.env.JWT_SECRET.get()
+		)
+		// Issue a fresh, persisted refresh token (single-use; the client redeems it via
+		// grant_type=refresh_token). A refresh grant thus rotates its token.
+		const refreshToken = await issueRefreshToken(c.env.DB, {
+			accountId: Number(accountId),
+			platform,
+			platformId,
+		})
 
 		return c.json({
 			access_token: accessToken,
 			expires_in: TOKEN_TTL_SECONDS,
 			token_type: 'Bearer',
-			refresh_token: `${crypto.randomUUID().replace(/-/g, '').toUpperCase()}-1`,
+			refresh_token: refreshToken,
 			scope: TOKEN_SCOPE,
+			// @kludge Why is this necessary? Who knows.
 			key: '8oQ+e+WQaOBPbEcakhqs3dwZZdOmmyDUmJSD9u4AHMY=',
 		})
 	})

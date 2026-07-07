@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
@@ -17,6 +17,8 @@ const ORIGIN = 'https://example.com'
 // Apply the accounts schema + seed the system (uid 0) and Coach (uid 1) accounts
 // into the test D1 (mirrors apps/auth/migrations/0001_accounts.sql).
 beforeAll(async () => {
+	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
+	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
 	await env.DB.batch([
@@ -25,10 +27,10 @@ beforeAll(async () => {
 	])
 })
 
-// Mint a token the way the `auth` worker does, using the same dev secret, so the
+// Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
 // accounts worker's validation accepts it. Kept inline to avoid a cross-package
 // import.
-const DEV_SECRET = 'dev-insecure-signing-key-change-me'
+const TEST_SECRET = 'test-signing-key'
 
 function b64url(input: ArrayBuffer | string): string {
 	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
@@ -44,7 +46,7 @@ async function bearer(sub = '42'): Promise<Record<string, string>> {
 	)}`
 	const key = await crypto.subtle.importKey(
 		'raw',
-		new TextEncoder().encode(DEV_SECRET),
+		new TextEncoder().encode(TEST_SECRET),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['sign']

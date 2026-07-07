@@ -8,9 +8,6 @@ export default defineConfig({
 			miniflare: {
 				bindings: {
 					ENVIRONMENT: 'VITEST',
-					// `.dev.vars` is gitignored, so provide a deterministic signing key
-					// for tests (and CI, which has no `.dev.vars`).
-					JWT_SECRET: 'test-signing-key',
 				},
 			},
 		}),

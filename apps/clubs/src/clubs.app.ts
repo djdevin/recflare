@@ -22,7 +22,7 @@ async function authedId(c: Context<App>): Promise<number | null> {
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
 
 	const token = authHeader.slice('Bearer '.length)
-	const accountId = await validateAndGetAccountId(token)
+	const accountId = await validateAndGetAccountId(token, await c.env.JWT_SECRET.get())
 	if (!accountId) return null
 
 	const id = Number.parseInt(accountId, 10)

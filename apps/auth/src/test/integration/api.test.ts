@@ -1,10 +1,11 @@
-import { env } from 'cloudflare:test'
+import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../auth.app'
 
 import { SCHEMA_DDL } from '../../accounts-db'
+import { REFRESH_SCHEMA_DDL } from '../../refresh-db'
 
 import type { Env } from '../../context'
 
@@ -21,7 +22,10 @@ const ORIENTATION_SCENE = 'c79709d8-a31b-48aa-9eb8-cc31ba9505e8'
 // and seed the Orientation room (owned by the rooms worker) so signup can place
 // the new player there.
 beforeAll(async () => {
+	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
+	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of REFRESH_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare(
 		`CREATE TABLE IF NOT EXISTS rooms (
 			data TEXT NOT NULL,
@@ -59,6 +63,16 @@ async function accessTokenFor(body: string): Promise<string> {
 
 async function tokenFor(body: string): Promise<Record<string, unknown>> {
 	return decodePayload(await accessTokenFor(body))
+}
+
+/** POST a form-urlencoded body to /connect/token, returning status + parsed JSON. */
+async function postToken(body: string): Promise<{ status: number; json: Record<string, unknown> }> {
+	const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+		body,
+	})
+	return { status: res.status, json: (await res.json()) as Record<string, unknown> }
 }
 
 /** POST a form-urlencoded body to changepassword with an optional bearer token. */
@@ -168,6 +182,48 @@ describe('auth worker routes', () => {
 	test('POST /connect/token maps the platform int to its enum name', async () => {
 		const payload = await tokenFor('account_id=42&platform=0')
 		expect(payload.platform).toBe('Steam')
+	})
+
+	test('POST /connect/token returns a refresh_token that redeems for a new token', async () => {
+		const login = await postToken('account_id=42&platform=0&platform_id=steam-123')
+		expect(login.status).toBe(200)
+		const refreshToken = login.json.refresh_token as string
+		expect(typeof refreshToken).toBe('string')
+		expect(refreshToken.length).toBeGreaterThan(0)
+
+		const refreshed = await postToken(
+			`grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
+		)
+		expect(refreshed.status).toBe(200)
+		// A fresh access token for the same account, carrying the stored platform.
+		const payload = decodePayload(refreshed.json.access_token as string)
+		expect(payload.sub).toBe('42')
+		expect(payload.platform).toBe('Steam')
+		expect(payload.platform_id).toBe('steam-123')
+		// The refresh token is rotated (single-use), so a new one is returned.
+		expect(refreshed.json.refresh_token).not.toBe(refreshToken)
+	})
+
+	test('POST /connect/token refresh_token is single-use (rejected on reuse)', async () => {
+		const login = await postToken('account_id=77&platform=0')
+		const refreshToken = login.json.refresh_token as string
+
+		const first = await postToken(
+			`grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
+		)
+		expect(first.status).toBe(200)
+		// Redeeming the same token again fails — it was consumed (rotated) above.
+		const reuse = await postToken(
+			`grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
+		)
+		expect(reuse.status).toBe(400)
+		expect(reuse.json.error).toBe('invalid_grant')
+	})
+
+	test('POST /connect/token 400s on an unknown refresh_token', async () => {
+		const res = await postToken('grant_type=refresh_token&refresh_token=NOPE-1')
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
 	})
 
 	test('POST /cachedlogin/forplatformids returns []', async () => {

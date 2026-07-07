@@ -1,10 +1,9 @@
 /**
  * Minimal HS256 JWT validation.
  *
- * Uses the same placeholder dev secret as the `auth` worker (`apps/auth/src/jwt.ts`).
- * Swap both for a shared secret binding before this is used for anything real.
+ * The signing key is supplied by the caller from the shared `JWT_SECRET` Secrets
+ * Store binding (see context.ts) - the same key the `auth` worker signs with.
  */
-const DEV_SECRET = 'dev-insecure-signing-key-change-me'
 
 function base64urlToBytes(input: string): Uint8Array {
 	const padded = input.replace(/-/g, '+').replace(/_/g, '/')
@@ -22,7 +21,7 @@ function base64urlToBytes(input: string): Uint8Array {
  */
 export async function validateAndGetAccountId(
 	token: string,
-	secret: string = DEV_SECRET
+	secret: string
 ): Promise<string | null> {
 	const parts = token.split('.')
 	if (parts.length !== 3) return null

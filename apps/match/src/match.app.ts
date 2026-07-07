@@ -4,11 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
-import {
-	createRoomInstance,
-	getJoinableInstance,
-	getRoomInstancesByRoom,
-} from './room-instance-db'
+import { createRoomInstance, getJoinableInstance, getRoomInstancesByRoom } from './room-instance-db'
 import { getOrCreateDormRoom, getRoomById, getRoomByName } from './rooms-db'
 
 import type { Context } from 'hono'
@@ -60,7 +56,7 @@ async function authedId(c: Context<App>): Promise<number | null> {
 	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
 
 	const token = authHeader.slice('Bearer '.length)
-	const accountId = await validateAndGetAccountId(token)
+	const accountId = await validateAndGetAccountId(token, await c.env.JWT_SECRET.get())
 	if (!accountId) return null
 
 	const id = Number.parseInt(accountId, 10)

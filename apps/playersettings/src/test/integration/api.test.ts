@@ -1,5 +1,5 @@
-import { env, SELF } from 'cloudflare:test'
-import { describe, expect, it } from 'vitest'
+import { adminSecretsStore, env, SELF } from 'cloudflare:test'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 import '../../playersettings.app'
 
@@ -11,8 +11,13 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
-// Mint a token the way the `auth` worker does, using the same dev secret.
-const DEV_SECRET = 'dev-insecure-signing-key-change-me'
+beforeAll(async () => {
+	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
+	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
+})
+
+// Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store.
+const TEST_SECRET = 'test-signing-key'
 
 function b64url(input: ArrayBuffer | string): string {
 	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
@@ -28,7 +33,7 @@ async function bearer(sub = '42'): Promise<Record<string, string>> {
 	)}`
 	const key = await crypto.subtle.importKey(
 		'raw',
-		new TextEncoder().encode(DEV_SECRET),
+		new TextEncoder().encode(TEST_SECRET),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['sign']

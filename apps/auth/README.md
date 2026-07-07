@@ -15,16 +15,30 @@ KV/D1/DO bindings yet.
 
 ## Signing key
 
-Tokens are signed HS256 with the `JWT_SECRET` binding (see `src/jwt.ts`). It's a
-Cloudflare secret in deployed environments and read from `.dev.vars` locally
-(gitignored) — never committed. `"keep_vars": true` in `wrangler.jsonc` keeps
-deploys from clearing it.
+Tokens are signed HS256 with the `JWT_SECRET` binding (see `src/jwt.ts`), resolved
+at request time via `await c.env.JWT_SECRET.get()`. The key lives in a single shared
+**Cloudflare Secrets Store** that every worker binds (so `auth`-signed tokens verify
+in `rooms`, `api`, `match`, etc.). The store id is kept out of source in the root
+`.env` as `RECFLARE_SECRETS_STORE` and spliced into `wrangler.jsonc`'s `"local"`
+`store_id` placeholder at deploy time (see `packages/tools/bin/run-wrangler-deploy`).
 
-Set the deployed secret once (persists across deploys):
+One-time setup (needs Cloudflare auth):
 
 ```sh
-bunx wrangler secret put JWT_SECRET
+# Create the store, then put the returned id in .env as RECFLARE_SECRETS_STORE
+wrangler secrets-store store create recflare --scopes workers
+
+# Set the shared signing key (prompted for the value)
+wrangler secrets-store secret create <store-id> --name JWT_SECRET --scopes workers --remote
 ```
+
+For local `wrangler dev`, seed a local value (omit `--remote`) so `.get()` resolves:
+
+```sh
+wrangler secrets-store secret create local --name JWT_SECRET --value <dev-key> --scopes workers
+```
+
+Rotating the store value invalidates all existing tokens (clients re-authenticate).
 
 ## Notes / TODO
 

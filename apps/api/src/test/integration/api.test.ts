@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
@@ -44,6 +44,8 @@ const TEST_ROOMS = [
 ]
 
 beforeAll(async () => {
+	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
+	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	await env.DB.prepare(
 		`CREATE TABLE IF NOT EXISTS rooms (
 			data TEXT NOT NULL,
@@ -75,9 +77,9 @@ beforeAll(async () => {
 	for (const stmt of IMAGES_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 })
 
-// Mint a token the way the `auth` worker does, using the same dev secret, so the
+// Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
 // api worker's validation accepts it. Kept inline to avoid a cross-package import.
-const DEV_SECRET = 'dev-insecure-signing-key-change-me'
+const TEST_SECRET = 'test-signing-key'
 
 function b64url(input: ArrayBuffer | string): string {
 	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
@@ -93,7 +95,7 @@ async function bearer(sub = '42'): Promise<Record<string, string>> {
 	)}`
 	const key = await crypto.subtle.importKey(
 		'raw',
-		new TextEncoder().encode(DEV_SECRET),
+		new TextEncoder().encode(TEST_SECRET),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['sign']
@@ -325,10 +327,7 @@ describe('room server', () => {
 	})
 
 	test('POST /api/rooms/v1/verifyRole checks creator + room roles', async () => {
-		const verify = async (
-			fields: Record<string, string>,
-			sub?: string
-		): Promise<boolean> => {
+		const verify = async (fields: Record<string, string>, sub?: string): Promise<boolean> => {
 			const res = await exports.default.fetch(`${ORIGIN}/api/rooms/v1/verifyRole`, {
 				method: 'POST',
 				headers: {
@@ -618,7 +617,12 @@ describe('images', () => {
 			seed({ Id: 202, PlayerId: 700, CreatedAt: '2026-04-01T00:00:00.000Z' }),
 			seed({ Id: 203, PlayerId: 700, Accessibility: 0 }), // private → hidden
 			// Taken by someone else, but player 700 is tagged in it → feed only.
-			seed({ Id: 204, PlayerId: 999, TaggedPlayerIds: [700], CreatedAt: '2026-05-01T00:00:00.000Z' }),
+			seed({
+				Id: 204,
+				PlayerId: 999,
+				TaggedPlayerIds: [700],
+				CreatedAt: '2026-05-01T00:00:00.000Z',
+			}),
 			// Unrelated to 700 → in neither.
 			seed({ Id: 205, PlayerId: 999, TaggedPlayerIds: [111] }),
 		])
@@ -642,9 +646,9 @@ describe('images', () => {
 		expect(feed.map((i) => i.Id)).toEqual([204, 202, 201])
 
 		// A player with no photos → empty array on both.
-		expect(await (await exports.default.fetch(`${ORIGIN}/api/images/v4/player/424242`)).json()).toEqual(
-			[]
-		)
+		expect(
+			await (await exports.default.fetch(`${ORIGIN}/api/images/v4/player/424242`)).json()
+		).toEqual([])
 		expect(
 			await (await exports.default.fetch(`${ORIGIN}/api/images/v3/feed/player/424242`)).json()
 		).toEqual([])

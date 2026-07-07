@@ -1,4 +1,4 @@
-import { env, SELF } from 'cloudflare:test'
+import { adminSecretsStore, env, SELF } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import '../../rooms.app'
@@ -19,8 +19,8 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
-// Mint a token the way the `auth` worker does, using the same dev secret.
-const DEV_SECRET = 'dev-insecure-signing-key-change-me'
+// Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store.
+const TEST_SECRET = 'test-signing-key'
 function b64url(input: ArrayBuffer | string): string {
 	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
 	let binary = ''
@@ -34,7 +34,7 @@ async function bearer(sub: string): Promise<Record<string, string>> {
 	)}`
 	const key = await crypto.subtle.importKey(
 		'raw',
-		new TextEncoder().encode(DEV_SECRET),
+		new TextEncoder().encode(TEST_SECRET),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['sign']
@@ -45,6 +45,8 @@ async function bearer(sub: string): Promise<Record<string, string>> {
 
 // Apply the schema + seed the imported rooms into the test D1 (mirrors the migrations).
 beforeAll(async () => {
+	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
+	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
@@ -317,9 +319,7 @@ describe('rooms endpoints', () => {
 	})
 
 	it('GET /rooms/recommendations returns a bare array of public rooms (split-test params ignored)', async () => {
-		const res = await SELF.fetch(
-			`${ORIGIN}/rooms/recommendations?splitTestId=1&splitTestValue=5`
-		)
+		const res = await SELF.fetch(`${ORIGIN}/rooms/recommendations?splitTestId=1&splitTestValue=5`)
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as Array<{ RoomId: number; IsDorm?: boolean }>
 		expect(Array.isArray(body)).toBe(true)
@@ -328,9 +328,9 @@ describe('rooms endpoints', () => {
 		expect(body.some((r) => r.RoomId === 1 || r.IsDorm === true)).toBe(false)
 
 		// The split-test params don't change the result.
-		const plain = (await (
-			await SELF.fetch(`${ORIGIN}/rooms/recommendations`)
-		).json()) as Array<{ RoomId: number }>
+		const plain = (await (await SELF.fetch(`${ORIGIN}/rooms/recommendations`)).json()) as Array<{
+			RoomId: number
+		}>
 		expect(plain.map((r) => r.RoomId)).toEqual(body.map((r) => r.RoomId))
 	})
 
@@ -664,9 +664,11 @@ describe('rooms endpoints', () => {
 			Success: true,
 		})
 		const tagsOf = async () =>
-			((await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
-				Tags: Array<{ Tag: string; Type: number }>
-			}).Tags
+			(
+				(await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+					Tags: Array<{ Tag: string; Type: number }>
+				}
+			).Tags
 		expect(await tagsOf()).toContainEqual({ Tag: 'quest', Type: 0 })
 
 		// Adding the same tag again (different case) is a no-op — no duplicate.
@@ -866,7 +868,8 @@ describe('rooms endpoints', () => {
 
 		// No token → 401.
 		expect(
-			(await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'DELETE' })).status
+			(await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, { method: 'DELETE' }))
+				.status
 		).toBe(401)
 
 		// Favorite + cheer on, then DELETE clears only the favorite (cheer untouched).

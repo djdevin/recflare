@@ -5,6 +5,10 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 import type { NotificationsHub } from '../../notify/src/notifications-hub'
 
 export type Env = SharedHonoEnv & {
+	// Shared Secrets Store binding for the HS256 JWT signing key. Resolve the value
+	// with `await env.JWT_SECRET.get()`; all workers bind the same store so tokens
+	// signed by `auth` verify here.
+	JWT_SECRET: SecretsStoreSecret
 	// D1 database holding rooms (JSON blob + generated columns). See rooms-db.ts.
 	DB: D1Database
 	// Shared player-presence KV (owned by the `match` worker). Read here to resolve
