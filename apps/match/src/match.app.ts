@@ -4,7 +4,12 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
-import { createRoomInstance, getJoinableInstance, getRoomInstancesByRoom } from './room-instance-db'
+import {
+	createRoomInstance,
+	getJoinableInstance,
+	getRoomInstancesByRoom,
+	setRoomInstanceInProgress,
+} from './room-instance-db'
 import { getOrCreateDormRoom, getRoomById, getRoomByName } from './rooms-db'
 
 import type { Context } from 'hono'
@@ -487,6 +492,24 @@ const app = new Hono<App>()
 
 	// ---- Room instance -------------------------------------------------------
 	.post('/roominstance/:id/reportjoinresult', (c) => c.body(null, 200))
+
+	// The room owner flips the instance's in-progress flag once the session starts
+	// (e.g. a game round begins). Body is a form post: `inProgress=True|False`.
+	.put('/roominstance/:id/inprogress', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
+		const instanceId = Number.parseInt(c.req.param('id'), 10)
+		if (Number.isNaN(instanceId)) return c.body(null, 404)
+
+		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+		const inProgress =
+			typeof body.inProgress === 'string' && body.inProgress.toLowerCase() === 'true'
+
+		const instance = await setRoomInstanceInProgress(c.env.DB, instanceId, inProgress)
+		if (!instance) return c.body(null, 404)
+		return c.body(null, 200)
+	})
 
 	// Rooms flagged as needing a developer/moderator to spawn in. No such queue
 	// yet → empty list.

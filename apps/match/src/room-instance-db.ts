@@ -177,9 +177,33 @@ export async function getRoomInstance(db: D1Database, id: number): Promise<RoomI
 }
 
 /**
+ * Flip an instance's `isInProgress` flag, rewriting the JSON blob (the generated
+ * `is_in_progress` column follows it). Returns the updated DTO, or null when the
+ * instance doesn't exist.
+ */
+export async function setRoomInstanceInProgress(
+	db: D1Database,
+	id: number,
+	isInProgress: boolean
+): Promise<RoomInstanceDto | null> {
+	const row = await db
+		.prepare('SELECT data FROM room_instance WHERE id = ?1')
+		.bind(id)
+		.first<{ data: string }>()
+	if (!row) return null
+	const stored = parse(row.data)
+	stored.isInProgress = isInProgress
+	await db
+		.prepare('UPDATE room_instance SET data = ?1 WHERE id = ?2')
+		.bind(JSON.stringify(stored), id)
+		.run()
+	return toDto(stored)
+}
+
+/**
  * The oldest joinable public instance of a room (not private, not full, joins
- * enabled), or null when there's none to join. Used by matchmaking to reuse an
- * existing instance before creating a new one.
+ * enabled, not already in progress), or null when there's none to join. Used by
+ * matchmaking to reuse an existing instance before creating a new one.
  */
 export async function getJoinableInstance(
 	db: D1Database,
@@ -189,6 +213,7 @@ export async function getJoinableInstance(
 		.prepare(
 			`SELECT data FROM room_instance
 			 WHERE room_id = ?1 AND is_private = 0 AND is_full = 0 AND join_disabled = 0
+			   AND is_in_progress = 0
 			 ORDER BY id LIMIT 1`
 		)
 		.bind(roomId)
