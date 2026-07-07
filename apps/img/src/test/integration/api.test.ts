@@ -11,6 +11,34 @@ declare module 'cloudflare:test' {
 
 const ORIGIN = 'https://example.com'
 
+/** Read the pixel dimensions out of a JPEG's SOF marker, independent of Photon. */
+function jpegSize(bytes: Uint8Array): { width: number; height: number } {
+	let i = 2 // skip SOI (FFD8)
+	while (i + 1 < bytes.length) {
+		if (bytes[i] !== 0xff) {
+			i++
+			continue
+		}
+		const marker = bytes[i + 1]
+		// Standalone markers carry no length payload.
+		if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+			i += 2
+			continue
+		}
+		const len = (bytes[i + 2] << 8) | bytes[i + 3]
+		const isSOF =
+			marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+		if (isSOF) {
+			return {
+				height: (bytes[i + 5] << 8) | bytes[i + 6],
+				width: (bytes[i + 7] << 8) | bytes[i + 8],
+			}
+		}
+		i += 2 + len
+	}
+	throw new Error('no SOF marker found')
+}
+
 // A tiny valid JPEG magic-number blob — enough to assert round-tripping.
 const IMAGE_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46])
 
@@ -136,5 +164,52 @@ describe('img endpoints', () => {
 	it('does not sign without ?sig=p1', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/${R2_KEY}`)
 		expect(res.headers.get('content-signature')).toBeNull()
+	})
+
+	it('resizes a static asset to ?width, preserving aspect ratio', async () => {
+		const full = new Uint8Array(await (await SELF.fetch(`${ORIGIN}/RecCenter.jpg`)).arrayBuffer())
+		const original = jpegSize(full)
+
+		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?width=512`)
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toBe('image/jpeg')
+		// Resized responses carry no etag (the source etag no longer describes them).
+		expect(res.headers.get('etag')).toBeNull()
+
+		const body = new Uint8Array(await res.arrayBuffer())
+		const resized = jpegSize(body)
+		expect(resized.width).toBe(512)
+		// Height scales with the source aspect ratio (allow 1px rounding).
+		expect(resized.height).toBeCloseTo(Math.round((original.height / original.width) * 512), -0.5)
+	})
+
+	it('ignores an invalid ?width and serves the original', async () => {
+		const full = new Uint8Array(await (await SELF.fetch(`${ORIGIN}/RecCenter.jpg`)).arrayBuffer())
+		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?width=0`)
+		expect(res.status).toBe(200)
+		expect(new Uint8Array(await res.arrayBuffer())).toEqual(full)
+	})
+
+	it('signs the resized body with ?width and ?sig=p1', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?width=512&sig=p1`)
+		expect(res.status).toBe(200)
+		expect(jpegSize(new Uint8Array(await res.clone().arrayBuffer())).width).toBe(512)
+
+		const header = res.headers.get('content-signature')
+		expect(header).toMatch(/^key-id=KEY:RSA:p1\.rec\.net; data=/)
+
+		const signature = Uint8Array.from(atob(header!.split('data=')[1]), (ch) => ch.charCodeAt(0))
+		const body = new Uint8Array(await res.arrayBuffer())
+
+		const publicKey = await crypto.subtle.importKey(
+			'spki',
+			Uint8Array.from(atob(PUBLIC_SPKI_B64), (ch) => ch.charCodeAt(0)),
+			{ name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' },
+			false,
+			['verify']
+		)
+		// The signature must verify over the RESIZED bytes the client receives.
+		const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, signature, body)
+		expect(ok).toBe(true)
 	})
 })

@@ -16,6 +16,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@cf-wasm/photon": "^0.3.6",
 		"@repo/hono-helpers": "workspace:*",
 		"hono": "4.12.27",
 		"workers-tagged-logger": "1.0.1"

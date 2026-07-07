@@ -8,6 +8,9 @@
 	// missing from R2). `run_worker_first` keeps the Worker in control of routing
 	// so image requests still hit R2/signing; assets are only fetched explicitly
 	// via the ASSETS binding.
+	"cache": {
+		"enabled": true,
+	},
 	"assets": {
 		"directory": "./static",
 		"binding": "ASSETS",
