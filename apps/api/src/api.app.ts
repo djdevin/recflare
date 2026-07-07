@@ -3,7 +3,6 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { accountRoutes } from './routes/accounts'
 import { avatarRoutes } from './routes/avatar'
 import { configRoutes } from './routes/config'
 import { gameplayRoutes } from './routes/gameplay'
@@ -13,7 +12,6 @@ import { moderationRoutes } from './routes/moderation'
 import { progressionRoutes } from './routes/progression'
 import { roomRoutes } from './routes/rooms'
 import { socialRoutes } from './routes/social'
-import { storefrontRoutes } from './routes/storefronts'
 
 import type { App } from './context'
 
@@ -51,8 +49,6 @@ const app = new Hono<App>({ strict: false })
 	.route('/', gameplayRoutes)
 	.route('/', moderationRoutes)
 	.route('/', inventoryRoutes)
-	.route('/', storefrontRoutes)
-	.route('/', accountRoutes)
 	.route('/', roomRoutes)
 	.route('/', imageRoutes)
 

@@ -168,11 +168,6 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('GET /api/storefronts/v1/p2p/betaEnabled returns false', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v1/p2p/betaEnabled`)
-		expect(await res.json()).toBe(false)
-	})
-
 	test('GET /api/players/v2/progression/bulk?id= returns progression per id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/players/v2/progression/bulk?id=1&id=2`)
 		expect(res.status).toBe(200)
@@ -268,35 +263,15 @@ describe('public endpoints', () => {
 
 describe('auth-gated endpoints', () => {
 	test('401 without a bearer token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2`)
+		const res = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`)
 		expect(res.status).toBe(401)
 	})
 
 	test('401 with a garbage token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2`, {
+		const res = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
 			headers: { Authorization: 'Bearer not-a-real-token' },
 		})
 		expect(res.status).toBe(401)
-	})
-
-	test('GET /api/settings/v2 returns the default settings for the account', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2`, {
-			headers: await bearer(),
-		})
-		expect(res.status).toBe(200)
-		const settings = (await res.json()) as Array<{ PlayerId: number; Key: string }>
-		expect(Array.isArray(settings)).toBe(true)
-		for (const s of settings) expect(s.PlayerId).toBe(42)
-	})
-
-	test('GET /api/checklist/v1/current 401s without a token, returns [] with one', async () => {
-		const anon = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`)
-		expect(anon.status).toBe(401)
-		const res = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`, {
-			headers: await bearer(),
-		})
-		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([])
 	})
 })
 

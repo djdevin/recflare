@@ -4,6 +4,9 @@
 	"main": "src/cdn.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
+	"cache": {
+		"enabled": true
+	},
 	// CDN binaries (signature blobs + room build data) are stored as R2 objects
 	// and streamed back by key. Keys are prefixed `sigs/` and `room/`.
 	"r2_buckets": [
