@@ -196,6 +196,14 @@ describe('img endpoints', () => {
 		expect(new Uint8Array(await res.arrayBuffer())).toEqual(full)
 	})
 
+	it('ignores a ?width outside the allowed sizes and serves the original', async () => {
+		const full = new Uint8Array(await (await SELF.fetch(`${ORIGIN}/RecCenter.jpg`)).arrayBuffer())
+		// 300 isn't one of 128/256/512/1024, so it's rejected and the source served.
+		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?width=300`)
+		expect(res.status).toBe(200)
+		expect(new Uint8Array(await res.arrayBuffer())).toEqual(full)
+	})
+
 	it('signs the resized body with ?width and ?sig=p1', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/RecCenter.jpg?width=512&sig=p1`)
 		expect(res.status).toBe(200)

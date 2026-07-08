@@ -19,8 +19,12 @@ const FALLBACK_ASSET_PATH = '/DefaultProfileImage.jpg'
  */
 const CACHE_CONTROL = 'public, max-age=31536000, immutable'
 
-/** Upper bound on a requested output dimension; guards against abuse. */
-const MAX_DIMENSION = 4096
+/**
+ * Allowed output dimensions. Restricting resizes to a small fixed set caps the
+ * number of distinct variants an attacker can request, so they can't blow past
+ * the edge cache and force the (expensive) WASM resize on every hit.
+ */
+const ALLOWED_DIMENSIONS = new Set([128, 256, 512, 1024])
 
 /** JPEG quality used when re-encoding a resized image. */
 const RESIZE_JPEG_QUALITY = 90
@@ -33,11 +37,11 @@ interface Transform {
 	cropSquare: boolean
 }
 
-/** Parse a positive-integer dimension query param, or `undefined` if invalid/absent. */
+/** Parse a dimension query param, or `undefined` if absent or not an allowed size. */
 function parseDimension(value: string | undefined): number | undefined {
 	if (value === undefined) return undefined
 	const n = Number(value)
-	if (!Number.isInteger(n) || n <= 0 || n > MAX_DIMENSION) return undefined
+	if (!Number.isInteger(n) || !ALLOWED_DIMENSIONS.has(n)) return undefined
 	return n
 }
 
