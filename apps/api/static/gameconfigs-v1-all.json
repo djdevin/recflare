@@ -111,7 +111,7 @@
 		"EndTime": null,
 		"Key": "Backtrace.messageRegex",
 		"StartTime": null,
-		"Value": "^Cannot set the parent of the GameObject .* while its new parent|^\\>\\x2010x\\:\\x20|\\'LabelTheme\\' contains missing PaletteTheme reference on"
+		"Value": ".*"
 	},
 	{
 		"EndTime": null,
@@ -675,13 +675,13 @@
 		"EndTime": null,
 		"Key": "Growth.EnableInfluencerProgram",
 		"StartTime": null,
-		"Value": "true"
+		"Value": "false"
 	},
 	{
 		"EndTime": null,
 		"Key": "Growth.EnableProfilePhoneButton",
 		"StartTime": null,
-		"Value": "true"
+		"Value": "false"
 	},
 	{
 		"EndTime": null,

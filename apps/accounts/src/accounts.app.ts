@@ -9,6 +9,7 @@ import {
 	getAccount,
 	getAccountByUsername,
 	getAccountsByIds,
+	searchAccounts,
 	updateAccount,
 } from './accounts-db'
 import { validateAndGetAccountId } from './jwt'
@@ -149,6 +150,16 @@ const app = new Hono<App>()
 		// Load the stored account, falling back to a synthesized default.
 		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
 		return c.json(toSelfAccountDto(account))
+	})
+
+	// ---- Search --------------------------------------------------------------
+	// Prefix-search accounts by username (`?name=`). Returns a bare array of public
+	// account DTOs, ordered alphabetically. Registered before `/account/:id` so the
+	// static `search` path wins over the param route.
+	.get('/account/search', async (c) => {
+		const name = c.req.query('name') ?? ''
+		const accounts = await searchAccounts(c.env.DB, name)
+		return c.json(accounts.map(toAccountDto))
 	})
 
 	// ---- Bulk / single lookup ------------------------------------------------

@@ -95,6 +95,20 @@ describe('public endpoints', () => {
 		expect(accounts[1].username).toBe('Player2')
 	})
 
+	test('GET /account/search prefix-matches usernames, returns public DTOs', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/account/search?name=coa`)
+		expect(res.status).toBe(200)
+		const accounts = (await res.json()) as Array<{ accountId: number; username: string }>
+		// "Coach" (seeded uid 1) matches the "coa" prefix, case-insensitively.
+		expect(accounts.some((a) => a.accountId === 1 && a.username === 'Coach')).toBe(true)
+		// A non-matching prefix yields nothing.
+		const none = await exports.default.fetch(`${ORIGIN}/account/search?name=zzzznope`)
+		expect(await none.json()).toEqual([])
+		// An empty query yields nothing (no full-table dump).
+		const empty = await exports.default.fetch(`${ORIGIN}/account/search?name=`)
+		expect(await empty.json()).toEqual([])
+	})
+
 	test('GET /account/:id/bio returns an empty bio', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/7/bio`)
 		expect(await res.json()).toEqual({ accountId: 7, bio: '' })

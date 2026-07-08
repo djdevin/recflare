@@ -153,6 +153,91 @@ export async function getImagesByPlayer(
 		.slice(skip, skip + take)
 }
 
+/** Default number of recent images the slideshow feed returns. */
+export const SLIDESHOW_LIMIT = 130
+
+/** The slideshow projection of an image — creator username + room name joined in. */
+export interface SlideshowImage {
+	SavedImageId: number
+	ImageName: string
+	Username: string
+	RoomName: string | null
+	RoomId: number | null
+	SavedImageType: number
+	PlayerEventId: number | null
+	Accessibility: number
+	PlayerIds: number[]
+}
+
+/** Build the `?1,?2,…` placeholder list for an `IN (…)` clause. */
+const placeholders = (n: number): string =>
+	Array.from({ length: n }, (_, i) => `?${i + 1}`).join(',')
+
+/** Map account ids → username, resolved from the shared accounts table. */
+async function getUsernames(db: D1Database, ids: number[]): Promise<Map<number, string>> {
+	if (ids.length === 0) return new Map()
+	const { results } = await db
+		.prepare(
+			`SELECT account_id AS id, json_extract(data, '$.username') AS username
+			 FROM accounts WHERE account_id IN (${placeholders(ids.length)})`
+		)
+		.bind(...ids)
+		.all<{ id: number; username: string }>()
+	return new Map(results.map((r) => [r.id, r.username]))
+}
+
+/** Map room ids → room name, resolved from the shared rooms table. */
+async function getRoomNames(db: D1Database, ids: number[]): Promise<Map<number, string>> {
+	if (ids.length === 0) return new Map()
+	const { results } = await db
+		.prepare(
+			`SELECT room_id AS id, json_extract(data, '$.Name') AS name
+			 FROM room WHERE room_id IN (${placeholders(ids.length)})`
+		)
+		.bind(...ids)
+		.all<{ id: number; name: string }>()
+	return new Map(results.map((r) => [r.id, r.name]))
+}
+
+/**
+ * The global slideshow feed — the most recent publicly-listable images across all
+ * rooms (Accessibility 0 or 1), newest first, capped at `limit`. Each row is joined
+ * to its creator's username and (if any) its room's name. Returns the projected
+ * SlideshowImage shape. Usernames/room names are resolved in two batched lookups to
+ * avoid an N+1 across the (at most `limit`) images.
+ */
+export async function getSlideshowImages(
+	db: D1Database,
+	limit = SLIDESHOW_LIMIT
+): Promise<SlideshowImage[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT data FROM image
+			 WHERE json_extract(data, '$.Accessibility') IN (0, 1)
+			 ORDER BY id DESC LIMIT ?1`
+		)
+		.bind(limit)
+		.all<ImageRow>()
+	const images = results.map((r) => JSON.parse(r.data) as SavedImage)
+
+	const roomIds = [...new Set(images.map((i) => i.RoomId).filter((v): v is number => v != null))]
+	const usernames = await getUsernames(db, [...new Set(images.map((i) => i.PlayerId))])
+	const roomNames = await getRoomNames(db, roomIds)
+
+	return images.map((img) => ({
+		SavedImageId: img.Id,
+		ImageName: img.ImageName,
+		// Fall back to the synthesized "Player<id>" name for accounts not in the table.
+		Username: usernames.get(img.PlayerId) ?? `Player${img.PlayerId}`,
+		RoomName: img.RoomId != null ? (roomNames.get(img.RoomId) ?? null) : null,
+		RoomId: img.RoomId,
+		SavedImageType: img.Type,
+		PlayerEventId: img.PlayerEventId,
+		Accessibility: img.Accessibility,
+		PlayerIds: img.TaggedPlayerIds,
+	}))
+}
+
 /**
  * A player's photo feed — the public images they took plus the ones they're
  * tagged in (TaggedPlayerIds). Newest first, paginated via skip/take; returns a

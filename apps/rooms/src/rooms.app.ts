@@ -5,7 +5,6 @@ import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
 import {
-	addRoomTag,
 	cloneRoom,
 	findSubRoom,
 	getBaseRooms,
@@ -30,6 +29,7 @@ import {
 	setRoomName,
 	toggleCheer,
 	toggleFavorite,
+	toggleRoomTag,
 } from './rooms-db'
 
 import type { Context } from 'hono'
@@ -209,16 +209,27 @@ function roomResult(
 	})
 }
 
-/** Client envelope for room clone results: `{ success, error, value }`. */
-function cloneResult(c: Context<App>, value: unknown, error = '') {
+/** Client envelope for room mutations: `{ success, error, value }` (lowercase). */
+function roomEnvelope(c: Context<App>, value: unknown, error = '') {
 	return c.json({ success: error === '', error, value })
 }
 
-/** Rooms created/owned by the authed caller (shared by the createdby/ownedby routes). */
+/** Rooms created/owned by the authed caller (shared by the createdby routes). */
 async function ownedRooms(c: Context<App>) {
 	const accountId = await authedAccountId(c)
 	if (accountId === null) return unauthorized(c)
 	return c.json(await getRoomsByCreator(c.env.DB, accountId))
+}
+
+/**
+ * The caller's owned rooms, excluding their dorm. The dorm is auto-provisioned,
+ * not a room the player made, so it doesn't belong in the "rooms you own" list.
+ */
+async function ownedRoomsExcludingDorm(c: Context<App>) {
+	const accountId = await authedAccountId(c)
+	if (accountId === null) return unauthorized(c)
+	const rooms = await getRoomsByCreator(c.env.DB, accountId)
+	return c.json(rooms.filter((r) => r.IsDorm !== true))
 }
 
 const app = new Hono<App>()
@@ -316,10 +327,11 @@ const app = new Hono<App>()
 		return c.json(room ? [room] : [])
 	})
 
-	// Rooms created/owned by the caller (their dorm). The client calls all three.
-	// Auth-gated — no token is a 401, never account 1.
+	// Rooms created/owned by the caller. Auth-gated — no token is a 401, never
+	// account 1. `ownedby/me` drops the dorm (it's not a room the player made);
+	// the `createdby` variants return everything the account created.
 	.get('/roomserver/rooms/createdby/me', ownedRooms)
-	.get('/rooms/ownedby/me', ownedRooms)
+	.get('/rooms/ownedby/me', ownedRoomsExcludingDorm)
 	.get('/rooms/createdby/me', ownedRooms)
 
 	// Public: the rooms a given account owns that are publicly viewable. No auth —
@@ -423,9 +435,9 @@ const app = new Hono<App>()
 		const raw = body.name ?? c.req.query('name') ?? ''
 		const name = typeof raw === 'string' ? raw.trim() : ''
 
-		if (name === '') return cloneResult(c, null, 'You must enter a name for your room.')
+		if (name === '') return roomEnvelope(c, null, 'You must enter a name for your room.')
 		if (await getRoomByName(c.env.DB, name)) {
-			return cloneResult(c, null, 'A room with that name already exists!')
+			return roomEnvelope(c, null, 'A room with that name already exists!')
 		}
 		const room = await cloneRoom(
 			c.env.DB,
@@ -433,8 +445,8 @@ const app = new Hono<App>()
 			name,
 			accountId
 		)
-		if (!room) return cloneResult(c, null, "You can't clone this room!")
-		return cloneResult(c, room)
+		if (!room) return roomEnvelope(c, null, "You can't clone this room!")
+		return roomEnvelope(c, room)
 	})
 
 	// Update a room's description. Auth-gated (401) and owner-only. Business results
@@ -515,41 +527,29 @@ const app = new Hono<App>()
 		return roomResult(c, { Success: true })
 	})
 
-	// Add a tag to a room. Auth-gated (401) and owner-only. Body is the `tag` form
-	// field; the tag is added as a user tag (Type 0), deduped case-insensitively.
-	// Business results use the `{ Success, Value, ErrorId, Error }` envelope at 200.
+	// Toggle a tag on a room. Auth-gated (401) and owner-only. Body is the `tag`
+	// form field. There's no delete/patch endpoint, so this call toggles: it adds
+	// the tag (Type 0) if absent and removes it if present. The "main" tags
+	// (#pvp/#quest/#game/#hangout/#art) are radio buttons — setting one clears the
+	// others. Returns the `{ success, error, value }` envelope with the updated
+	// room as `value`; business failures are 200 with success:false.
 	.put('/rooms/:roomId{[0-9]+}/tags', async (c) => {
 		const accountId = await authedAccountId(c)
 		if (accountId === null) return unauthorized(c)
 
 		const roomId = Number.parseInt(c.req.param('roomId'), 10)
 		const room = await getRoomById(c.env.DB, roomId)
-		if (!room) {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.DoesntExist',
-				Error: 'This room does not exist!',
-			})
-		}
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
 		if (room.CreatorAccountId !== accountId) {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.NotOwner',
-				Error: 'You are not the owner of this room!',
-			})
+			return roomEnvelope(c, null, 'You are not the owner of this room!')
 		}
 
 		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
 		const tag = typeof body.tag === 'string' ? body.tag.trim() : ''
-		if (tag === '') {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.InvalidTag',
-				Error: 'You must provide a tag!',
-			})
-		}
-		await addRoomTag(c.env.DB, roomId, room, tag)
-		return roomResult(c, { Success: true })
+		if (tag === '') return roomEnvelope(c, null, 'You must provide a tag!')
+
+		const updated = await toggleRoomTag(c.env.DB, roomId, room, tag)
+		return roomEnvelope(c, updated)
 	})
 
 	// Set a room's image. Auth-gated (401) and owner-only. Body is the `imageName`

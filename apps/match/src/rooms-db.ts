@@ -17,14 +17,14 @@ const parseOne = (row: RoomRow | null): Room | null => (row ? (JSON.parse(row.da
 
 export async function getRoomById(db: D1Database, roomId: number): Promise<Room | null> {
 	return parseOne(
-		await db.prepare('SELECT data FROM rooms WHERE room_id = ?1').bind(roomId).first<RoomRow>()
+		await db.prepare('SELECT data FROM room WHERE room_id = ?1').bind(roomId).first<RoomRow>()
 	)
 }
 
 export async function getRoomByName(db: D1Database, name: string): Promise<Room | null> {
 	return parseOne(
 		await db
-			.prepare('SELECT data FROM rooms WHERE name_lower = ?1')
+			.prepare('SELECT data FROM room WHERE name_lower = ?1')
 			.bind(name.toLowerCase())
 			.first<RoomRow>()
 	)
@@ -48,7 +48,7 @@ export async function getUsername(db: D1Database, accountId: number): Promise<st
 export async function getDormRoom(db: D1Database, accountId: number): Promise<Room | null> {
 	return parseOne(
 		await db
-			.prepare('SELECT data FROM rooms WHERE creator_account_id = ?1 AND is_dorm = 1 LIMIT 1')
+			.prepare('SELECT data FROM room WHERE creator_account_id = ?1 AND is_dorm = 1 LIMIT 1')
 			.bind(accountId)
 			.first<RoomRow>()
 	)
@@ -69,7 +69,7 @@ export async function getOrCreateDormRoom(db: D1Database, accountId: number): Pr
 
 	const template = await getRoomById(db, DORM_TEMPLATE_ROOM_ID)
 	const idRow = await db
-		.prepare('SELECT COALESCE(MAX(room_id), 1) + 1 AS next FROM rooms')
+		.prepare('SELECT COALESCE(MAX(room_id), 1) + 1 AS next FROM room')
 		.first<{ next: number }>()
 	const roomId = idRow?.next ?? 2
 
@@ -93,6 +93,6 @@ export async function getOrCreateDormRoom(db: D1Database, accountId: number): Pr
 		SubRooms: [{ ...templateSub, CreatorAccountId: accountId }],
 		CreatedAt: new Date().toISOString(),
 	}
-	await db.prepare('INSERT INTO rooms (data) VALUES (?1)').bind(JSON.stringify(room)).run()
+	await db.prepare('INSERT INTO room (data) VALUES (?1)').bind(JSON.stringify(room)).run()
 	return room
 }

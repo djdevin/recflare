@@ -4,14 +4,16 @@
  * generated (virtual) columns extracted from that JSON and indexed. This keeps
  * the room shape flexible while still allowing fast lookups by id/name/creator.
  *
- * `SCHEMA_DDL` mirrors `migrations/0001_init.sql`; the room data is seeded from
- * `static/ImportRooms.json` by `migrations/0002_import_rooms.sql`. Tests apply
- * `SCHEMA_DDL` then seed the imported rooms directly.
+ * `SCHEMA_DDL` mirrors the head schema after all migrations (`0001_init.sql`
+ * created the table as `rooms`; `0005_rename_room.sql` renamed it to `room`);
+ * the room data is seeded from `static/ImportRooms.json` by
+ * `migrations/0002_import_rooms.sql`. Tests apply `SCHEMA_DDL` then seed the
+ * imported rooms directly.
  */
 
-/** Schema DDL (mirror of migrations/0001_init.sql, sans the seed INSERT). */
+/** Schema DDL (mirror of the head migration schema, sans the seed INSERT). */
 export const SCHEMA_DDL: string[] = [
-	`CREATE TABLE IF NOT EXISTS rooms (
+	`CREATE TABLE IF NOT EXISTS room (
 		data TEXT NOT NULL,
 		room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
 		name TEXT GENERATED ALWAYS AS (json_extract(data, '$.Name')) VIRTUAL,
@@ -19,9 +21,9 @@ export const SCHEMA_DDL: string[] = [
 		creator_account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.CreatorAccountId')) VIRTUAL,
 		is_dorm INTEGER GENERATED ALWAYS AS (json_extract(data, '$.IsDorm')) VIRTUAL
 	)`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_room_id ON rooms (room_id)`,
-	`CREATE INDEX IF NOT EXISTS idx_rooms_name_lower ON rooms (name_lower)`,
-	`CREATE INDEX IF NOT EXISTS idx_rooms_creator ON rooms (creator_account_id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_room_id ON room (room_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_rooms_name_lower ON room (name_lower)`,
+	`CREATE INDEX IF NOT EXISTS idx_rooms_creator ON room (creator_account_id)`,
 	// Per-player interaction state with a room (cheered/favorited + last visit).
 	// One row per (player, room); cheer/favorite are toggled in place.
 	`CREATE TABLE IF NOT EXISTS interaction (
@@ -65,7 +67,7 @@ export async function cloneRoom(
 	if (!source || source.CloningAllowed === false) return null
 
 	const row = await db
-		.prepare('SELECT MAX(room_id) AS maxId FROM rooms')
+		.prepare('SELECT MAX(room_id) AS maxId FROM room')
 		.first<{ maxId: number | null }>()
 	const newRoomId = (row?.maxId ?? 0) + 1
 
@@ -93,7 +95,7 @@ export async function cloneRoom(
 		CreatedAt: new Date().toISOString(),
 	}
 
-	await db.prepare('INSERT INTO rooms (data) VALUES (?1)').bind(JSON.stringify(cloned)).run()
+	await db.prepare('INSERT INTO room (data) VALUES (?1)').bind(JSON.stringify(cloned)).run()
 	return cloned
 }
 
@@ -104,7 +106,7 @@ export async function setRoomDescription(
 	description: string
 ): Promise<void> {
 	await db
-		.prepare("UPDATE rooms SET data = json_set(data, '$.Description', ?2) WHERE room_id = ?1")
+		.prepare("UPDATE room SET data = json_set(data, '$.Description', ?2) WHERE room_id = ?1")
 		.bind(roomId, description)
 		.run()
 }
@@ -112,7 +114,7 @@ export async function setRoomDescription(
 /** Set a room's Name in place (the caller checks ownership + name uniqueness first). */
 export async function setRoomName(db: D1Database, roomId: number, name: string): Promise<void> {
 	await db
-		.prepare("UPDATE rooms SET data = json_set(data, '$.Name', ?2) WHERE room_id = ?1")
+		.prepare("UPDATE room SET data = json_set(data, '$.Name', ?2) WHERE room_id = ?1")
 		.bind(roomId, name)
 		.run()
 }
@@ -120,7 +122,7 @@ export async function setRoomName(db: D1Database, roomId: number, name: string):
 /** Set a room's ImageName in place (the caller is responsible for the owner check). */
 export async function setRoomImage(db: D1Database, roomId: number, imageName: string): Promise<void> {
 	await db
-		.prepare("UPDATE rooms SET data = json_set(data, '$.ImageName', ?2) WHERE room_id = ?1")
+		.prepare("UPDATE room SET data = json_set(data, '$.ImageName', ?2) WHERE room_id = ?1")
 		.bind(roomId, imageName)
 		.run()
 }
@@ -130,19 +132,38 @@ export async function setRoomImage(db: D1Database, roomId: number, imageName: st
  * (case-insensitive). The caller supplies the already-loaded room (owner-checked)
  * to avoid a re-read; the whole room JSON is rewritten. Returns the updated room.
  */
-export async function addRoomTag(
+/**
+ * Mutually-exclusive "main" room tags. The UI presents these as radio buttons, so
+ * setting one clears any other main tag. Compared case-insensitively.
+ */
+const MAIN_TAGS = new Set(['pvp', 'quest', 'game', 'hangout', 'art'])
+
+export async function toggleRoomTag(
 	db: D1Database,
 	roomId: number,
 	room: Room,
 	tag: string
 ): Promise<Room> {
 	const tags = Array.isArray(room.Tags) ? (room.Tags as Array<Record<string, unknown>>) : []
-	if (!tags.some((t) => String(t?.Tag).toLowerCase() === tag.toLowerCase())) {
-		tags.push({ Tag: tag, Type: 0 })
+	const lower = tag.toLowerCase()
+	const tagLower = (t: Record<string, unknown>): string => String(t?.Tag).toLowerCase()
+	const existing = tags.findIndex((t) => tagLower(t) === lower)
+
+	// The client has no delete/patch endpoint — the same call toggles a tag: remove
+	// it if already present, add it otherwise. Adding a main tag is a radio pick, so
+	// it also clears any other main tag already set.
+	let nextTags: Array<Record<string, unknown>>
+	if (existing !== -1) {
+		nextTags = tags.filter((_, i) => i !== existing)
+	} else if (MAIN_TAGS.has(lower)) {
+		nextTags = [...tags.filter((t) => !MAIN_TAGS.has(tagLower(t))), { Tag: tag, Type: 0 }]
+	} else {
+		nextTags = [...tags, { Tag: tag, Type: 0 }]
 	}
-	const updated: Room = { ...room, Tags: tags }
+
+	const updated: Room = { ...room, Tags: nextTags }
 	await db
-		.prepare('UPDATE rooms SET data = ?2 WHERE room_id = ?1')
+		.prepare('UPDATE room SET data = ?2 WHERE room_id = ?1')
 		.bind(roomId, JSON.stringify(updated))
 		.run()
 	return updated
@@ -201,7 +222,7 @@ export async function saveSubRoomData(
 	if (input.inventionUsage !== undefined) room.InventionUsage = input.inventionUsage
 
 	await db
-		.prepare('UPDATE rooms SET data = ?2 WHERE room_id = ?1')
+		.prepare('UPDATE room SET data = ?2 WHERE room_id = ?1')
 		.bind(roomId, JSON.stringify(room))
 		.run()
 	return room
@@ -217,7 +238,7 @@ const parseAll = (rows: RoomRow[]): Room[] => rows.map((r) => JSON.parse(r.data)
 /** Look up a single room by its RoomId. */
 export async function getRoomById(db: D1Database, roomId: number): Promise<Room | null> {
 	return parseOne(
-		await db.prepare('SELECT data FROM rooms WHERE room_id = ?1').bind(roomId).first<RoomRow>()
+		await db.prepare('SELECT data FROM room WHERE room_id = ?1').bind(roomId).first<RoomRow>()
 	)
 }
 
@@ -225,7 +246,7 @@ export async function getRoomById(db: D1Database, roomId: number): Promise<Room 
 export async function getRoomByName(db: D1Database, name: string): Promise<Room | null> {
 	return parseOne(
 		await db
-			.prepare('SELECT data FROM rooms WHERE name_lower = ?1')
+			.prepare('SELECT data FROM room WHERE name_lower = ?1')
 			.bind(name.toLowerCase())
 			.first<RoomRow>()
 	)
@@ -236,7 +257,7 @@ export async function getRoomsByIds(db: D1Database, ids: number[]): Promise<Room
 	if (ids.length === 0) return []
 	const placeholders = ids.map((_, i) => `?${i + 1}`).join(',')
 	const { results } = await db
-		.prepare(`SELECT data FROM rooms WHERE room_id IN (${placeholders})`)
+		.prepare(`SELECT data FROM room WHERE room_id IN (${placeholders})`)
 		.bind(...ids)
 		.all<RoomRow>()
 	return parseAll(results)
@@ -245,7 +266,7 @@ export async function getRoomsByIds(db: D1Database, ids: number[]): Promise<Room
 /** All rooms created by an account (e.g. their dorm). */
 export async function getRoomsByCreator(db: D1Database, accountId: number): Promise<Room[]> {
 	const { results } = await db
-		.prepare('SELECT data FROM rooms WHERE creator_account_id = ?1')
+		.prepare('SELECT data FROM room WHERE creator_account_id = ?1')
 		.bind(accountId)
 		.all<RoomRow>()
 	return parseAll(results)
@@ -277,7 +298,7 @@ export async function getFavoritedRooms(
 		.prepare(
 			`SELECT r.data AS data
 			 FROM interaction i
-			 JOIN rooms r ON r.room_id = i.room_id
+			 JOIN room r ON r.room_id = i.room_id
 			 WHERE i.player_id = ?1 AND i.favorited = 1
 			 ORDER BY i.last_visited_at DESC`
 		)
@@ -302,7 +323,7 @@ export async function getVisitedRooms(
 		.prepare(
 			`SELECT r.data AS data
 			 FROM interaction i
-			 JOIN rooms r ON r.room_id = i.room_id
+			 JOIN room r ON r.room_id = i.room_id
 			 WHERE i.player_id = ?1 AND i.last_visited_at IS NOT NULL
 			 ORDER BY i.last_visited_at DESC`
 		)
@@ -459,7 +480,7 @@ export async function searchRooms(
 	if (q === '') return { Results: [], TotalResults: 0 }
 	const terms = q.split(/[\s+]+/).filter(Boolean)
 
-	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const { results } = await db.prepare('SELECT data FROM room').all<RoomRow>()
 	let rooms = parseAll(results).filter((r) => r.IsDorm !== true && r.Accessibility === 1)
 
 	for (const term of terms) {
@@ -496,7 +517,7 @@ export async function getHotRooms(
 	skip: number,
 	take: number
 ): Promise<{ Results: Room[]; TotalResults: number }> {
-	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const { results } = await db.prepare('SELECT data FROM room').all<RoomRow>()
 	let rooms = parseAll(results).filter(
 		(r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true
 	)
@@ -525,7 +546,7 @@ export async function getRecommendedRooms(
 	skip: number,
 	take: number
 ): Promise<Room[]> {
-	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const { results } = await db.prepare('SELECT data FROM room').all<RoomRow>()
 	const roomId = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
 	return parseAll(results)
 		.filter((r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true)
@@ -559,7 +580,7 @@ export interface FeaturedRoomGroup {
  * Small dataset, so done in memory.
  */
 export async function getFeaturedRooms(db: D1Database): Promise<FeaturedRoomGroup> {
-	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const { results } = await db.prepare('SELECT data FROM room').all<RoomRow>()
 	const rooms = parseAll(results).filter(
 		(r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true
 	)
@@ -606,7 +627,7 @@ export async function getSimilarRooms(
 	const targetTags = new Set(roomTags(target))
 	if (targetTags.size === 0) return empty
 
-	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const { results } = await db.prepare('SELECT data FROM room').all<RoomRow>()
 	const sharedCount = (r: Room): number => roomTags(r).filter((t) => targetTags.has(t)).length
 	const roomIdOf = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
 
@@ -639,7 +660,7 @@ export async function getSimilarRooms(
  * array. Small dataset, so done in memory.
  */
 export async function getBaseRooms(db: D1Database, skip: number, take: number): Promise<Room[]> {
-	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const { results } = await db.prepare('SELECT data FROM room').all<RoomRow>()
 	const base = new Set(['base'])
 	const roomIdOf = (r: Room): number => (typeof r.RoomId === 'number' ? r.RoomId : 0)
 	return parseAll(results)

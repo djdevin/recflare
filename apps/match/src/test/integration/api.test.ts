@@ -38,7 +38,7 @@ beforeAll(async () => {
 	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	await env.DB.prepare(
-		`CREATE TABLE IF NOT EXISTS rooms (
+		`CREATE TABLE IF NOT EXISTS room (
 			data TEXT NOT NULL,
 			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
 			name_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Name'))) VIRTUAL,
@@ -46,7 +46,7 @@ beforeAll(async () => {
 			is_dorm INTEGER GENERATED ALWAYS AS (json_extract(data, '$.IsDorm')) VIRTUAL
 		)`
 	).run()
-	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO room (data) VALUES (?1)')
 	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
 	// Room instances (owned by the rooms worker) — matchmaking finds/creates here.
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
@@ -268,7 +268,7 @@ describe('auth-gated endpoints', () => {
 		const roomId = body.roomInstance.roomId
 		expect(roomId).toBeGreaterThan(2)
 		// …owned by the player and flagged IsDorm so they can save it.
-		const row = await env.DB.prepare('SELECT data FROM rooms WHERE room_id = ?1')
+		const row = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
 			.bind(roomId)
 			.first<{ data: string }>()
 		expect(JSON.parse(row!.data)).toMatchObject({ CreatorAccountId: 42, IsDorm: true })

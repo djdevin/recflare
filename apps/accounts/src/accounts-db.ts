@@ -137,6 +137,33 @@ export async function getAccountByUsername(
 	)
 }
 
+/** Default cap on how many matches `searchAccounts` returns. */
+export const SEARCH_LIMIT = 20
+
+/** Escape LIKE wildcards so user input is matched literally (using `\` as the escape char). */
+const escapeLike = (s: string): string => s.replace(/[\\%_]/g, '\\$&')
+
+/**
+ * Prefix-search accounts by username (case-insensitive, "begins with"), ordered
+ * alphabetically. Backed by the indexed `username_lower` generated column, so the
+ * `name%` LIKE stays index-friendly. Returns up to `limit` matches.
+ */
+export async function searchAccounts(
+	db: D1Database,
+	name: string,
+	limit = SEARCH_LIMIT
+): Promise<Account[]> {
+	const q = name.trim().toLowerCase()
+	if (q === '') return []
+	const { results } = await db
+		.prepare(
+			`SELECT data FROM accounts WHERE username_lower LIKE ?1 ESCAPE '\\' ORDER BY username_lower LIMIT ?2`
+		)
+		.bind(`${escapeLike(q)}%`, limit)
+		.all<AccountRow>()
+	return parseAll(results)
+}
+
 /** Look up multiple accounts by AccountId (order not guaranteed). */
 export async function getAccountsByIds(db: D1Database, ids: number[]): Promise<Account[]> {
 	if (ids.length === 0) return []

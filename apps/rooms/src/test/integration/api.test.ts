@@ -49,7 +49,7 @@ beforeAll(async () => {
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
-	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO room (data) VALUES (?1)')
 	await env.DB.batch(importRooms.map((r) => insert.bind(JSON.stringify(r))))
 })
 
@@ -111,11 +111,13 @@ describe('rooms endpoints', () => {
 		// No token → 401, no stub-account fallback (would otherwise leak account 1).
 		const noAuth = await SELF.fetch(`${ORIGIN}/rooms/ownedby/me`)
 		expect(noAuth.status).toBe(401)
-		// Account 1 owns all the seeded rooms.
+		// Account 1 owns all the seeded rooms, but the dorm is excluded here.
 		const mine = (await (
 			await SELF.fetch(`${ORIGIN}/rooms/ownedby/me`, { headers: await bearer('1') })
-		).json()) as unknown[]
-		expect(mine.length).toBe(importRooms.length)
+		).json()) as Array<{ RoomId: number; IsDorm?: boolean }>
+		expect(mine.length).toBe(importRooms.filter((r) => r.IsDorm !== true).length)
+		// The dorm (RoomId 1) is auto-provisioned, so it never appears.
+		expect(mine.some((r) => r.RoomId === 1 || r.IsDorm === true)).toBe(false)
 		// A different account owns none of them.
 		const other = (await (
 			await SELF.fetch(`${ORIGIN}/rooms/ownedby/me`, { headers: await bearer('999') })
@@ -659,40 +661,54 @@ describe('rooms endpoints', () => {
 		expect(await bodyOf(coOwner)).toMatchObject({ SubRoomId: 2, CreatorAccountId: 1 })
 	})
 
-	it('PUT /rooms/:id/tags is auth-gated, owner-only, dedupes, and persists', async () => {
+	it('PUT /rooms/:id/tags is auth-gated, owner-only, and toggles (add/remove)', async () => {
+		// The lowercase `{ success, error, value }` envelope this endpoint returns.
+		type TagResult = { success: boolean; error: string; value: { Tags?: Array<{ Tag: string }> } | null }
+		const envOf = async (res: Response) => (await res.json()) as TagResult
+		const tagsIn = (r: TagResult) => (r.value?.Tags ?? []).map((t) => t.Tag)
+
 		// No token → 401.
 		expect((await putForm('/rooms/2/tags', { tag: 'quest' })).status).toBe(401)
-		// Not the owner → NotOwner envelope.
-		expect(await bodyOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '999'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.NotOwner',
+		// Not the owner → failure envelope.
+		expect(await envOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '999'))).toMatchObject({
+			success: false,
+			error: 'You are not the owner of this room!',
 		})
-		// Unknown room → DoesntExist.
-		expect(await bodyOf(await putForm('/rooms/99999/tags', { tag: 'quest' }, '1'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.DoesntExist',
+		// Unknown room → failure envelope.
+		expect(await envOf(await putForm('/rooms/99999/tags', { tag: 'quest' }, '1'))).toMatchObject({
+			success: false,
+			error: 'This room does not exist!',
 		})
-		// Empty tag → InvalidTag.
-		expect(await bodyOf(await putForm('/rooms/2/tags', { tag: '  ' }, '1'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.InvalidTag',
+		// Empty tag → failure envelope.
+		expect(await envOf(await putForm('/rooms/2/tags', { tag: '  ' }, '1'))).toMatchObject({
+			success: false,
+			error: 'You must provide a tag!',
 		})
 
-		// Owner adds a tag → it persists as a Type-0 user tag.
-		expect(await bodyOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '1'))).toMatchObject({
-			Success: true,
-		})
-		const tagsOf = async () =>
-			(
-				(await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
-					Tags: Array<{ Tag: string; Type: number }>
-				}
-			).Tags
-		expect(await tagsOf()).toContainEqual({ Tag: 'quest', Type: 0 })
+		// Owner adds a non-main tag → success envelope carries the updated room.
+		const added = await envOf(await putForm('/rooms/2/tags', { tag: 'spooky' }, '1'))
+		expect(added).toMatchObject({ success: true, error: '' })
+		expect(tagsIn(added)).toContain('spooky')
 
-		// Adding the same tag again (different case) is a no-op — no duplicate.
-		await putForm('/rooms/2/tags', { tag: 'QUEST' }, '1')
-		expect((await tagsOf()).filter((t) => t.Tag.toLowerCase() === 'quest')).toHaveLength(1)
+		// The same call again toggles it back off (no delete endpoint).
+		const removed = await envOf(await putForm('/rooms/2/tags', { tag: 'SPOOKY' }, '1'))
+		expect(tagsIn(removed)).not.toContain('spooky')
+
+		// Main tags are radio buttons: setting one clears any other main tag, but
+		// leaves non-main tags alone.
+		await putForm('/rooms/2/tags', { tag: 'campfire' }, '1') // non-main, stays put
+		const pvp = await envOf(await putForm('/rooms/2/tags', { tag: 'pvp' }, '1'))
+		expect(tagsIn(pvp)).toEqual(expect.arrayContaining(['pvp', 'campfire']))
+
+		const quest = await envOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '1'))
+		expect(tagsIn(quest)).toContain('quest')
+		expect(tagsIn(quest)).not.toContain('pvp') // the previous main tag was cleared
+		expect(tagsIn(quest)).toContain('campfire') // non-main tag untouched
+
+		// Toggling the current main tag off just removes it (no other change).
+		const off = await envOf(await putForm('/rooms/2/tags', { tag: 'quest' }, '1'))
+		expect(tagsIn(off)).not.toContain('quest')
+		expect(tagsIn(off)).toContain('campfire')
 	})
 
 	it('PUT /rooms/:id/name is auth-gated, owner-only, unique, and persists', async () => {

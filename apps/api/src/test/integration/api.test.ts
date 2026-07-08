@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import '../../api.app'
 
 import { SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
+import { SCHEMA_DDL as RELATIONSHIPS_SCHEMA_DDL } from '../../relationships-db'
 
 import type { Env } from '../../context'
 import type { SavedImage } from '../../images-db'
@@ -40,14 +41,14 @@ beforeAll(async () => {
 	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	await env.DB.prepare(
-		`CREATE TABLE IF NOT EXISTS rooms (
+		`CREATE TABLE IF NOT EXISTS room (
 			data TEXT NOT NULL,
 			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
 			name_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.Name'))) VIRTUAL,
 			creator_account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.CreatorAccountId')) VIRTUAL
 		)`
 	).run()
-	const insert = env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO room (data) VALUES (?1)')
 	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
 
 	// Accounts table (matching the auth worker's migration) — uploadsaved records
@@ -68,6 +69,9 @@ beforeAll(async () => {
 
 	// Images table (owned by the img worker) — uploadsaved records a row here.
 	for (const stmt of IMAGES_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+
+	// Relationships table (owned by the api worker) — friendship endpoints use it.
+	for (const stmt of RELATIONSHIPS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 })
 
 // Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
@@ -131,8 +135,11 @@ describe('public endpoints', () => {
 		expect(await res.json()).toMatchObject({ VersionStatus: 0 })
 	})
 
-	test('GET /api/relationships/v2/get returns empty array', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/relationships/v2/get`)
+	test('GET /api/relationships/v2/get returns empty array for a player with none', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/relationships/v2/get`, {
+			headers: await bearer('99999'),
+		})
+		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
 	})
 
@@ -333,6 +340,53 @@ describe('images', () => {
 		expect(meta.PlayerId).toBe(42)
 		expect(typeof meta.Id).toBe('number')
 		expect(meta.CheerCount).toBe(0)
+	})
+
+	test('GET /api/images/v1/slideshow is auth-gated and joins username + room name', async () => {
+		// No token → 401.
+		expect((await exports.default.fetch(`${ORIGIN}/api/images/v1/slideshow`)).status).toBe(401)
+
+		// Seed a public image (Accessibility 1) taken in RecCenter (room 2) by account 42.
+		await env.DB.prepare('INSERT INTO image (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					Id: 9001,
+					Type: 1,
+					Accessibility: 1,
+					AccessibilityLocked: false,
+					ImageName: 'slide9001.jpg',
+					Description: null,
+					PlayerId: 42,
+					TaggedPlayerIds: [7, 8],
+					RoomId: 2,
+					PlayerEventId: null,
+					CreatedAt: new Date().toISOString(),
+					CheerCount: 0,
+					CommentCount: 0,
+				})
+			)
+			.run()
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v1/slideshow`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Images: Array<Record<string, unknown>>
+			ValidTill: string
+		}
+		expect(body.ValidTill).toMatch(/Z$/)
+		const slide = body.Images.find((i) => i.SavedImageId === 9001)
+		expect(slide).toMatchObject({
+			SavedImageId: 9001,
+			ImageName: 'slide9001.jpg',
+			Username: 'Tester', // account 42 seeded above
+			RoomName: 'RecCenter', // room 2
+			RoomId: 2,
+			SavedImageType: 1,
+			Accessibility: 1,
+			PlayerIds: [7, 8],
+		})
 	})
 
 	test('POST /api/images/v1/cheer is auth-gated and stubs success', async () => {
@@ -562,5 +616,81 @@ describe('images', () => {
 		expect(
 			await (await exports.default.fetch(`${ORIGIN}/api/images/v3/feed/player/424242`)).json()
 		).toEqual([])
+	})
+})
+
+describe('relationships', () => {
+	// RelationshipType: 0 None, 1 FriendRequestSent, 2 FriendRequestReceived, 3 Friend.
+	type Rel = { PlayerID: number; RelationshipType: number; Favorited: number }
+
+	// Call a relationship mutation as `sub`, targeting `playerId` — the real client
+	// shape: a GET with the target in `?id=`.
+	async function mutate(path: string, sub: string, playerId: number) {
+		return exports.default.fetch(`${ORIGIN}${path}?id=${playerId}`, {
+			headers: await bearer(sub),
+		})
+	}
+
+	// Fetch `sub`'s relationships, projected from their point of view.
+	async function relationships(sub: string): Promise<Rel[]> {
+		const res = await exports.default.fetch(`${ORIGIN}/api/relationships/v2/get`, {
+			headers: await bearer(sub),
+		})
+		return (await res.json()) as Rel[]
+	}
+
+	test('GET /api/relationships/v2/get is auth-gated', async () => {
+		expect((await exports.default.fetch(`${ORIGIN}/api/relationships/v2/get`)).status).toBe(401)
+	})
+
+	test('mutations are auth-gated', async () => {
+		for (const path of [
+			'/api/relationships/v2/sendfriendrequest',
+			'/api/relationships/v2/acceptfriendrequest',
+			'/api/relationships/v2/removefriend',
+			'/api/relationships/v2/addfriend',
+		]) {
+			const res = await exports.default.fetch(`${ORIGIN}${path}?id=1`)
+			expect(res.status).toBe(401)
+		}
+	})
+
+	test('send → the two sides see Sent / Received; accept → both Friend; remove → gone', async () => {
+		// 500 sends 501 a request.
+		const sent = (await (await mutate('/api/relationships/v2/sendfriendrequest', '500', 501)).json()) as Rel
+		expect(sent).toMatchObject({ PlayerID: 501, RelationshipType: 1 })
+
+		// 500 sees it as Sent (1); 501 sees the mirror as Received (2).
+		expect(await relationships('500')).toEqual([{ PlayerID: 501, RelationshipType: 1, Favorited: 0, Ignored: 0, Muted: 0 }])
+		expect(await relationships('501')).toEqual([{ PlayerID: 500, RelationshipType: 2, Favorited: 0, Ignored: 0, Muted: 0 }])
+
+		// 501 accepts → both are Friends (3).
+		const accepted = (await (await mutate('/api/relationships/v2/acceptfriendrequest', '501', 500)).json()) as Rel
+		expect(accepted).toMatchObject({ PlayerID: 500, RelationshipType: 3 })
+		expect(await relationships('500')).toEqual([{ PlayerID: 501, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+		expect(await relationships('501')).toEqual([{ PlayerID: 500, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+
+		// 500 removes → neither side has a relationship.
+		expect((await mutate('/api/relationships/v2/removefriend', '500', 501)).status).toBe(200)
+		expect(await relationships('500')).toEqual([])
+		expect(await relationships('501')).toEqual([])
+	})
+
+	test('addfriend makes them friends directly', async () => {
+		const res = (await (await mutate('/api/relationships/v2/addfriend', '510', 511)).json()) as Rel
+		expect(res).toMatchObject({ PlayerID: 511, RelationshipType: 3 })
+		expect(await relationships('511')).toEqual([{ PlayerID: 510, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+	})
+
+	test('crossing friend requests become a friendship', async () => {
+		await mutate('/api/relationships/v2/sendfriendrequest', '520', 521)
+		// 521 sends back to 520 → the crossing requests resolve to Friend for both.
+		const crossed = (await (await mutate('/api/relationships/v2/sendfriendrequest', '521', 520)).json()) as Rel
+		expect(crossed).toMatchObject({ PlayerID: 520, RelationshipType: 3 })
+		expect(await relationships('520')).toEqual([{ PlayerID: 521, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+	})
+
+	test('a self-targeted request is rejected', async () => {
+		expect((await mutate('/api/relationships/v2/sendfriendrequest', '530', 530)).status).toBe(400)
 	})
 })

@@ -17,6 +17,6 @@ const parseOne = (row: RoomRow | null): Room | null => (row ? (JSON.parse(row.da
 
 export async function getRoomById(db: D1Database, roomId: number): Promise<Room | null> {
 	return parseOne(
-		await db.prepare('SELECT data FROM rooms WHERE room_id = ?1').bind(roomId).first<RoomRow>()
+		await db.prepare('SELECT data FROM room WHERE room_id = ?1').bind(roomId).first<RoomRow>()
 	)
 }

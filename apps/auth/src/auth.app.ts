@@ -49,7 +49,7 @@ const PRESENCE_TTL = 900
  * the heartbeat keeps them there.
  */
 async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: number): Promise<void> {
-	const row = await env.DB.prepare('SELECT data FROM rooms WHERE room_id = ?1')
+	const row = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
 		.bind(ORIENTATION_ROOM_ID)
 		.first<{ data: string }>()
 	if (!row) return

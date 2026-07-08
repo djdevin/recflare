@@ -6,6 +6,7 @@ import {
 	getImagesByPlayer,
 	getImagesByRoom,
 	getPlayerFeed,
+	getSlideshowImages,
 } from '../images-db'
 import { authedId, unauthorized } from '../http'
 
@@ -131,6 +132,18 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
 		return c.json(await getPlayerFeed(c.env.DB, playerId, skip, take))
+	})
+
+	// Global slideshow feed — the most recent publicly-listable images (Accessibility
+	// 0 or 1) across all rooms, newest first, each joined to its creator's username
+	// and room name. Auth-gated. Returns `{ Images, ValidTill }`, where ValidTill is a
+	// short (2-minute) cache hint the client refreshes against.
+	.get('/api/images/v1/slideshow', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const Images = await getSlideshowImages(c.env.DB)
+		const ValidTill = new Date(Date.now() + 2 * 60 * 1000).toISOString()
+		return c.json({ Images, ValidTill })
 	})
 
 	// Image metadata by filename. Returns the stored SavedImage record, or 404 when

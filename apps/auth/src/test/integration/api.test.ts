@@ -27,12 +27,12 @@ beforeAll(async () => {
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of REFRESH_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare(
-		`CREATE TABLE IF NOT EXISTS rooms (
+		`CREATE TABLE IF NOT EXISTS room (
 			data TEXT NOT NULL,
 			room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL
 		)`
 	).run()
-	await env.DB.prepare('INSERT OR IGNORE INTO rooms (data) VALUES (?1)')
+	await env.DB.prepare('INSERT OR IGNORE INTO room (data) VALUES (?1)')
 		.bind(
 			JSON.stringify({
 				RoomId: 13,

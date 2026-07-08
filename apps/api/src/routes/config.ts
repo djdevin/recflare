@@ -26,13 +26,13 @@ export const configRoutes = new Hono<App>({ strict: false })
 		c.json({
 			ReportBudget: 125,
 			FilterType: 0,
-			SampleRate: 0.025,
+			SampleRate: 1,
 			LogLineCount: 50,
 			CaptureNativeCrashes: 1,
 			AMRThresholdMS: 0,
 			MessageCount: 1000,
 			MessageRegex:
-				"^Cannot set the parent of the GameObject .* while its new parent|^\\\\>\\\\x2010x\\\\:\\\\x20|\\\\'LabelTheme\\\\' contains missing PaletteTheme reference on",
+				"^.*$",
 			VersionRegex: '.*',
 		})
 	)
