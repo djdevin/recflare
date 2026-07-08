@@ -31,7 +31,7 @@ Of course, cloud services cost money. That's the only limitation.
 ## Client
 
 RecFlare is compatible with the
-[CannedNet client](https://github.com/djdevin/CannedNet) and the build of Rec
+[RecNet Plugin](https://github.com/djdevin/recnet-plugin) and the build of Rec
 Room with manifest `7859140924515540835`. Other client or game versions may expect
 different endpoints and response shapes and are not supported.
 
@@ -47,11 +47,7 @@ The Rec Room client discovers every service by fetching an _endpoints document_
 from the name-server (`ns`) worker at the apex domain. That document maps each
 service to a host like `https://match.<your-domain>`. Every service runs as a
 separate Cloudflare Worker attached to its own subdomain, so the client's traffic
-fans out across the workers in `apps/`.
-
-Authentication is a Bearer-JWT flow: the `auth` worker issues tokens from
-`/connect/token` and owns the shared `accounts` table; every other worker
-validates that token on its auth-gated routes.
+fans out across the workers in `apps/` instead of to a single machine.
 
 State is persisted with Cloudflare's storage primitives — the workers are
 completely stateless and no data is stored alongside the microservices.
@@ -69,12 +65,12 @@ but not yet backed by a Worker. Not all services are fully implemented.
 | Accounts              | `accounts`              | `accounts`       | Player accounts & profile reads/writes (D1)                               |
 | AI                    | `ai`                    | —                | Not yet implemented                                                       |
 | API                   | `api`                   | `api`            | Core Game API — config, social, avatar, rooms, image uploads (D1, R2)     |
-| Auth                  | `auth`                  | `auth`           | OAuth token issuance (`/connect/token`); owns the accounts table (D1, KV) |
+| Auth                  | `auth`                  | `auth`           | OAuth token issuance (`/connect/token`); (D1)                             |
 | BugReporting          | `bugreporting`          | —                | Not yet implemented                                                       |
 | Cards                 | `cards`                 | —                | Not yet implemented                                                       |
-| CDN                   | `cdn`                   | `cdn`            | Binary CDN — signature blobs & room build data (R2)                       |
-| Chat                  | `chat`                  | `chat`           | Chat service                                                              |
-| Clubs                 | `clubs`                 | `clubs`          | Clubs                                                                     |
+| CDN                   | `cdn`                   | `cdn`            | Binary CDN — room data (R2)                                               |
+| Chat                  | `chat`                  | `chat`           | Player chat service (not in room)                                         |
+| Clubs                 | `clubs`                 | `clubs`          | Clubs, not yet implemented                                                |
 | CMS                   | `cms`                   | —                | Not yet implemented                                                       |
 | Commerce              | `commerce`              | `commerce`       | Store / purchase endpoints                                                |
 | Data                  | `data`                  | —                | Not yet implemented                                                       |
@@ -95,13 +91,13 @@ but not yet backed by a Worker. Not all services are fully implemented.
 | RoomComments          | `roomcomments`          | —                | Not yet implemented                                                       |
 | RoomieIntegrations    | `roomieintegrations`    | —                | Not yet implemented                                                       |
 | Rooms                 | `rooms`                 | `rooms`          | Room storage & queries; seeds the Dorm & Orientation rooms (D1)           |
-| Storage               | `storage`               | —                | Not yet implemented                                                       |
+| Storage               | `storage`               | —                | Room uploader                                                             |
 | Strings               | `strings`               | —                | Not yet implemented                                                       |
 | StringsCDN            | `strings-cdn`           | —                | Not yet implemented                                                       |
 | Studio                | `studio`                | —                | Not yet implemented                                                       |
 | Thorn                 | `thorn`                 | —                | Not yet implemented                                                       |
 | Videos                | `videos`                | —                | Not yet implemented                                                       |
-| WWW                   | `www`                   | —                | Website host (not a Worker)                                               |
+| WWW                   | `www`                   | —                | Website/Panel			                                                       |
 
 Additionally, the small `ns` worker itself serves this discovery document at the
 apex/`ns` host and isn't listed within it. Each implemented worker has its own
