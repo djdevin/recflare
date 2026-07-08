@@ -10,6 +10,7 @@ import {
 	findSubRoom,
 	getBaseRooms,
 	getFavoritedRooms,
+	getFeaturedRooms,
 	getHotRooms,
 	getInteraction,
 	getPublicRoomsByCreator,
@@ -290,6 +291,13 @@ const app = new Hono<App>()
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
 		return c.json(await getRecommendedRooms(c.env.DB, skip, take))
+	})
+
+	// Featured rooms — a single always-active group whose `Rooms` are a randomly
+	// ordered set of public, non-dorm rooms. No real curation yet, so `current`
+	// just returns a shuffled list of eligible rooms in the featured-group shape.
+	.get('/featuredrooms/current', async (c) => {
+		return c.json(await getFeaturedRooms(c.env.DB))
 	})
 
 	// Bulk room lookup by `id` or `name` — returns an array of matched rooms (the

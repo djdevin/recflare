@@ -340,6 +340,25 @@ describe('rooms endpoints', () => {
 		expect(body.length).toBeLessThanOrEqual(3)
 	})
 
+	it('GET /featuredrooms/current returns a featured-room group of public rooms', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/featuredrooms/current`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			FeaturedRoomGroupId: number
+			name: string
+			StartAt: string
+			EndAt: string
+			Rooms: Array<{ RoomId: number; RoomName: string; ImageName: string }>
+		}
+		expect(body.FeaturedRoomGroupId).toBe(1)
+		expect(body.name).toBe('Featured Rooms')
+		expect(body.Rooms.length).toBeGreaterThan(0)
+		// Compact projection carries name + image, not the full room blob.
+		expect(body.Rooms.every((r) => typeof r.RoomName === 'string')).toBe(true)
+		// The dorm (RoomId 1) is non-public, so it's never featured.
+		expect(body.Rooms.some((r) => r.RoomId === 1)).toBe(false)
+	})
+
 	it('GET /rooms/:id/similar returns { Results, TotalResults } of tag-sharing rooms (excluding self)', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/rooms/2/similar`)
 		expect(res.status).toBe(200)

@@ -533,6 +533,60 @@ export async function getRecommendedRooms(
 		.slice(skip, skip + take)
 }
 
+/** Compact room projection carried by a featured-room group. */
+export interface FeaturedRoom {
+	RoomId: number
+	RoomName: string
+	ImageName: string
+	IsRecRoomApproved: boolean
+	ExcludeFromLists: boolean
+	ExcludeFromSearch: boolean
+}
+
+/** A time-boxed group of featured rooms, as returned by `/featuredrooms/current`. */
+export interface FeaturedRoomGroup {
+	FeaturedRoomGroupId: number
+	name: string
+	StartAt: string
+	EndAt: string
+	Rooms: FeaturedRoom[]
+}
+
+/**
+ * Featured rooms group: public, non-dorm rooms not excluded from lists, in random
+ * order. There's no editorial curation behind this yet, so "featured" is just a
+ * random shuffle of the eligible rooms wrapped in a single always-active group.
+ * Small dataset, so done in memory.
+ */
+export async function getFeaturedRooms(db: D1Database): Promise<FeaturedRoomGroup> {
+	const { results } = await db.prepare('SELECT data FROM rooms').all<RoomRow>()
+	const rooms = parseAll(results).filter(
+		(r) => r.IsDorm !== true && r.Accessibility === 1 && r.ExcludeFromLists !== true
+	)
+	// Fisher–Yates shuffle so the feed varies between requests.
+	for (let i = rooms.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1))
+		;[rooms[i], rooms[j]] = [rooms[j], rooms[i]]
+	}
+
+	const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+	const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
+	return {
+		FeaturedRoomGroupId: 1,
+		name: 'Featured Rooms',
+		StartAt: '2025-12-01T11:01:00Z',
+		EndAt: '9999-12-08T11:00:00Z',
+		Rooms: rooms.map((r) => ({
+			RoomId: num(r.RoomId),
+			RoomName: str(r.Name),
+			ImageName: str(r.ImageName),
+			IsRecRoomApproved: r.IsRecRoomApproved === true,
+			ExcludeFromLists: r.ExcludeFromLists === true,
+			ExcludeFromSearch: r.ExcludeFromSearch === true,
+		})),
+	}
+}
+
 /**
  * Rooms similar to a target room: public, non-dorm rooms (excluding the target)
  * that share at least one tag with it, ranked by shared-tag count then
