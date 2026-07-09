@@ -200,6 +200,28 @@ describe('auth worker routes', () => {
 		expect(bad.status).toBe(400)
 	})
 
+	test('POST /connect/token logs in by username (RecRoom password grant)', async () => {
+		// The RecRoom client posts the username, not the account_id — case-insensitively
+		// and with a trailing space, both of which must still resolve account 42.
+		const res = await postToken(
+			`grant_type=password&username=player42%20&password=${LOGIN_PASSWORD}`
+		)
+		expect(res.status).toBe(200)
+		expect(decodePayload(res.json.access_token as string).sub).toBe('42')
+	})
+
+	test('POST /connect/token rejects a username login with the wrong password', async () => {
+		const res = await postToken(`grant_type=password&username=Player42&password=wrong`)
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
+	})
+
+	test('POST /connect/token 400s on an unknown username', async () => {
+		const res = await postToken(`grant_type=password&username=NoSuchUser&password=whatever`)
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_request')
+	})
+
 	test('POST /connect/token grant_type=create_account persists a new account', async () => {
 		const payload = await tokenFor('grant_type=create_account&platform_id=steam-123')
 		// The token's sub is the new account id, allocated above the system accounts.
