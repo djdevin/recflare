@@ -1,7 +1,13 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { createAccount, getPasswordHash, RoomInstanceType, setPasswordHash } from '@repo/domain'
+import {
+	createAccount,
+	getAccountByUsername,
+	getPasswordHash,
+	RoomInstanceType,
+	setPasswordHash,
+} from '@repo/domain'
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from './jwt'
@@ -156,11 +162,12 @@ const app = new Hono<App>()
 		//    A `password` may be posted to establish the account's login credential.
 		//  - refresh_token: redeem a stored (single-use) refresh token for its account +
 		//    platform, so an expiring session renews without re-login.
-		//  - otherwise: a credential login. The request MUST post a valid account_id AND
-		//    the account's correct `password`. An account with no password set can't be
-		//    logged into by id (no credential to verify) — closing the account_id-only
-		//    takeover. New accounts establish a password via create_account or
-		//    /account/me/changepassword.
+		//  - otherwise: a credential login. The request identifies the account by
+		//    `username` (RecRoom's password grant posts the username, not the id) or a
+		//    numeric `account_id`, and MUST post the account's correct `password`. An
+		//    account with no password set can't be logged into (no credential to verify)
+		//    — closing the id/username-only takeover. New accounts establish a password
+		//    via create_account or /account/me/changepassword.
 		let accountId: string
 		if (grantType === 'create_account') {
 			const account = await createAccount(c.env.DB, { platforms: platformInt || 0 })
@@ -185,17 +192,27 @@ const app = new Hono<App>()
 			platform = refreshed.platform
 			platformId = refreshed.platformId
 		} else {
-			const posted = typeof body.account_id === 'string' ? body.account_id.trim() : ''
-			if (!/^\d+$/.test(posted)) {
+			// Resolve the account from a posted numeric `account_id` or, as RecRoom's
+			// password grant sends, a `username` (case-insensitive; trailing whitespace
+			// is trimmed off the posted value).
+			const postedId = typeof body.account_id === 'string' ? body.account_id.trim() : ''
+			const postedUsername = typeof body.username === 'string' ? body.username.trim() : ''
+			let resolvedId: number | null = null
+			if (/^\d+$/.test(postedId)) {
+				resolvedId = Number(postedId)
+			} else if (postedUsername !== '') {
+				resolvedId = (await getAccountByUsername(c.env.DB, postedUsername))?.accountId ?? null
+			}
+			if (resolvedId === null) {
 				return c.json(
-					{ error: 'invalid_request', error_description: 'account_id is required' },
+					{ error: 'invalid_request', error_description: 'account_id or username is required' },
 					400
 				)
 			}
 			// The account's password MUST be presented and match. An account with no
-			// stored hash has no credential to authenticate against, so login by id is
-			// refused — this closes the account_id-only takeover.
-			const storedHash = await getPasswordHash(c.env.DB, Number(posted))
+			// stored hash has no credential to authenticate against, so login is refused
+			// — this closes the id/username-only takeover.
+			const storedHash = await getPasswordHash(c.env.DB, resolvedId)
 			const password = typeof body.password === 'string' ? body.password : ''
 			if (!storedHash || !(await verifyPassword(password, storedHash))) {
 				return c.json(
@@ -203,7 +220,7 @@ const app = new Hono<App>()
 					400
 				)
 			}
-			accountId = posted
+			accountId = String(resolvedId)
 		}
 
 		const accessToken = await generateToken(
