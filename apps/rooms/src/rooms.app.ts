@@ -307,7 +307,11 @@ const app = new Hono<App>()
 	// Featured rooms — a single always-active group whose `Rooms` are a randomly
 	// ordered set of public, non-dorm rooms. No real curation yet, so `current`
 	// just returns a shuffled list of eligible rooms in the featured-group shape.
-	.get('/featuredrooms/current', async (c) => {
+	// @todo This is not working. It somehow causes the other room listings to fail
+	// completely with NREs. I think it is the featured room load that is somehow
+	// corrupting the room cache. I tried sending the normal room shape but that
+	// did not seem to work.
+	.get('/XXXfeaturedrooms/current', async (c) => {
 		return c.json(await getFeaturedRooms(c.env.DB))
 	})
 
