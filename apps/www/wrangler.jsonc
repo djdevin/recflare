@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "www",
+	"main": "src/www.app.ts",
+	"compatibility_date": "2025-09-20",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	// React SPA client build (Vite emits it to dist/www/client). Static assets are
+	// served directly; any non-asset request falls through to the Worker, which
+	// serves API routes and returns index.html for client-side routes (SPA).
+	"assets": {
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"upload_source_maps": true,
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1 // 100%
+		}
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown", // overridden during deployment
+		// Base domain the auth/accounts hosts are derived from (auth.<DOMAIN>,
+		// accounts.<DOMAIN>). Overridden at deploy time with the real RECFLARE_DOMAIN
+		// (see run-wrangler-deploy). For local dev, point this at a deployed domain so
+		// the BFF proxy can reach the auth/accounts workers.
+		"DOMAIN": "rec.example.com"
+	}
+}

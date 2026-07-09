@@ -1,0 +1,10 @@
+{
+	"extends": "@repo/typescript-config/workers.json",
+	"compilerOptions": {
+		// This is the repo's first frontend worker: the React client code needs the
+		// automatic JSX runtime and the DOM libs. The worker code itself uses no DOM
+		// globals, so widening `lib` here is harmless.
+		"jsx": "react-jsx",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"]
+	}
+}

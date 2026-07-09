@@ -1,0 +1,38 @@
+{
+	"name": "www",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"build": "run-vite-build",
+		"check:lint": "run-oxlint",
+		"check:types": "run-tsc",
+		"check:workers-types": "run-wrangler-types --check",
+		"deploy": "run-wrangler-deploy",
+		"dev": "run-vite-dev",
+		"fix:workers-types": "run-wrangler-types",
+		"preview": "run-vite-preview",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@repo/hono-helpers": "workspace:*",
+		"hono": "4.12.27",
+		"react": "19.2.7",
+		"react-dom": "19.2.7",
+		"workers-tagged-logger": "1.0.1"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "1.42.0",
+		"@cloudflare/vitest-pool-workers": "0.16.20",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@types/node": "26.0.1",
+		"@types/react": "19.2.17",
+		"@types/react-dom": "19.2.3",
+		"@vitejs/plugin-react": "5.2.0",
+		"vite": "6.4.3",
+		"vitest": "4.1.9",
+		"wrangler": "4.105.0"
+	}
+}
