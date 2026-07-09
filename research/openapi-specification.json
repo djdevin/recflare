@@ -1,0 +1,1769 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "RecNet API",
+    "description": "This is an **unofficial documentation** of the RecNet API, compiled from [RecNetAPI Docs](https://rec-room.fandom.com/wiki/Current_Api_Documentation) and [RecNet API](https://documenter.getpostman.com/view/13848200/TVt184DN#69bd1bfd-1052-422d-b16e-e18e0d7668dc). These 2 places were missing a fair few requests, so I thought it would be best to use Postman to compile them all into one place.\n\nFeel free to use this documentation as you see fit, however, if you are copying the docs - make sure you give credit :)",
+    "version": "1.0.0"
+  },
+  "servers": [],
+  "paths": {
+    "/api/images/v4/:photoId": {
+      "get": {
+        "tags": [
+          "Image Information From ID"
+        ],
+        "summary": "Image Information From ID",
+        "description": "This takes an image ID as a path parameter, and returns an object that contains detailed information about an image.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "//api/images/v1/:photoId/comments": {
+      "get": {
+        "tags": [
+          "Image Comments"
+        ],
+        "summary": "Image Comments",
+        "description": "This takes an image ID as a path parameter, and returns an array of objects that detail comment information.\n\n## Comment Properties\n\n| Property | Type | Description |\n| --- | --- | --- |\n| Saved Image Comment ID | Int | Each comment has a unique ID associated with it. Comment IDs are sequential which means that every time a new comment is shared to RecNet, it's ID will be +1 of the previous comment shared to RecNet. |\n| Saved Image ID | Int | This is the internal image ID of the image that the comment is associated with. |\n| Player ID | Int | This is the internal account ID of the player who made the comment. For more information regarding account information look at the [Accounts](https://documenter.getpostman.com/view/13848200/TVt184DN#72845adf-0224-43a6-abda-7bff6fde3d03) section. |\n| Comment | String | This is the comment data that is associated with the image & account ID. |",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v1/:imageId/cheers": {
+      "get": {
+        "tags": [
+          "Image Cheers"
+        ],
+        "summary": "Image Cheers",
+        "description": "This takes an image ID as a path parameter, and returns an array of all the internal account IDs of all the players that cheered the cheered the image.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v3/feed/player/:playerId": {
+      "get": {
+        "tags": [
+          "Images of a Player"
+        ],
+        "summary": "Images of a Player",
+        "description": "This is takes an account ID as a path parameter, and returns an array of all the image objects that have the account ID in the `TaggedPlayerIds` property.",
+        "parameters": [
+          {
+            "name": "take",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v4/player/:playerId": {
+      "get": {
+        "tags": [
+          "Images Taken By a Player"
+        ],
+        "summary": "Images Taken By a Player",
+        "description": "This takes an account ID as a path parameter, and returns an array of all the image objects that have the account ID as it's `PlayerId` property.",
+        "parameters": [
+          {
+            "name": "take",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v1/playerevent/:eventId": {
+      "get": {
+        "tags": [
+          "Images Taken During an Event"
+        ],
+        "summary": "Images Taken During an Event",
+        "description": "This takes an event ID as a path parameter, and returns an array of all the image objects that have the event ID as it's `PlayerEventId` property.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v4/room/:roomId": {
+      "get": {
+        "tags": [
+          "Images Taken in a Room"
+        ],
+        "summary": "Images Taken in a Room",
+        "description": "This takes a room ID as a path parameter, and returns an array of all the image objects that have the room ID as it's `RoomId` property.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v3/feed/global": {
+      "get": {
+        "tags": [
+          "Trending Images"
+        ],
+        "summary": "Trending Images",
+        "description": "This returns an array of image objects that are on the front page of RecNet.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v3/bulk": {
+      "post": {
+        "tags": [
+          "Bulk Image Information"
+        ],
+        "summary": "Bulk Image Information",
+        "description": "This returns an array of image objects whos IDs match the IDs that were passed in to the form body. The array is in reverse order of the way the IDs appear in the body.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "//api/images/v1/cheer": {
+      "post": {
+        "tags": [
+          "Cheer Image"
+        ],
+        "summary": "Cheer Image",
+        "description": "Cheers/Uncheers an image based on given values\n\n| **Value** | **Type** | **Description** |\n| --- | --- | --- |\n| SavedImageId | int | Image being cheered/uncheered | Image being cheered/uncheered |\n| Cheer | boolean | True/False | True/False |",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v1/:imageid/report": {
+      "post": {
+        "tags": [
+          "Report Image"
+        ],
+        "summary": "Report Image",
+        "description": "Reports an image with `imageId` to be reviewed by the RecRoom Support Team.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/images/v1/:imageid/player/:playerid/untag": {
+      "put": {
+        "tags": [
+          "Untag from Image"
+        ],
+        "summary": "Untag from Image",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId": {
+      "get": {
+        "tags": [
+          "Room Information From ID"
+        ],
+        "summary": "Room Information From ID",
+        "description": "This takes a room ID as a path parameter, and returns an object that contains detailed information about a room. An optional query parameter called `inc`Include Parameter\n\nThe `include` parameter takes an integer as an input, and returns different information based on it's value. Each value and it's corresponding information is listed below.\n\n| Value | Description |\n| --- | --- |\n| 2 | This returns an object array of subroom information that is connected to the room |\n| 4 | This returns an object array of players who have special permissions. The role value is representative of what perms a player has. 255 is the owner, 30 is a co-owner, 20 is a moderator, and 10 is host. |\n| 8 | This returns an object array of information on the room's tags. Each tag has a type, and any thing with a type of 0 are tags that were set by a player. |\n| 32 | This returns the promo content that was set on RecNet. |\n| 64 | This returns an object that describes how a room is ranked in relation to the hot page. |\n| 256 | This returns an object that has information on a rooms custom loading screen. |\n\nThese values can be added to get more information at once.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms": {
+      "get": {
+        "tags": [
+          "Room Information From Room Name"
+        ],
+        "summary": "Room Information From Room Name",
+        "description": "This takes a room name as a query parameter, and returns an object that contains detailed information about a room.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/createdby/:playerId": {
+      "get": {
+        "tags": [
+          "Rooms Created by a Player"
+        ],
+        "summary": "Rooms Created by a Player",
+        "description": "This takes an account ID as a path parameter, and returns an array of all the room objects that have the account ID as it's `CreatorAccountId` property.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/ownedby/:playerId": {
+      "get": {
+        "tags": [
+          "Rooms Owned by a Player"
+        ],
+        "summary": "Rooms Owned by a Player",
+        "description": "This takes an account ID as a path parameter, and returns an array of all the room objects that represent rooms owned by a player.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/search": {
+      "get": {
+        "tags": [
+          "Room Search"
+        ],
+        "summary": "Room Search",
+        "description": "This takes a search query as a query parameter, and returns an array of all the room objects that are most relevant to the search query.",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/showcase/:playerid": {
+      "get": {
+        "tags": [
+          "Room Showcase"
+        ],
+        "summary": "Room Showcase",
+        "description": "This returns an array of room Ids that a player has chosen to showcase.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/roomserver/rooms/hot": {
+      "get": {
+        "tags": [
+          "Hot Page Rooms"
+        ],
+        "summary": "Hot Page Rooms",
+        "description": "This returns an array all room objects from greatest to least hot score.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/featuredrooms/current": {
+      "get": {
+        "tags": [
+          "Featured Rooms"
+        ],
+        "summary": "Featured Rooms",
+        "description": "Returns basic information on the currently featured rooms.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/bulk": {
+      "get": {
+        "tags": [
+          "Bulk Room Information"
+        ],
+        "summary": "Bulk Room Information",
+        "description": "This returns an array of room objects whos IDs match the IDs that were passed in to the form body. The array is in reverse order of the way the IDs appear in the body.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomid/roles/myrole": {
+      "get": {
+        "tags": [
+          "Room Role"
+        ],
+        "summary": "Room Role",
+        "description": "Gets bearer's role in room with roomId.\n\n| **Value** | **Role** |\n| --- | --- |\n| 255 | Owner |\n| 30 | Co-owner |\n| 20 | Moderator |\n| 10 | Member |",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomid/interactionby/me": {
+      "get": {
+        "tags": [
+          "Room Interactions"
+        ],
+        "summary": "Room Interactions",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId/subrooms/:subroomId/datahistory": {
+      "get": {
+        "tags": [
+          "Get Room Backups"
+        ],
+        "summary": "Get Room Backups",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomid/interactionby/me/favorite": {
+      "put": {
+        "tags": [
+          "Favourite Room"
+        ],
+        "summary": "Favourite Room",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Unfavourite Room"
+        ],
+        "summary": "Unfavourite Room",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomid/interactionby/me/cheer": {
+      "put": {
+        "tags": [
+          "Cheer Room"
+        ],
+        "summary": "Cheer Room",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Uncheer Room"
+        ],
+        "summary": "Uncheer Room",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId/modify": {
+      "put": {
+        "tags": [
+          "Update Room Settings"
+        ],
+        "summary": "Update Room Settings",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId/subrooms/:subroomId/restoredata": {
+      "post": {
+        "tags": [
+          "Restore Room Backup"
+        ],
+        "summary": "Restore Room Backup",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId/promo_external": {
+      "put": {
+        "tags": [
+          "Set Room Video Promotion"
+        ],
+        "summary": "Set Room Video Promotion",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "//rooms/:roomId": {
+      "delete": {
+        "tags": [
+          "Delete Room"
+        ],
+        "summary": "Delete Room",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId/logs/getForPlayer": {
+      "post": {
+        "tags": [
+          "Get Logs"
+        ],
+        "summary": "Get Logs",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomid/image": {
+      "put": {
+        "tags": [
+          "Set Room Image"
+        ],
+        "summary": "Set Room Image",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/rooms/:roomId/roles/:accountId": {
+      "put": {
+        "tags": [
+          "Set Player Role"
+        ],
+        "summary": "Set Player Role",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1": {
+      "get": {
+        "tags": [
+          "All Events"
+        ],
+        "summary": "All Events",
+        "description": "This returns an array of all event objects from newest to oldest.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/:eventId": {
+      "get": {
+        "tags": [
+          "Event Information From ID"
+        ],
+        "summary": "Event Information From ID",
+        "description": "This takes an event ID as a path parameter, and returns an object that contains detailed information about an event.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/:eventId/responses": {
+      "get": {
+        "tags": [
+          "Event Responses"
+        ],
+        "summary": "Event Responses",
+        "description": "This takes an event ID as a path parameter, and returns an array of objects that detail response information.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/creator/:playerId": {
+      "get": {
+        "tags": [
+          "Events Created by a Player"
+        ],
+        "summary": "Events Created by a Player",
+        "description": "This takes an account ID as a path parameter, and returns an array of all the event objects that have the account ID as it's `CreatorPlayerId` property.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/search": {
+      "get": {
+        "tags": [
+          "Event Search"
+        ],
+        "summary": "Event Search",
+        "description": "This takes a search query as a query parameter, and returns an array of all the event objects that are most relevant to the search query.",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/room/:roomId": {
+      "get": {
+        "tags": [
+          "Events Happening in a Room"
+        ],
+        "summary": "Events Happening in a Room",
+        "description": "This takes a room ID as a path parameter, and returns an array of all the event objects that have the room ID as it's `RoomId` property.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/bulk": {
+      "post": {
+        "tags": [
+          "Bulk Event Information"
+        ],
+        "summary": "Bulk Event Information",
+        "description": "This returns an array of event objects whos IDs match the IDs that were passed in to the form body. The array is in reverse order of the way the IDs appear in the body.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v2": {
+      "post": {
+        "tags": [
+          "Create Event"
+        ],
+        "summary": "Create Event",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v2/:eventId": {
+      "put": {
+        "tags": [
+          "Update Event"
+        ],
+        "summary": "Update Event",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/playerevents/v1/bulkInvite": {
+      "post": {
+        "tags": [
+          "Invite Players to Event"
+        ],
+        "summary": "Invite Players to Event",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/:playerId": {
+      "get": {
+        "tags": [
+          "Player Information From ID"
+        ],
+        "summary": "Player Information From ID",
+        "description": "This takes an account ID as a path parameter, and returns an object that contains detailed information about a player.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account": {
+      "get": {
+        "tags": [
+          "Player Information From Username"
+        ],
+        "summary": "Player Information From Username",
+        "description": "This takes a username as a query parameter, and returns an object that contains detailed information about a player.",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/:playerId/bio": {
+      "get": {
+        "tags": [
+          "Player Bio"
+        ],
+        "summary": "Player Bio",
+        "description": "This takes an account ID as a path parameter, and returns an object that has `AccountID` and `Bio` properties. The `Bio` property is the bio that is associated with the account ID.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/search": {
+      "get": {
+        "tags": [
+          "Player Search"
+        ],
+        "summary": "Player Search",
+        "description": "This takes a search query as a query parameter, and returns an array of all the account objects that are most relevant to the search query.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/bulk": {
+      "post": {
+        "tags": [
+          "Bulk Player Information"
+        ],
+        "summary": "Bulk Player Information",
+        "description": "This returns an array of account objects whos IDs match the IDs that were passed in to the form body. The array is in reverse order of the way the IDs appear in the body.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/me/displayName": {
+      "put": {
+        "tags": [
+          "Change Nickname"
+        ],
+        "summary": "Change Nickname",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/me/profileimage": {
+      "put": {
+        "tags": [
+          "Change Profile Pic"
+        ],
+        "summary": "Change Profile Pic",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/me/bannerimage": {
+      "put": {
+        "tags": [
+          "Change Banner"
+        ],
+        "summary": "Change Banner",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/account/me": {
+      "delete": {
+        "tags": [
+          "Delete Account"
+        ],
+        "summary": "Delete Account",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/relationships/v6/current/friends": {
+      "get": {
+        "tags": [
+          "Get All Relationships"
+        ],
+        "summary": "Get All Relationships",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/relationships/v1/relationshipwith/:playerId": {
+      "get": {
+        "tags": [
+          "Relationship with Player"
+        ],
+        "summary": "Relationship with Player",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/relationships/v3/:id": {
+      "post": {
+        "tags": [
+          "Add Friend"
+        ],
+        "summary": "Add Friend",
+        "description": "Sends player with `ID` a friend request.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Remove Friend"
+        ],
+        "summary": "Remove Friend",
+        "description": "Removes player with `ID` as a friend / retracts friend request.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/relationships/v1/favorite": {
+      "get": {
+        "tags": [
+          "Favourite Friend"
+        ],
+        "summary": "Favourite Friend",
+        "description": "Sends player with `ID` a friend request.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/relationships/v1/unfavorite": {
+      "get": {
+        "tags": [
+          "Unfavourite Friend"
+        ],
+        "summary": "Unfavourite Friend",
+        "description": "Sends player with `ID` a friend request.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/PlayerCheer/v1/create": {
+      "post": {
+        "tags": [
+          "Cheer Player"
+        ],
+        "summary": "Cheer Player",
+        "description": "Data to be sent is classified into categories as shown below:\n\n| **Value** | **Category** |\n| --- | --- |\n| 0 | General |\n| 10 | Helpful |\n| 20 | Sportmanship |\n| 30 | Great Host |\n| 40 | Creative |",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/subscription/details/:id": {
+      "get": {
+        "tags": [
+          "Subscriber Count"
+        ],
+        "summary": "Subscriber Count",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/announcements/club/:id": {
+      "post": {
+        "tags": [
+          "Send Announcement"
+        ],
+        "summary": "Send Announcement",
+        "description": "| **Value** | **Description** |\n| --- | --- |\n| id | Requester's personal \"club id\" - found from [https://clubs.rec.net/subscription/details/](https://clubs.rec.net/subscription/details/10441985)ID  <br> |\n| title | Intended announcement title |\n| body | Intended announcement description |\n| meta | {\"Type\":1,\"JsonData\":\"{\\\\\"RoomId\\\\\":**_____**}\"} |\n| imageName | image name (eg. \"c3dfd748c00d4fa5bd7bf530d5cc066c.jpg\") |\n\n## Meta Properties\n\n| **Property** | **Values** |\n| --- | --- |\n| Type | 0 = \"Default Announcement\", 1 = Room Accouncement, 3 = Event |\n| Json Data | \"Room ID\", \"PlayerEventId\" |",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/subscription/my/subscriptions": {
+      "get": {
+        "tags": [
+          "Subscription IDs"
+        ],
+        "summary": "Subscription IDs",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/subscription/my/subscribers": {
+      "get": {
+        "tags": [
+          "Subscriber IDs"
+        ],
+        "summary": "Subscriber IDs",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/subscription/:id": {
+      "post": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Subscribe",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Unsubscribe"
+        ],
+        "summary": "Unsubscribe",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/inventions/v1/featured": {
+      "get": {
+        "tags": [
+          "Current Featured Inventions"
+        ],
+        "summary": "Current Featured Inventions",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/inventions/v2/search": {
+      "get": {
+        "tags": [
+          "Search Inventions"
+        ],
+        "summary": "Search Inventions",
+        "description": "",
+        "parameters": [
+          {
+            "name": "value",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/inventions/v1/toptoday": {
+      "get": {
+        "tags": [
+          "Top Inventions"
+        ],
+        "summary": "Top Inventions",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/inventions/v1/details": {
+      "get": {
+        "tags": [
+          "Invention Tags from ID"
+        ],
+        "summary": "Invention Tags from ID",
+        "description": "",
+        "parameters": [
+          {
+            "name": "inventionId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/inventions/v1": {
+      "get": {
+        "tags": [
+          "Invention Details from ID"
+        ],
+        "summary": "Invention Details from ID",
+        "description": "",
+        "parameters": [
+          {
+            "name": "inventionId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/thread": {
+      "get": {
+        "tags": [
+          "Get Messages Latest"
+        ],
+        "summary": "Get Messages Latest/Oldest",
+        "description": "",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxCount",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Send Message"
+        ],
+        "summary": "Send Message",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/thread/:id/message": {
+      "get": {
+        "tags": [
+          "Messages From ID Latest"
+        ],
+        "summary": "Messages From ID Latest/Oldest",
+        "description": "",
+        "parameters": [
+          {
+            "name": "MessageCount",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Mode",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/overview": {
+      "get": {
+        "tags": [
+          "Stats Overview"
+        ],
+        "summary": "Stats Overview",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/creatorCompensation/v1/requirements": {
+      "get": {
+        "tags": [
+          "Meets Creator Requirements"
+        ],
+        "summary": "Meets Creator Requirements",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/creatorCompensation/v1/earnedTokenBalance": {
+      "get": {
+        "tags": [
+          "Earned Token Balance"
+        ],
+        "summary": "Earned Token Balance",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/creatorCompensation/v1/bonusPeriod": {
+      "get": {
+        "tags": [
+          "Bonus Period"
+        ],
+        "summary": "Bonus Period",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/actionlink/newPlayerFriendCodeConsumptionCount": {
+      "get": {
+        "tags": [
+          "Players Referred Count"
+        ],
+        "summary": "Players Referred Count",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/creatorstats": {
+      "get": {
+        "tags": [
+          "Creator Stats"
+        ],
+        "summary": "Creator Stats",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/creatorstatsDaily": {
+      "get": {
+        "tags": [
+          "Room Daily Stats"
+        ],
+        "summary": "Room Daily Stats",
+        "description": "",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "numberOfDays",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/roomkeys": {
+      "get": {
+        "tags": [
+          "Room Keys"
+        ],
+        "summary": "Room Keys",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/roomConsumables": {
+      "get": {
+        "tags": [
+          "Room Consumables"
+        ],
+        "summary": "Room Consumables",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/currencyPurchaseOffers": {
+      "get": {
+        "tags": [
+          "Currency Packages"
+        ],
+        "summary": "Currency Packages",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/stats/inventions": {
+      "get": {
+        "tags": [
+          "Inventions List"
+        ],
+        "summary": "Inventions List",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/playlists/:playlistId": {
+      "get": {
+        "tags": [
+          "Get Playlist Information From ID"
+        ],
+        "summary": "Get Playlist Information From ID",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/subscription/top/creators": {
+      "get": {
+        "tags": [
+          "Top Creators"
+        ],
+        "summary": "Top Creators",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/subscription/top/creators/count": {
+      "get": {
+        "tags": [
+          "Number of Top Creators"
+        ],
+        "summary": "Number of Top Creators",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/player": {
+      "post": {
+        "tags": [
+          "Device Stats "
+        ],
+        "summary": "Device Stats / Last Online",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/influencerpartnerprogram/influencer": {
+      "get": {
+        "tags": [
+          "Influencer Support"
+        ],
+        "summary": "Influencer Support",
+        "description": "",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/influencerpartnerprogram/isinfluencer": {
+      "get": {
+        "tags": [
+          "ID is Influencer"
+        ],
+        "summary": "ID is Influencer",
+        "description": "",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/showcase": {
+      "post": {
+        "tags": [
+          "Change Room Showcases on Profile"
+        ],
+        "summary": "Change Room Showcases on Profile",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/actionlink": {
+      "post": {
+        "tags": [
+          "Create Meetup"
+        ],
+        "summary": "Create Meetup",
+        "description": "| **Value** | **Type** | **Description** |\n| --- | --- | --- |\n| data | json | {\"ExtraJson\":\"{\\\\\"RoomId\\\\\":51437513}\",\"Type\":1} |\n| validHours | int | Number of hours that the meetup link is valid for |\n| codeType | int | ?? |\n| extraDataId | int | Extra data such as Room ID. |",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/messages/v3/get": {
+      "get": {
+        "tags": [
+          "Get Notifications"
+        ],
+        "summary": "Get Notifications",
+        "description": "",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "forWebsite",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/itemWishlists/v1/wishlist/me": {
+      "get": {
+        "tags": [
+          "Get Wishlist"
+        ],
+        "summary": "Get Wishlist",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/relationships/v1/mute": {
+      "post": {
+        "tags": [
+          "Ignore"
+        ],
+        "summary": "Ignore",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/roomcurrencies/v1/currencies": {
+      "get": {
+        "tags": [
+          "Currencies"
+        ],
+        "summary": "Currencies",
+        "description": "",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/roomcurrencies/v1/getAllBalances": {
+      "get": {
+        "tags": [
+          "Get All Currency Balances"
+        ],
+        "summary": "Get All Currency Balances",
+        "description": "",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    },
+    "/api/avatar/v3/gifts/generate": {
+      "get": {
+        "tags": [
+          "New Request"
+        ],
+        "summary": "New Request",
+        "description": "",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "securitySchemes": {}
+  }
+}
