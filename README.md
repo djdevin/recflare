@@ -21,38 +21,29 @@ There are already so many multiplayer clones, why?
 4. "Upgrading the server" is not sustainable plan for growth.
 5. This was fun (sort of). The goal was to build a project that everyone could use. No gatekeeping or viruses.
 
-RecFlare uses a true microservice architecture which, if developed correctly, is
-near infinitely scalable and could support the same number of concurrent users
-as the original game. It will never run out of CPU, memory, or disk space.
+# Infrastructure
 
-Being truly open source means that this project should have more eyes on it,
+RecFlare uses a true microservice architecture which, near infinitely scalable
+and could support the same number of concurrent users as the original game. It
+will never run out of CPU, memory, or disk space.
+
+Of course, cloud services cost money. That's the only limitation. So we'll see!
+
+And being truly open source means that this project should have more eyes on it,
 resulting in bugs getting fixed faster. I hope.
 
-Of course, cloud services cost money. That's the only limitation.
-
-## Client
+## Game client
 
 RecFlare is compatible with the
 [RecNet Plugin](https://github.com/djdevin/recnet-plugin) and the build of Rec
-Room with manifest `7859140924515540835`. Other client or game versions may expect
+Room with manifest `7859140924515540835` (around 2023). Other client or game versions may expect
 different endpoints and response shapes and are not supported.
 
-Generally speaking any client that effectively rewrites the nameserver can be used
-with this server.
+**There is no downloadable game yet!** But, see the above project page for
+information on how to download a regular copy of Rec Room to connect to the cloud.
 
-See the above project page for information on how to mod the game to connect to this
-server.
-
-## How it works
-
-The Rec Room client discovers every service by fetching an _endpoints document_
-from the name-server (`ns`) worker at the apex domain. That document maps each
-service to a host like `https://match.<your-domain>`. Every service runs as a
-separate Cloudflare Worker attached to its own subdomain, so the client's traffic
-fans out across the workers in `apps/` instead of to a single machine.
-
-State is persisted with Cloudflare's storage primitives — the workers are
-completely stateless and no data is stored alongside the microservices.
+Generally speaking any client that effectively rewrites the nameserver with the
+right mods can be used with this server.
 
 ## Services
 
