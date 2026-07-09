@@ -48,11 +48,24 @@ HOST="$SUBDOMAIN.$DOMAIN"
 #   Secrets Store — RECFLARE_SECRETS_STORE: a single store id (all workers bind the
 #        one shared store for the JWT signing key).
 CONFIG="wrangler.jsonc"
+
+# Workers built with @cloudflare/vite-plugin (e.g. the React SPA in www) emit a
+# deploy-ready config into dist/<dir>/ that carries the built worker
+# (main: index.js), the resolved assets.directory, and no_bundle. The committed
+# wrangler.jsonc leaves assets.directory out on purpose — the plugin fills it in —
+# so deploying the source config fails with "assets ... missing the required
+# directory property". Prefer the generated config when it exists. These workers
+# have no D1/KV/Secrets bindings, so the id-splicing below is skipped.
+VITE_CONFIG="dist/$DIR/wrangler.json"
+if [ -f "$VITE_CONFIG" ]; then
+	CONFIG="$VITE_CONFIG"
+fi
+
 NEEDS_D1=$(grep -q '"database_id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
 NEEDS_KV=$(grep -q '"id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
 NEEDS_STORE=$(grep -q '"store_id": *"local"' wrangler.jsonc 2>/dev/null && echo 1 || true)
 
-if [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ] || [ -n "$NEEDS_STORE" ]; then
+if [ "$CONFIG" = "wrangler.jsonc" ] && { [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ] || [ -n "$NEEDS_STORE" ]; }; then
 	CONFIG="wrangler.generated.jsonc"
 	# Generated alongside the original so its relative paths (main, migrations_dir)
 	# still resolve. Gitignored; removed on exit so `wrangler dev` is unaffected.
@@ -116,6 +129,11 @@ if [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ] || [ -n "$NEEDS_STORE" ]; then
 	fi
 fi
 
+# Vite-built configs set no_bundle (vite already bundled and minified), which is
+# incompatible with --minify. Only pass --minify when wrangler does the bundling.
+MINIFY="--minify"
+[ "$CONFIG" = "$VITE_CONFIG" ] && MINIFY=""
+
 # Deploy with wrangler using the extracted values as binding variables
 echo "Deploying worker $NAME version $VERSION to $HOST"
 wrangler deploy \
@@ -124,5 +142,5 @@ wrangler deploy \
 	--var SENTRY_RELEASE:"$VERSION" \
 	--var DOMAIN:"$DOMAIN" \
 	--domain "$HOST" \
-	--minify \
+	$MINIFY \
 	"$@"

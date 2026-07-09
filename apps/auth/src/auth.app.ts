@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { createAccount, getPasswordHash, RoomInstanceType, setPasswordHash } from '@repo/domain'
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
-import { createAccount, getPasswordHash, setPasswordHash } from './accounts-db'
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from './jwt'
 import { hashPassword, verifyPassword } from './password'
 import { consumeRefreshToken, issueRefreshToken } from './refresh-db'
@@ -65,7 +65,7 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 		roomInstanceId: ORIENTATION_INSTANCE_ID,
 		roomId: ORIENTATION_ROOM_ID,
 		subRoomId: num(sub?.SubRoomId, 1),
-		roomInstanceType: 0,
+		roomInstanceType: RoomInstanceType.Public,
 		location: str(sub?.UnitySceneId),
 		dataBlob: str(sub?.DataBlob),
 		eventId: 0,
@@ -153,14 +153,23 @@ const app = new Hono<App>()
 		// Resolve the account this token is for:
 		//  - create_account: mint + persist a brand-new account (auto-assigned random
 		//    username — players don't pick one initially); the token's `sub` is its id.
+		//    A `password` may be posted to establish the account's login credential.
 		//  - refresh_token: redeem a stored (single-use) refresh token for its account +
 		//    platform, so an expiring session renews without re-login.
-		//  - otherwise: the request MUST post a valid account_id — never fall back to a
-		//    stub account (issuing account 1 to anyone would be bad).
+		//  - otherwise: a credential login. The request MUST post a valid account_id AND
+		//    the account's correct `password`. An account with no password set can't be
+		//    logged into by id (no credential to verify) — closing the account_id-only
+		//    takeover. New accounts establish a password via create_account or
+		//    /account/me/changepassword.
 		let accountId: string
 		if (grantType === 'create_account') {
 			const account = await createAccount(c.env.DB, { platforms: platformInt || 0 })
 			accountId = String(account.accountId)
+			// Establish the login password when one is posted (raw password never stored).
+			const password = typeof body.password === 'string' ? body.password : ''
+			if (password !== '') {
+				await setPasswordHash(c.env.DB, account.accountId, await hashPassword(password))
+			}
 			// Place the new player in Orientation (they don't explicitly matchmake into it).
 			await placeNewPlayerInOrientation(c.env, account.accountId)
 		} else if (grantType === 'refresh_token') {
@@ -180,6 +189,17 @@ const app = new Hono<App>()
 			if (!/^\d+$/.test(posted)) {
 				return c.json(
 					{ error: 'invalid_request', error_description: 'account_id is required' },
+					400
+				)
+			}
+			// The account's password MUST be presented and match. An account with no
+			// stored hash has no credential to authenticate against, so login by id is
+			// refused — this closes the account_id-only takeover.
+			const storedHash = await getPasswordHash(c.env.DB, Number(posted))
+			const password = typeof body.password === 'string' ? body.password : ''
+			if (!storedHash || !(await verifyPassword(password, storedHash))) {
+				return c.json(
+					{ error: 'invalid_grant', error_description: 'invalid account_id or password' },
 					400
 				)
 			}

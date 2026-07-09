@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { RoomInstanceType } from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { validateAndGetAccountId } from './jwt'
@@ -149,7 +150,7 @@ function dormRoomInstance() {
 		roomInstanceId: 1,
 		roomId: 1,
 		subRoomId: 1,
-		roomInstanceType: 2,
+		roomInstanceType: RoomInstanceType.Dormroom,
 		location: '76d98498-60a1-430c-ab76-b54a29b7a163',
 		dataBlob: '',
 		eventId: 0,
@@ -189,7 +190,7 @@ function instanceFieldsFromRoom(room: Room) {
 		dataBlob: str(sub?.DataBlob),
 		name,
 		maxCapacity: num(sub?.MaxPlayers, 4),
-		roomInstanceType: room.IsDorm === true ? 2 : 0,
+		roomInstanceType: room.IsDorm === true ? RoomInstanceType.Dormroom : RoomInstanceType.Public,
 		isDorm: room.IsDorm === true,
 	}
 }

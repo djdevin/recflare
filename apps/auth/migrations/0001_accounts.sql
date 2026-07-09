@@ -1,5 +1,5 @@
 -- Accounts stored as a JSON blob with generated (virtual) columns for querying.
--- Generated from src/accounts-db.ts (SCHEMA_DDL) — keep in sync.
+-- Generated from @repo/domain's accounts-db.ts (SCHEMA_DDL) — keep in sync.
 
 CREATE TABLE IF NOT EXISTS accounts (
   data TEXT NOT NULL,

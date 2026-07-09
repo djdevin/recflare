@@ -1,7 +1,7 @@
 /**
- * Password hashing for /account/me/changepassword. PBKDF2-SHA256 with a random
- * per-password salt, stored as `salt:hash` (both base64). Not login-critical yet
- * (login is account-id based), but we never store the raw password.
+ * Password hashing for /connect/token credential login and
+ * /account/me/changepassword. PBKDF2-SHA256 with a random per-password salt,
+ * stored as `salt:hash` (both base64). The raw password is never persisted.
  */
 const ITERATIONS = 100_000
 

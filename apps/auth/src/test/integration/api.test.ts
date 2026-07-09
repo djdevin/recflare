@@ -4,7 +4,9 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../auth.app'
 
-import { SCHEMA_DDL } from '../../accounts-db'
+import { SCHEMA_DDL } from '@repo/domain'
+
+import { hashPassword } from '../../password'
 import { REFRESH_SCHEMA_DDL } from '../../refresh-db'
 
 import type { Env } from '../../context'
@@ -18,6 +20,10 @@ const ORIGIN = 'https://example.com'
 // The Orientation room (RoomId 13) new accounts are placed into on signup.
 const ORIENTATION_SCENE = 'c79709d8-a31b-48aa-9eb8-cc31ba9505e8'
 
+// Credential login requires the account's password; seed a known one for the
+// accounts the login tests authenticate as (42, 77).
+const LOGIN_PASSWORD = 'correct-horse'
+
 // Apply the accounts schema so create_account can persist (mirrors the migration),
 // and seed the Orientation room (owned by the rooms worker) so signup can place
 // the new player there.
@@ -26,6 +32,14 @@ beforeAll(async () => {
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of REFRESH_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+
+	// Seed the accounts the credential-login tests use, each with LOGIN_PASSWORD set.
+	const hash = await hashPassword(LOGIN_PASSWORD)
+	for (const id of [42, 77]) {
+		await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: id, username: `Player${id}`, passwordHash: hash }))
+			.run()
+	}
 	await env.DB.prepare(
 		`CREATE TABLE IF NOT EXISTS room (
 			data TEXT NOT NULL,
@@ -106,7 +120,7 @@ describe('auth worker routes', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'account_id=42&platform_id=steam-123',
+			body: `account_id=42&platform_id=steam-123&password=${LOGIN_PASSWORD}`,
 		})
 		expect(res.status).toBe(200)
 		const json = (await res.json()) as {
@@ -150,6 +164,42 @@ describe('auth worker routes', () => {
 		expect(res.status).toBe(400)
 	})
 
+	test('POST /connect/token rejects a credential login with the wrong password', async () => {
+		const res = await postToken('account_id=42&password=wrong-password')
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
+	})
+
+	test('POST /connect/token rejects a credential login with no password', async () => {
+		const res = await postToken('account_id=42')
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
+	})
+
+	test('POST /connect/token refuses login to an account with no password set', async () => {
+		// Account 999 exists but never set a password — it has no credential to verify,
+		// so login by id alone is refused (this is the closed takeover hole).
+		await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: 999, username: 'NoPass' }))
+			.run()
+		const res = await postToken('account_id=999&password=anything')
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
+	})
+
+	test('POST /connect/token create_account can set a password used for later login', async () => {
+		const created = await postToken('grant_type=create_account&platform_id=steam-pw2&password=hunter2')
+		expect(created.status).toBe(200)
+		const sub = decodePayload(created.json.access_token as string).sub as string
+
+		// The password set at creation authenticates a subsequent credential login.
+		const ok = await postToken(`account_id=${sub}&password=hunter2`)
+		expect(ok.status).toBe(200)
+		// A wrong password for that same account is rejected.
+		const bad = await postToken(`account_id=${sub}&password=nope`)
+		expect(bad.status).toBe(400)
+	})
+
 	test('POST /connect/token grant_type=create_account persists a new account', async () => {
 		const payload = await tokenFor('grant_type=create_account&platform_id=steam-123')
 		// The token's sub is the new account id, allocated above the system accounts.
@@ -180,12 +230,14 @@ describe('auth worker routes', () => {
 	})
 
 	test('POST /connect/token maps the platform int to its enum name', async () => {
-		const payload = await tokenFor('account_id=42&platform=0')
+		const payload = await tokenFor(`account_id=42&platform=0&password=${LOGIN_PASSWORD}`)
 		expect(payload.platform).toBe('Steam')
 	})
 
 	test('POST /connect/token returns a refresh_token that redeems for a new token', async () => {
-		const login = await postToken('account_id=42&platform=0&platform_id=steam-123')
+		const login = await postToken(
+			`account_id=42&platform=0&platform_id=steam-123&password=${LOGIN_PASSWORD}`
+		)
 		expect(login.status).toBe(200)
 		const refreshToken = login.json.refresh_token as string
 		expect(typeof refreshToken).toBe('string')
@@ -205,7 +257,7 @@ describe('auth worker routes', () => {
 	})
 
 	test('POST /connect/token refresh_token is single-use (rejected on reuse)', async () => {
-		const login = await postToken('account_id=77&platform=0')
+		const login = await postToken(`account_id=77&platform=0&password=${LOGIN_PASSWORD}`)
 		const refreshToken = login.json.refresh_token as string
 
 		const first = await postToken(

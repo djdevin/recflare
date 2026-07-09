@@ -1,8 +1,6 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
-
 import {
 	createAccount,
 	defaultAccount,
@@ -11,11 +9,13 @@ import {
 	getAccountsByIds,
 	searchAccounts,
 	updateAccount,
-} from './accounts-db'
+} from '@repo/domain'
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+
 import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
-import type { Account } from './accounts-db'
+import type { Account } from '@repo/domain'
 import type { App } from './context'
 
 /**

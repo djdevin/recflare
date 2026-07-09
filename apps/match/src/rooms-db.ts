@@ -6,6 +6,8 @@
  * sync with the rooms worker's.
  */
 
+import { Accessibility, Role } from '@repo/domain'
+
 /** A stored room — the parsed JSON blob (full client-facing room response). */
 export type Room = Record<string, unknown>
 
@@ -84,12 +86,12 @@ export async function getOrCreateDormRoom(db: D1Database, accountId: number): Pr
 	const username = (await getUsername(db, accountId)) ?? `Player${accountId}`
 
 	const room: Room = {
-		...(template ?? { Accessibility: 2 }),
+		...(template ?? { Accessibility: Accessibility.Unlisted }),
 		RoomId: roomId,
 		Name: `@${username}'s Dorm`,
 		CreatorAccountId: accountId,
 		IsDorm: true,
-		Roles: [{ AccountId: accountId, Role: 255, LastChangedByAccountId: null, InvitedRole: 0 }],
+		Roles: [{ AccountId: accountId, Role: Role.Owner, LastChangedByAccountId: null, InvitedRole: 0 }],
 		SubRooms: [{ ...templateSub, CreatorAccountId: accountId }],
 		CreatedAt: new Date().toISOString(),
 	}

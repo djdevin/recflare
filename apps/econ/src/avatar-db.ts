@@ -6,7 +6,7 @@
  *
  * The `auth` worker owns the accounts schema/migrations; econ only reads/writes
  * the avatar column. SCHEMA_DDL mirrors the table so tests can build it without
- * depending on the auth worker — keep it in sync with auth's accounts-db.ts.
+ * depending on the auth worker — keep it in sync with @repo/domain's accounts-db.ts.
  */
 
 /** Schema DDL for tests — the accounts table including the avatar column. */

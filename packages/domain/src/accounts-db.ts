@@ -4,10 +4,11 @@
  * SQLite generated (virtual) columns extracted from that JSON and indexed —
  * the same JSON-blob pattern the `rooms` worker uses.
  *
- * The `auth` worker owns this schema/migration (see migrations/0001_accounts.sql,
- * applied with its own `migrations_table` so it doesn't clash with the rooms
- * migrations that share the database). Other workers bind the table read/write
- * and keep these helpers in sync.
+ * The `auth` worker owns this schema/migration (see apps/auth/migrations/
+ * 0001_accounts.sql, applied with its own `migrations_table` so it doesn't clash
+ * with the rooms migrations that share the database). This module is the single
+ * source of truth for the helpers; the `auth` and `accounts` workers both import
+ * it from `@repo/domain` (each uses the subset it needs).
  */
 
 /** Schema DDL (mirror of migrations 0001_accounts + 0002_avatar, sans seed INSERTs). */
@@ -41,6 +42,12 @@ export interface Account {
 	bio?: string
 	/** Remaining username changes; decremented by PUT /account/me/username. */
 	availableUsernameChanges?: number
+	/**
+	 * PBKDF2 `salt:hash` for credential login; set via /account/me/changepassword
+	 * or create_account. Kept in the JSON blob but never projected into a public
+	 * DTO (the DTO builders pick only known fields), so it doesn't leak.
+	 */
+	passwordHash?: string
 }
 
 interface AccountRow {
@@ -216,4 +223,30 @@ export async function createAccount(
 	const account = defaultAccount(id, { username, displayName: username, ...overrides })
 	await db.prepare('INSERT INTO accounts (data) VALUES (?1)').bind(JSON.stringify(account)).run()
 	return account
+}
+
+/**
+ * Read the account's stored password hash (`salt:hash`), or null when the account
+ * has none / doesn't exist. Kept in the account JSON blob but out of the public
+ * account DTO (which projects only known fields), so it never leaks.
+ */
+export async function getPasswordHash(db: D1Database, id: number): Promise<string | null> {
+	const row = await db
+		.prepare(
+			"SELECT json_extract(data, '$.passwordHash') AS hash FROM accounts WHERE account_id = ?1"
+		)
+		.bind(id)
+		.first<{ hash: string | null }>()
+	return row?.hash ?? null
+}
+
+/** Persist the account's password hash. Returns false when no such account exists. */
+export async function setPasswordHash(db: D1Database, id: number, hash: string): Promise<boolean> {
+	const { meta } = await db
+		.prepare(
+			"UPDATE accounts SET data = json_set(data, '$.passwordHash', ?2) WHERE account_id = ?1"
+		)
+		.bind(id, hash)
+		.run()
+	return meta.changes > 0
 }

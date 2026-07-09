@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../accounts.app'
 
-import { SCHEMA_DDL } from '../../accounts-db'
+import { SCHEMA_DDL } from '@repo/domain'
 
 import type { Env } from '../../context'
 
