@@ -1,0 +1,50 @@
+# Services
+
+This is a list of every RecNet service the client discovers, taken from the
+service-discovery map in [`apps/ns/src/endpoints.ts`](apps/ns/src/endpoints.ts).
+Each is reached at `https://<subdomain>.<your-domain>`. Services with a worker in
+`apps/` are implemented here; the rest are advertised in the endpoints document
+but not yet backed by a Worker. Not all services are fully implemented.
+
+A small `ns` worker itself serves this discovery document at the
+apex/`ns` host and isn't listed within it. Each implemented worker has its own
+`README.md` under `apps/<name>/` documenting its routes.
+
+| Service               | Subdomain               | Worker           | Notes                                                                     |
+| --------------------- | ----------------------- | ---------------- | ------------------------------------------------------------------------- |
+| Accounts              | `accounts`              | `accounts`       | Player accounts & profile reads/writes (D1)                               |
+| AI                    | `ai`                    | —                | Not yet implemented                                                       |
+| API                   | `api`                   | `api`            | Core Game API — config, social, avatar, rooms, image uploads (D1, R2)     |
+| Auth                  | `auth`                  | `auth`           | OAuth token issuance (`/connect/token`); (D1)                             |
+| BugReporting          | `bugreporting`          | —                | Not yet implemented                                                       |
+| Cards                 | `cards`                 | —                | Not yet implemented                                                       |
+| CDN                   | `cdn`                   | `cdn`            | Binary CDN — room data (R2)                                               |
+| Chat                  | `chat`                  | `chat`           | Player chat service (not in room)                                         |
+| Clubs                 | `clubs`                 | `clubs`          | Clubs, not yet implemented                                                |
+| CMS                   | `cms`                   | —                | Not yet implemented                                                       |
+| Commerce              | `commerce`              | `commerce`       | Store / purchase endpoints                                                |
+| Data                  | `data`                  | —                | Not yet implemented                                                       |
+| DataCollection        | `datacollection`        | `datacollection` | Client telemetry / analytics sink                                         |
+| Discovery             | `discovery`             | —                | Not yet implemented                                                       |
+| Econ                  | `econ`                  | `econ`           | Economy & avatar endpoints (separate from `api`)                          |
+| GameLogs              | `gamelogs`              | —                | Not yet implemented                                                       |
+| Geo                   | `geo`                   | —                | Not yet implemented                                                       |
+| Images                | `img`                   | `img`            | Image storage & signed delivery (R2)                                      |
+| Leaderboard           | `leaderboard`           | —                | Not yet implemented                                                       |
+| Link                  | `link`                  | —                | Not yet implemented                                                       |
+| Lists                 | `lists`                 | —                | Not yet implemented                                                       |
+| Matchmaking           | `match`                 | `match`          | Matchmaking & per-player presence (D1, KV)                                |
+| Moderation            | `moderation`            | —                | Not yet implemented                                                       |
+| Notifications         | `notify`                | `notify`         | Real-time notifications over SignalR/WebSockets (Durable Object)          |
+| PlatformNotifications | `platformnotifications` | —                | Not yet implemented                                                       |
+| PlayerSettings        | `playersettings`        | `playersettings` | Per-player settings (KV)                                                  |
+| RoomComments          | `roomcomments`          | —                | Not yet implemented                                                       |
+| RoomieIntegrations    | `roomieintegrations`    | —                | Not yet implemented                                                       |
+| Rooms                 | `rooms`                 | `rooms`          | Room storage & queries; seeds the Dorm & Orientation rooms (D1)           |
+| Storage               | `storage`               | —                | Room uploader                                                             |
+| Strings               | `strings`               | —                | Not yet implemented                                                       |
+| StringsCDN            | `strings-cdn`           | —                | Not yet implemented                                                       |
+| Studio                | `studio`                | —                | Not yet implemented                                                       |
+| Thorn                 | `thorn`                 | —                | Not yet implemented                                                       |
+| Videos                | `videos`                | —                | Not yet implemented                                                       |
+| WWW                   | `www`                   | —                | Website/Panel			                                                       |
