@@ -7,7 +7,7 @@ Cloudflare Workers. It implements the network services the Rec Room client talks
 to — accounts, auth, rooms, matchmaking, economy, chat, notifications, and more —
 each as an independent Worker on their own subdomains, just how RecNet was.
 
-> **Disclaimer:** This is an unofficial, fan-made project for preservation and
+> ⚠️ **Disclaimer:** This is an unofficial, fan-made project for preservation and
 > experimentation. It is not affiliated with, endorsed by, or connected to Rec
 > Room Inc. "Rec Room" is a trademark of its respective owner.
 
@@ -133,7 +133,7 @@ apex/`ns` host and isn't listed within it. Each implemented worker has its own
 
 Short answer, no. The services are plain [Hono](https://hono.dev) apps, so the request-handling
 code isn't tied to Cloudflare and can be deployed to other hosting providers —
-AWS (Lambda), Vercel, Netlify, Fly.io, a plain Node/Bun server, and so on.
+AWS, Vercel, Netlify, Fly.io, a plain Node/Bun server, and so on.
 
 Long answer: the catch is everything _around_ the code. RecFlare leans on Cloudflare for the
 deployment (Wrangler) and infrastructure layer — custom-domain routing per service, plus the
@@ -153,14 +153,16 @@ services but would require small code changes.
 - A Cloudflare account with a zone (domain) you control, for deploying.
 
 Cloudflare's free plan is good enough for testing (100k worker requests/day) but the
-Rec Room client is pretty chatty. Frequent testing may exhaust that quota. The $5/month
-Worker plan includes 10M/month.
+Rec Room client is very chatty. Frequent testing may exhaust that quota. The $5/month
+Worker plan includes 10M requests/month.
 
 See https://developers.cloudflare.com/workers/platform/pricing/#workers
 
 ## Getting Started
 
 **Install dependencies:**
+
+We use [Just](https://github.com/casey/just) for convenience. This will install all dependencies across the microservices.
 
 ```bash
 just install
@@ -227,7 +229,7 @@ Nothing manual to do here. The object is created manually.
 
 **Run the development microservices:**
 
-> **Note:** This runs, but the name-server document still advertises the deployed
+> ⚠️ **Note:** This runs, but the name-server document still advertises the deployed
 > hosts, not your local instances — so service discovery won't resolve locally.
 > You can still call each service directly; each Wrangler instance runs on its own
 > port. Maybe we can get this working somehow. @todo
