@@ -1,5 +1,7 @@
 # RecFlare
 
+<img width="256" height="256" alt="be292b38-950c-4d7f-b4ee-57fe361ede7d" src="https://github.com/user-attachments/assets/d7bb9266-64a2-449f-9267-89116c870f74" />
+
 RecFlare is an implementation of RecNet — the Rec Room backend — built on
 Cloudflare Workers. It implements the network services the Rec Room client talks
 to — accounts, auth, rooms, matchmaking, economy, chat, notifications, and more —
