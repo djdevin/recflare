@@ -132,14 +132,7 @@ async function handlePhotonAccessToken(c: Context<App>) {
 
 /** The Bearer token's account id (`sub`), or null when there's no valid token. */
 async function authedAccountId(c: Context<App>): Promise<number | null> {
-	const authHeader = c.req.header('Authorization') ?? ''
-	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-	const sub = await validateAndGetAccountId(
-		authHeader.slice('Bearer '.length),
-		await c.env.JWT_SECRET.get()
-	)
-	const id = sub ? Number.parseInt(sub, 10) : Number.NaN
-	return Number.isNaN(id) ? null : id
+	return validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
 }
 
 /** 401 for the auth-gated `*by/me` endpoints — no stub-account fallback. */

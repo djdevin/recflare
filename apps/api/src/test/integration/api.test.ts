@@ -325,7 +325,7 @@ describe('images', () => {
 		})
 		expect(res.status).toBe(200)
 		const { ImageName } = (await res.json()) as { ImageName: string }
-		expect(ImageName).toMatch(/^[0-9a-f]+\.png$/)
+		expect(ImageName).toMatch(/^\d{4}-\d{2}-\d{2}\/[0-9a-f]+\.png$/)
 
 		// The object is in the shared bucket under that key.
 		const stored = await env.IMAGES.get(ImageName)
@@ -470,7 +470,7 @@ describe('images', () => {
 		})
 		expect(res.status).toBe(200)
 		const { ImageName } = (await res.json()) as { ImageName: string }
-		expect(ImageName).toMatch(/^[0-9a-f]+\.jpg$/)
+		expect(ImageName).toMatch(/^\d{4}-\d{2}-\d{2}\/[0-9a-f]+\.jpg$/)
 
 		// The account row now points its profileImage at the uploaded key.
 		const row = await env.DB.prepare('SELECT data FROM accounts WHERE account_id = 42').first<{

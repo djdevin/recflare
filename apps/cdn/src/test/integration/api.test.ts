@@ -1,6 +1,6 @@
-import { adminSecretsStore, env } from 'cloudflare:test'
+import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 import '../../cdn.app'
 
@@ -11,37 +11,6 @@ declare module 'cloudflare:test' {
 }
 
 const ORIGIN = 'https://example.com'
-
-beforeAll(async () => {
-	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
-	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
-})
-
-// Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store.
-const TEST_SECRET = 'test-signing-key'
-
-function b64url(input: ArrayBuffer | string): string {
-	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
-	let binary = ''
-	for (const byte of bytes) binary += String.fromCharCode(byte)
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function bearer(sub = '42'): Promise<Record<string, string>> {
-	const now = Math.floor(Date.now() / 1000)
-	const signingInput = `${b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64url(
-		JSON.stringify({ sub, exp: now + 3600 })
-	)}`
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(TEST_SECRET),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	)
-	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput))
-	return { Authorization: `Bearer ${signingInput}.${b64url(sig)}` }
-}
 
 describe('cdn endpoints', () => {
 	test('GET / reports service status', async () => {
@@ -94,32 +63,5 @@ describe('cdn endpoints', () => {
 	test('GET /room/:dataBlob 404s when the blob is absent', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/room/missing.room`)
 		expect(res.status).toBe(404)
-	})
-
-	test('POST /upload 401s without a token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/upload`, { method: 'POST' })
-		expect(res.status).toBe(401)
-	})
-
-	test('POST /upload 400s when no file is supplied', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/upload`, {
-			method: 'POST',
-			headers: await bearer(),
-		})
-		expect(res.status).toBe(400)
-		expect(await res.json()).toEqual({ error: 'No file found in request' })
-	})
-
-	test('POST /upload returns a saved filename for a valid file', async () => {
-		const form = new FormData()
-		form.append('file', new File([new Uint8Array([1, 2, 3])], 'photo.jpg', { type: 'image/jpeg' }))
-		const res = await exports.default.fetch(`${ORIGIN}/upload`, {
-			method: 'POST',
-			headers: await bearer(),
-			body: form,
-		})
-		expect(res.status).toBe(200)
-		const body = (await res.json()) as { filename: string }
-		expect(body.filename).toMatch(/^[0-9a-f]{32}\.jpg$/)
 	})
 })

@@ -59,9 +59,12 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
 		const extension = valid.includes(ext) ? ext : '.jpg'
 
-		// Store the upload in the shared image bucket under a random key. The `img`
-		// worker serves it back by that key, which is the returned ImageName.
-		const name = crypto.randomUUID().replace(/-/g, '') + extension
+		// Store the upload in the shared image bucket under a random key, foldered by
+		// the upload date (e.g. `2026-06-15/`) so the bucket stays browsable over time.
+		// The `img` worker serves it back by that key (slashes and all), which is the
+		// returned ImageName.
+		const datePrefix = new Date().toISOString().slice(0, 10) + '/'
+		const name = datePrefix + crypto.randomUUID().replace(/-/g, '') + extension
 		await c.env.IMAGES.put(name, await file.arrayBuffer(), {
 			httpMetadata: { contentType: file.type || 'image/jpeg' },
 		})

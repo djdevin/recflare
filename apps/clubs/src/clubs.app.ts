@@ -21,15 +21,7 @@ import type { App } from './context'
  * missing, the token is invalid, or the `sub` claim isn't an integer.
  */
 async function authedId(c: Context<App>): Promise<number | null> {
-	const authHeader = c.req.header('Authorization') ?? ''
-	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-
-	const token = authHeader.slice('Bearer '.length)
-	const accountId = await validateAndGetAccountId(token, await c.env.JWT_SECRET.get())
-	if (!accountId) return null
-
-	const id = Number.parseInt(accountId, 10)
-	return Number.isNaN(id) ? null : id
+	return validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
 }
 
 const app = new Hono<App>()

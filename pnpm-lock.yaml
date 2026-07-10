@@ -663,6 +663,10 @@ importers:
         version: 4.1.9(@types/node@26.0.1)(vite@6.4.3(@types/node@26.0.1)(jiti@2.6.1)(lightningcss@1.29.2)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/jwt:
+    dependencies:
+      hono:
+        specifier: 4.12.27
+        version: 4.12.27
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 4.20260630.1

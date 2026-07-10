@@ -72,7 +72,7 @@ describe('playersettings endpoints', () => {
 		expect(settings.length).toBeGreaterThan(0)
 		expect(settings.every((s) => s.PlayerId === 100)).toBe(true)
 		expect(settings.find((s) => s.Key === 'Recroom.OOBE')?.Value).toBe('77')
-		expect(settings.find((s) => s.Key === 'PlayerSessionCount')?.Value).toBe('13')
+		expect(settings.find((s) => s.Key === 'TUTORIAL_COMPLETE_MASK')?.Value).toBe('11')
 
 		// Defaults were persisted to KV.
 		const stored = await env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(

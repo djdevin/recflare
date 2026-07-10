@@ -143,8 +143,8 @@ describe('auth worker routes', () => {
 			)
 		) as Record<string, unknown>
 		expect(payload.sub).toBe('42') // account_id from the body is honored
-		expect(payload.iss).toBe('https://auth.lapis.codes')
-		expect(payload.aud).toBe('https://auth.lapis.codes/resources')
+		expect(payload.iss).toBe('https://auth.recflare.net')
+		expect(payload.aud).toBe('https://auth.recflare.net')
 		expect(payload.role).toContain('gameClient')
 		expect(payload.scope).toContain('rn.api')
 	})

@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
-import { validateAndGetAccountId } from '@repo/jwt'
 
 import loadingScreenTipData from '../static/loading-screen-tip-data.json'
 
@@ -14,22 +13,6 @@ import type { App, Env } from './context'
  * are served bare. File-backed routes (`sigs`, `upload`) have no storage binding
  * yet and are stubbed.
  */
-
-/**
- * Resolve the account id from a Bearer token. Returns `null` when the header is
- * missing, the token is invalid, or the `sub` claim isn't an integer.
- */
-async function authedId(c: Context<App>): Promise<number | null> {
-	const authHeader = c.req.header('Authorization') ?? ''
-	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-
-	const token = authHeader.slice('Bearer '.length)
-	const accountId = await validateAndGetAccountId(token, await c.env.JWT_SECRET.get())
-	if (!accountId) return null
-
-	const id = Number.parseInt(accountId, 10)
-	return Number.isNaN(id) ? null : id
-}
 
 /** Parse a single-range `Range: bytes=start-end` header into an R2 range. */
 function parseRange(header: string | undefined): R2Range | undefined {
@@ -121,28 +104,5 @@ const app = new Hono<App>()
 	// Room build data by name. The client fetches this for a SubRoom's DataBlob to
 	// load the room. Streamed from R2 under `room/`.
 	.get('/room/:dataBlob', (c) => serveAsset(c, `room/${c.req.param('dataBlob')}`))
-
-	// Image upload. Auth-gated; returns the saved filename. No storage
-	// binding yet, so we accept the file and return a synthesized filename without
-	// persisting it. TODO: write to an R2 bucket like the `img` worker.
-	.post('/upload', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
-
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const file = body.file
-		if (!(file instanceof File)) {
-			return c.json({ error: 'No file found in request' }, 400)
-		}
-
-		const validExtensions = ['.png', '.jpg', '.jpeg']
-		const dot = file.name.lastIndexOf('.')
-		const rawExt = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
-		const extension = validExtensions.includes(rawExt) ? rawExt : '.png'
-
-		const filename = crypto.randomUUID().replace(/-/g, '') + extension
-		// TODO: persist `file` to an R2 bucket under `filename`.
-		return c.json({ filename })
-	})
 
 export default app

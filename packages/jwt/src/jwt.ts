@@ -1,66 +1,54 @@
 /**
- * Minimal HS256 JWT generation and validation.
+ * HS256 JWT generation and validation, built on Hono's `hono/jwt` helpers (Web
+ * Crypto under the hood) so we don't hand-roll signing, base64url, or claim
+ * (exp/nbf) checks.
  *
  * The signing key is supplied by the caller from the shared `JWT_SECRET` binding
  * (a Cloudflare secret in deployed envs, `.dev.vars` locally) — see each worker's
  * context.ts. `auth` signs tokens; every worker validates them with the same key.
  */
 
+import { sign, verify } from 'hono/jwt'
+
 /** Token lifetime in seconds (mirrored in the `expires_in` response field). */
 export const TOKEN_TTL_SECONDS = 3600
 
-function base64url(input: ArrayBuffer | string): string {
-	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
-	let binary = ''
-	for (const byte of bytes) {
-		binary += String.fromCharCode(byte)
-	}
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-function base64urlToBytes(input: string): Uint8Array {
-	const padded = input.replace(/-/g, '+').replace(/_/g, '/')
-	const binary = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
-	const bytes = new Uint8Array(binary.length)
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-	return bytes
-}
-
 /**
  * Validate an HS256 token and return its `sub` (account id) claim, or `null` when
- * the token is malformed, has a bad signature, or is expired.
+ * the token is malformed, has a bad signature, or is expired/not-yet-valid.
+ * `verify` throws on all of those, so a rejection just means "no valid id".
+ * Internal — callers use {@link validateAndGetAccountId}, which takes the request.
  */
-export async function validateAndGetAccountId(
-	token: string,
-	secret: string
-): Promise<string | null> {
-	const parts = token.split('.')
-	if (parts.length !== 3) return null
-	const [header, payload, signature] = parts
-
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['verify']
-	)
-	const valid = await crypto.subtle.verify(
-		'HMAC',
-		key,
-		base64urlToBytes(signature),
-		new TextEncoder().encode(`${header}.${payload}`)
-	)
-	if (!valid) return null
-
-	let claims: { sub?: string; exp?: number }
+async function getAccountIdFromToken(token: string, secret: string): Promise<string | null> {
 	try {
-		claims = JSON.parse(new TextDecoder().decode(base64urlToBytes(payload)))
+		const payload = await verify(token, secret, 'HS256') // checks exp/nbf/signature
+		return typeof payload.sub === 'string' ? payload.sub : null
 	} catch {
 		return null
 	}
-	if (typeof claims.exp === 'number' && claims.exp < Math.floor(Date.now() / 1000)) return null
-	return claims.sub ?? null
+}
+
+/**
+ * Validate a request's auth and return the caller's integer account id, or `null`
+ * when it carries no valid credential. Today that means the `sub` claim of a
+ * bearer token in the `Authorization` header; taking the whole `Request` (rather
+ * than a pre-extracted header) keeps that detail here, so if how we carry auth
+ * changes (a cookie, a different header) callers don't. Returns `null` when there
+ * is no valid bearer token, the token is invalid/expired, or `sub` isn't an integer.
+ */
+export async function validateAndGetAccountId(
+	request: Request,
+	secret: string
+): Promise<number | null> {
+	const authHeader = request.headers.get('Authorization')
+	if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) return null
+
+	const token = authHeader.slice('bearer '.length)
+	const accountId = await getAccountIdFromToken(token, secret)
+	if (!accountId) return null
+
+	const id = Number.parseInt(accountId, 10)
+	return Number.isNaN(id) ? null : id
 }
 
 /** Scopes stamped onto every token (as a claim array). */
@@ -91,39 +79,28 @@ export async function generateToken(
 	secret: string
 ): Promise<string> {
 	const now = Math.floor(Date.now() / 1000)
-	const header = { alg: 'HS256', typ: 'JWT' }
 	// The client reads `role`/`scope` (and expects a well-formed iss/aud) to
 	// authorize itself; a token with only `sub` is rejected before login finishes.
-	const payload = {
-		iss: 'https://auth.lapis.codes',
-		aud: 'https://auth.lapis.codes/resources',
-		nbf: now,
-		iat: now,
-		exp: now + TOKEN_TTL_SECONDS,
-		auth_time: now,
-		amr: 'cached_login',
-		client_id: 'recroom',
-		sub: accountId,
-		idp: 'local',
-		platform,
-		platform_id: platformId,
-		'rn.ver': '20210129',
-		'rn.plat': '0',
-		role: TOKEN_ROLES,
-		scope: TOKEN_SCOPES,
-		jti: crypto.randomUUID().replace(/-/g, '').toUpperCase(),
-	}
-
-	const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`
-
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
+	return sign(
+		{
+			iss: 'https://auth.recflare.net',
+			aud: 'https://auth.recflare.net',
+			nbf: now,
+			iat: now,
+			exp: now + TOKEN_TTL_SECONDS,
+			auth_time: now,
+			amr: 'cached_login',
+			client_id: 'recroom',
+			sub: accountId,
+			idp: 'local',
+			platform,
+			platform_id: platformId,
+			'rn.ver': '20210129',
+			'rn.plat': '0',
+			role: TOKEN_ROLES,
+			scope: TOKEN_SCOPES,
+			jti: crypto.randomUUID().replace(/-/g, '').toUpperCase(),
+		},
+		secret
 	)
-	const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput))
-
-	return `${signingInput}.${base64url(signature)}`
 }

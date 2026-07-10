@@ -4,7 +4,6 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
-import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
@@ -45,22 +44,6 @@ function textField(body: Record<string, unknown>, ...names: string[]): string | 
 	return undefined
 }
 
-/**
- * Resolve the account id from a Bearer token. Returns `null` when the header is
- * missing, the token is invalid, or the `sub` claim isn't an integer.
- */
-async function authedId(c: Context<App>): Promise<number | null> {
-	const authHeader = c.req.header('Authorization') ?? ''
-	if (!authHeader.toLowerCase().startsWith('bearer ')) return null
-
-	const token = authHeader.slice('Bearer '.length)
-	const accountId = await validateAndGetAccountId(token, await c.env.JWT_SECRET.get())
-	if (!accountId) return null
-
-	const id = Number.parseInt(accountId, 10)
-	return Number.isNaN(id) ? null : id
-}
-
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -86,7 +69,7 @@ const app = new Hono<App>()
 	// references it by. Also accepts a name-only post (no binary) that just echoes
 	// back an explicit `name`/`filename`/`imagename`. Mirrors the reference `Upload`.
 	.post('/upload', async (c) => {
-		const id = await authedId(c)
+		const id = await validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
 		if (id === null) return c.body(null, 401)
 
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
