@@ -649,6 +649,8 @@ describe('relationships', () => {
 			'/api/relationships/v2/acceptfriendrequest',
 			'/api/relationships/v2/removefriend',
 			'/api/relationships/v2/addfriend',
+			'/api/relationships/v1/ignore',
+			'/api/relationships/v1/mute',
 		]) {
 			const res = await exports.default.fetch(`${ORIGIN}${path}?id=1`)
 			expect(res.status).toBe(401)
@@ -692,5 +694,47 @@ describe('relationships', () => {
 
 	test('a self-targeted request is rejected', async () => {
 		expect((await mutate('/api/relationships/v2/sendfriendrequest', '530', 530)).status).toBe(400)
+	})
+
+	test('v1 ignore/mute set the caller’s own side of the relationship', async () => {
+		type FullRel = { PlayerID: number; RelationshipType: number; Ignored: number; Muted: number }
+		// POST the real client shape: form body `PlayerId=<id>`.
+		const flag = async (path: string, sub: string, playerId: number) =>
+			(await (
+				await exports.default.fetch(`${ORIGIN}${path}`, {
+					method: 'POST',
+					headers: {
+						...(await bearer(sub)),
+						'Content-Type': 'application/x-www-form-urlencoded',
+					},
+					body: `PlayerId=${playerId}`,
+				})
+			).json()) as FullRel
+
+		// 700 ignores 701 with no prior relationship → a bare None row, the caller's side flagged.
+		expect(await flag('/api/relationships/v1/ignore', '700', 701)).toMatchObject({
+			PlayerID: 701,
+			RelationshipType: 0,
+			Ignored: 1,
+			Muted: 0,
+		})
+		// 700 then mutes 701 → same row, mute added, the earlier ignore preserved.
+		expect(await flag('/api/relationships/v1/mute', '700', 701)).toMatchObject({
+			PlayerID: 701,
+			Ignored: 1,
+			Muted: 1,
+		})
+
+		// The tricky case: the caller is the row's TARGET. 710 sends 711 a request
+		// (710 = requester); 711 ignoring 710 must flag the target side, not the requester's.
+		await mutate('/api/relationships/v2/sendfriendrequest', '710', 711)
+		expect(await flag('/api/relationships/v1/ignore', '711', 710)).toMatchObject({
+			PlayerID: 710,
+			RelationshipType: 2, // 711 sees 710's request as Received
+			Ignored: 1,
+		})
+		// 710's own side is untouched — the requester never ignored anyone.
+		const view710 = (await relationships('710')) as unknown as FullRel[]
+		expect(view710).toEqual([expect.objectContaining({ PlayerID: 711, RelationshipType: 1, Ignored: 0 })])
 	})
 })

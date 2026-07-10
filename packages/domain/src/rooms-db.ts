@@ -233,6 +233,83 @@ export async function saveSubRoomData(
 	return room
 }
 
+/** Fields from the client's subroom `modify` form (each applied only when supplied). */
+export interface ModifySubRoomInput {
+	name?: string
+	accessibility?: number
+	maxPlayers?: number
+}
+
+/**
+ * Modify a subroom's settings in place — its Name, Accessibility, and MaxPlayers
+ * (the fields the client's subroom `modify` form carries). Only the supplied
+ * fields are changed; the whole room JSON is rewritten (subrooms live in it).
+ * Returns the updated room, or null when the room or subroom doesn't exist.
+ */
+export async function modifySubRoom(
+	db: D1Database,
+	roomId: number,
+	subRoomId: number,
+	input: ModifySubRoomInput
+): Promise<Room | null> {
+	const room = await getRoomById(db, roomId)
+	if (!room) return null
+	const sub = findSubRoom(room, subRoomId)
+	if (!sub) return null
+
+	if (input.name !== undefined) sub.Name = input.name
+	if (input.accessibility !== undefined) sub.Accessibility = input.accessibility
+	if (input.maxPlayers !== undefined) sub.MaxPlayers = input.maxPlayers
+
+	await db
+		.prepare('UPDATE room SET data = ?2 WHERE room_id = ?1')
+		.bind(roomId, JSON.stringify(room))
+		.run()
+	return room
+}
+
+/**
+ * Clone an existing subroom into a new subroom of the same room, owned by
+ * `accountId`. The copy keeps the source's scene/settings (and its saved data
+ * blobs, so it loads identical content) but gets a fresh SubRoomId — the next
+ * integer above the room's current subrooms. Returns the updated room and the new
+ * subroom, or null when the room or source subroom doesn't exist.
+ */
+export async function cloneSubRoom(
+	db: D1Database,
+	roomId: number,
+	subRoomId: number,
+	accountId: number
+): Promise<{ room: Room; subRoom: Record<string, unknown> } | null> {
+	const room = await getRoomById(db, roomId)
+	if (!room) return null
+	const source = findSubRoom(room, subRoomId)
+	if (!source) return null
+
+	const subRooms = Array.isArray(room.SubRooms)
+		? (room.SubRooms as Array<Record<string, unknown>>)
+		: []
+	const nextSubRoomId =
+		subRooms.reduce((max, s) => {
+			const id = typeof s.SubRoomId === 'number' ? s.SubRoomId : 0
+			return id > max ? id : max
+		}, 0) + 1
+
+	const subRoom: Record<string, unknown> = {
+		...source,
+		SubRoomId: nextSubRoomId,
+		RoomId: room.RoomId,
+		CreatorAccountId: accountId,
+	}
+
+	room.SubRooms = [...subRooms, subRoom]
+	await db
+		.prepare('UPDATE room SET data = ?2 WHERE room_id = ?1')
+		.bind(roomId, JSON.stringify(room))
+		.run()
+	return { room, subRoom }
+}
+
 interface RoomRow {
 	data: string
 }

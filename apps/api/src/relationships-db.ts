@@ -263,3 +263,52 @@ export async function removeFriend(db: D1Database, a: number, b: number): Promis
 		.bind(a, b)
 		.run()
 }
+
+/** A per-player relationship flag — each is stored on the player's own side of the row. */
+export type RelationshipFlag = 'favorited' | 'ignored' | 'muted'
+
+/**
+ * Set one of `playerId`'s per-side flags (favorited/ignored/muted) on their
+ * relationship with `otherId`. These flags are stored per player, so the write
+ * targets the caller's OWN side of the row — `requester_*` when the caller
+ * initiated the pair, `target_*` otherwise. When the pair has no relationship yet
+ * (you can ignore/mute someone you aren't friends with) a fresh `None` row is
+ * created with the caller as requester. Returns the relationship from `playerId`'s
+ * point of view. The `flag`/side names are a fixed union, so interpolating them
+ * into the SQL is safe (same pattern as the room interaction toggles).
+ */
+export async function setRelationshipFlag(
+	db: D1Database,
+	playerId: number,
+	otherId: number,
+	flag: RelationshipFlag,
+	value: boolean
+): Promise<RelationshipResponse> {
+	const existing = await findPair(db, playerId, otherId)
+	const v = value ? 1 : 0
+	if (!existing) {
+		// New row: the caller is the requester, so the flag lives on the requester side.
+		await db
+			.prepare(
+				`INSERT INTO relationship (requester_id, target_id, relationship_type, requester_${flag})
+				 VALUES (?1, ?2, ?3, ?4)`
+			)
+			.bind(playerId, otherId, RelationshipType.None, v)
+			.run()
+	} else {
+		// Update whichever side the caller is on, leaving the other player's flag alone.
+		const side = existing.requester_id === playerId ? 'requester' : 'target'
+		await db
+			.prepare(
+				`UPDATE relationship SET ${side}_${flag} = ?3
+				 WHERE (requester_id = ?1 AND target_id = ?2) OR (requester_id = ?2 AND target_id = ?1)`
+			)
+			.bind(playerId, otherId, v)
+			.run()
+	}
+
+	const updated = await findPair(db, playerId, otherId)
+	return updated
+		? toResponse(updated, playerId)
+		: { PlayerID: otherId, RelationshipType: RelationshipType.None, Favorited: 0, Ignored: 0, Muted: 0 }
+}

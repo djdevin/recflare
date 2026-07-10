@@ -3,14 +3,14 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import '../../rooms.app'
 
-import { ROOM_SCHEMA_DDL } from '@repo/domain'
-
-import importRooms from '../../../static/ImportRooms.json'
 import {
 	createRoomInstance,
 	getRoomInstance,
-	SCHEMA_DDL as ROOM_INSTANCE_SCHEMA_DDL,
-} from '../../room-instance-db'
+	ROOM_INSTANCE_SCHEMA_DDL,
+	ROOM_SCHEMA_DDL,
+} from '@repo/domain'
+
+import importRooms from '../../../static/ImportRooms.json'
 
 import type { Env } from '../../context'
 
@@ -932,5 +932,72 @@ describe('rooms endpoints', () => {
 			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: fresh })
 		).json()) as unknown[]
 		expect(visited).toEqual([])
+	})
+
+	it('PUT /rooms/:id/subrooms/:sid/modify is auth-gated, owner-only, and persists subroom settings', async () => {
+		const fields = { name: 'My Cool Subroom', accessibility: '1', maxPlayers: '20' }
+		// No token → 401 (auth gate).
+		expect((await putForm('/rooms/2/subrooms/2/modify', fields)).status).toBe(401)
+		// Not the owner (room 2 is owned by account 1) → NotOwner.
+		expect(await bodyOf(await putForm('/rooms/2/subrooms/2/modify', fields, '999'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.NotOwner',
+		})
+		// Unknown room → DoesntExist.
+		expect(
+			await bodyOf(await putForm('/rooms/99999/subrooms/2/modify', fields, '1'))
+		).toMatchObject({ Success: false, ErrorId: 'Rooms.DoesntExist' })
+		// Unknown subroom → DoesntExist.
+		expect(await bodyOf(await putForm('/rooms/2/subrooms/9999/modify', fields, '1'))).toMatchObject(
+			{ Success: false, ErrorId: 'Rooms.DoesntExist' }
+		)
+		// Empty name → InvalidName.
+		expect(
+			await bodyOf(await putForm('/rooms/2/subrooms/2/modify', { ...fields, name: '  ' }, '1'))
+		).toMatchObject({ Success: false, ErrorId: 'Rooms.InvalidName' })
+
+		// Owner updates the subroom → Success, and it persists on the subroom descriptor.
+		const ok = await putForm('/rooms/2/subrooms/2/modify', fields, '1')
+		expect(ok.status).toBe(200)
+		expect(await bodyOf(ok)).toMatchObject({ Success: true })
+		const sub = (await (await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/data`)).json()) as {
+			Name: string
+			Accessibility: number
+			MaxPlayers: number
+		}
+		expect(sub).toMatchObject({ Name: 'My Cool Subroom', Accessibility: 1, MaxPlayers: 20 })
+	})
+
+	it('POST /rooms/:id/subrooms/:sid/clone is auth-gated, owner-only, and copies the subroom', async () => {
+		const clone = async (roomId: number, subRoomId: number, sub?: string) =>
+			SELF.fetch(`${ORIGIN}/rooms/${roomId}/subrooms/${subRoomId}/clone`, {
+				method: 'POST',
+				headers: sub ? await bearer(sub) : {},
+			})
+		const envelope = async (res: Response) =>
+			(await res.json()) as {
+				success: boolean
+				error: string
+				value: { SubRoomId: number; CreatorAccountId: number } | null
+			}
+
+		// No token → 401.
+		expect((await clone(2, 2)).status).toBe(401)
+		// Not the owner → success:false envelope.
+		expect((await envelope(await clone(2, 2, '999'))).success).toBe(false)
+		// Unknown subroom → success:false envelope.
+		expect((await envelope(await clone(2, 9999, '1'))).success).toBe(false)
+
+		// Owner clones → success, a fresh SubRoomId owned by the caller, fetchable on the room.
+		const res = await clone(2, 2, '1')
+		expect(res.status).toBe(200)
+		const body = await envelope(res)
+		expect(body.success).toBe(true)
+		expect(body.value?.SubRoomId).not.toBe(2)
+		expect(body.value?.CreatorAccountId).toBe(1)
+		const fetched = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/${body.value?.SubRoomId}/data`)
+		).json()) as { SubRoomId: number }
+		expect(fetched.SubRoomId).toBe(body.value?.SubRoomId)
 	})
 })

@@ -2,9 +2,9 @@ import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import '../../match.app'
+import { ROOM_INSTANCE_SCHEMA_DDL } from '@repo/domain'
 
-import { SCHEMA_DDL as ROOM_INSTANCE_SCHEMA_DDL } from '../../room-instance-db'
+import '../../match.app'
 
 import type { Env } from '../../context'
 
@@ -31,6 +31,14 @@ const TEST_ROOMS = [
 		IsDorm: false,
 		Accessibility: 1,
 		SubRooms: [{ SubRoomId: 2, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 12 }],
+	},
+	{
+		RoomId: 3,
+		Name: 'TestersRoom',
+		IsDorm: false,
+		Accessibility: 1,
+		CreatorAccountId: 42,
+		SubRooms: [{ SubRoomId: 3, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 8 }],
 	},
 ]
 
@@ -477,5 +485,43 @@ describe('auth-gated endpoints', () => {
 		expect(res.status).toBe(200)
 		const players = (await res.json()) as Array<{ playerId: number; isOnline: boolean }>
 		expect(players[0]).toMatchObject({ playerId: 55, isOnline: true })
+	})
+
+	test('GET /room/:id/instances is auth-gated, owner-only, and lists the room’s instances', async () => {
+		// No token → 401.
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/room/3/instances`)).status
+		).toBe(401)
+
+		// Not the owner (room 3 is owned by account 42) → 403.
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/room/3/instances`, {
+					headers: await bearer('999'),
+				})
+			).status
+		).toBe(403)
+
+		// Unknown room → 404.
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/room/99999/instances`, {
+					headers: await bearer('42'),
+				})
+			).status
+		).toBe(404)
+
+		// Matchmaking into room 3 creates an instance the owner can then see.
+		await exports.default.fetch(`${ORIGIN}/matchmake/room/3`, {
+			method: 'POST',
+			headers: await bearer('42'),
+		})
+		const res = await exports.default.fetch(`${ORIGIN}/room/3/instances`, {
+			headers: await bearer('42'),
+		})
+		expect(res.status).toBe(200)
+		const instances = (await res.json()) as Array<{ roomId: number; roomInstanceId: number }>
+		expect(instances.length).toBeGreaterThanOrEqual(1)
+		expect(instances.every((i) => i.roomId === 3)).toBe(true)
 	})
 })

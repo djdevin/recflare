@@ -6,6 +6,7 @@ import {
 	getRelationshipsForPlayer,
 	removeFriend,
 	sendFriendRequest,
+	setRelationshipFlag,
 } from '../relationships-db'
 import { authedId, unauthorized } from '../http'
 
@@ -86,6 +87,26 @@ export const socialRoutes = new Hono<App>({ strict: false })
 		const target = await targetPlayerId(c)
 		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
 		return c.json(await addFriend(c.env.DB, id, target))
+	})
+
+	// Ignore / mute another player (target arrives as `PlayerId` in the POST body).
+	// These set a per-player flag on the *caller's* side of the relationship row,
+	// creating a bare (None) row when the pair aren't otherwise related — so you can
+	// ignore/mute someone you've never friended. Auth-gated. Returns the resulting
+	// relationship from the caller's point of view.
+	.on(['GET', 'POST'], '/api/relationships/v1/ignore', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const target = await targetPlayerId(c)
+		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
+		return c.json(await setRelationshipFlag(c.env.DB, id, target, 'ignored', true))
+	})
+	.on(['GET', 'POST'], '/api/relationships/v1/mute', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const target = await targetPlayerId(c)
+		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
+		return c.json(await setRelationshipFlag(c.env.DB, id, target, 'muted', true))
 	})
 
 	.get('/api/messages/v2/get', (c) => c.json([]))

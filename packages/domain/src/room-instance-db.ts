@@ -4,15 +4,16 @@
  * every field is a SQLite generated (virtual) column extracted from it (snake_case
  * per the C# `[Column]` names). `id` is a sequential key held in the blob.
  *
- * Mirror of `apps/rooms/src/room-instance-db.ts` — the `rooms` worker owns the
- * schema (migrations/0004_room_instance.sql); this worker finds/creates instances
- * here at matchmake time, keeping this copy in sync. Columns marked
- * `[JsonIgnore]` in the C# (owner_account_id, data_blob, allow_new_users,
- * join_disabled) live in the blob but are dropped from the client DTO (`toDto`).
+ * The `rooms` worker owns the schema (migrations/0004_room_instance.sql); the
+ * `match` worker finds/creates instances here at matchmake time. This module is the
+ * single source of truth for the helpers — both workers import it from
+ * `@repo/domain`. Columns marked `[JsonIgnore]` in the C# (owner_account_id,
+ * data_blob, allow_new_users, join_disabled) live in the blob but are dropped from
+ * the client DTO (`toDto`).
  */
 
 /** Schema DDL (mirror of migrations/0004_room_instance.sql). */
-export const SCHEMA_DDL: string[] = [
+export const ROOM_INSTANCE_SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS room_instance (
 		data TEXT NOT NULL,
 		id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.roomInstanceId')) VIRTUAL,

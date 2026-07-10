@@ -2,20 +2,17 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	createRoomInstance,
+	getJoinableInstance,
 	getOrCreateDormRoom,
 	getRoomById,
 	getRoomByName,
+	getRoomInstancesByRoom,
 	RoomInstanceType,
+	setRoomInstanceInProgress,
 } from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
-
-import {
-	createRoomInstance,
-	getJoinableInstance,
-	getRoomInstancesByRoom,
-	setRoomInstanceInProgress,
-} from './room-instance-db'
 
 import type { Room } from '@repo/domain'
 import type { Context } from 'hono'
@@ -514,6 +511,22 @@ const app = new Hono<App>()
 		const instance = await setRoomInstanceInProgress(c.env.DB, instanceId, inProgress)
 		if (!instance) return c.body(null, 404)
 		return c.body(null, 200)
+	})
+
+	// The room's live instances — the owner's view of active sessions of their room.
+	// Auth-gated (401) and owner-only (403): the caller must be the room's creator.
+	// Unknown room → 404. Returns the bare RoomInstance DTO array (empty when the
+	// room has no live instances).
+	.get('/room/:roomId{[0-9]+}/instances', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return c.body(null, 404)
+		if (room.CreatorAccountId !== id) return c.body(null, 403)
+
+		return c.json(await getRoomInstancesByRoom(c.env.DB, roomId))
 	})
 
 	// Rooms flagged as needing a developer/moderator to spawn in. No such queue

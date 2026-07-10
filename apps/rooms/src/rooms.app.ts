@@ -3,6 +3,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
 	cloneRoom,
+	cloneSubRoom,
 	findSubRoom,
 	getBaseRooms,
 	getFavoritedRooms,
@@ -17,6 +18,7 @@ import {
 	getRoomsByIds,
 	getSimilarRooms,
 	getVisitedRooms,
+	modifySubRoom,
 	removeCheer,
 	removeFavorite,
 	saveSubRoomData,
@@ -662,6 +664,98 @@ const app = new Hono<App>()
 		// itself — no envelope. The client deserializes the body directly as the subroom.
 		await pushRoomUpdate(c, accountId, updated)
 		return c.json(findSubRoom(updated, subRoomId) ?? {})
+	})
+
+	// Modify a subroom's settings (Name/Accessibility/MaxPlayers) from the form body.
+	// Auth-gated (401) and owner-only — only the room creator may change its subrooms.
+	// Notifies the owner (RoomUpdate) and returns the `{ Success, Value, ErrorId, Error }`
+	// envelope at HTTP 200, matching the other owner-gated room mutations.
+	.put('/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/modify', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (room.CreatorAccountId !== accountId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+		if (!findSubRoom(room, subRoomId)) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This subroom does not exist!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const name = typeof body.name === 'string' ? body.name.trim() : ''
+		if (name === '') {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.InvalidName',
+				Error: 'You must enter a name for your room!',
+			})
+		}
+		const accessibility =
+			typeof body.accessibility === 'string' ? Number.parseInt(body.accessibility, 10) : Number.NaN
+		const maxPlayers =
+			typeof body.maxPlayers === 'string' ? Number.parseInt(body.maxPlayers, 10) : Number.NaN
+
+		const updated = await modifySubRoom(c.env.DB, roomId, subRoomId, {
+			name,
+			accessibility: Number.isNaN(accessibility) ? undefined : accessibility,
+			maxPlayers: Number.isNaN(maxPlayers) || maxPlayers <= 0 ? undefined : maxPlayers,
+		})
+		if (!updated) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This subroom does not exist!',
+			})
+		}
+
+		await pushRoomUpdate(c, accountId, updated)
+		return roomResult(c, { Success: true })
+	})
+
+	// Clone a subroom into a new subroom of the same room (fresh SubRoomId, same
+	// scene/settings/data). Auth-gated (401) and owner-only. Notifies the owner and
+	// returns the `{ success, error, value }` envelope with the new subroom as `value`,
+	// mirroring the room-level `/clone`. Response shape is a best guess (the real
+	// client's expected body is unknown).
+	.post('/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/clone', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) {
+			return c.json({ success: false, error: 'Unauthorized', value: null }, 401)
+		}
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		if (room.CreatorAccountId !== accountId) {
+			return roomEnvelope(c, null, 'You are not the owner of this room!')
+		}
+
+		const result = await cloneSubRoom(c.env.DB, roomId, subRoomId, accountId)
+		if (!result) return roomEnvelope(c, null, 'This subroom does not exist!')
+
+		await pushRoomUpdate(c, accountId, result.room)
+		return roomEnvelope(c, result.subRoom)
 	})
 
 	// Rooms similar to the given room (sharing tags). Paginated via skip/take (take
