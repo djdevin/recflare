@@ -73,7 +73,7 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		// account row (a JSON blob in the shared accounts table) so it sticks.
 		if (savedImageType === SavedImageType.ProfileThumbnail) {
 			await c.env.DB.prepare(
-				"UPDATE accounts SET data = json_set(data, '$.profileImage', ?2) WHERE account_id = ?1"
+				"UPDATE account SET data = json_set(data, '$.profileImage', ?2) WHERE account_id = ?1"
 			)
 				.bind(id, name)
 				.run()

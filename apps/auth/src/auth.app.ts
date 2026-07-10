@@ -3,9 +3,12 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
 	createAccount,
+	getAccount,
 	getAccountByUsername,
+	getAccountsByPlatformId,
 	getPasswordHash,
 	RoomInstanceType,
+	setLastLoginTime,
 	setPasswordHash,
 } from '@repo/domain'
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
@@ -13,7 +16,9 @@ import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from '@repo
 
 import { hashPassword, verifyPassword } from './password'
 import { consumeRefreshToken, issueRefreshToken } from './refresh-db'
+import { verifySteamTicket } from './steam-ticket'
 
+import type { Account } from '@repo/domain'
 import type { Context } from 'hono'
 import type { App } from './context'
 
@@ -105,6 +110,22 @@ async function authedId(c: Context<App>): Promise<number | null> {
 	return validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
 }
 
+/**
+ * Project a linked account into the client's CachedLogin DTO — the account-picker
+ * entry on the login screen. The client posts the chosen `accountId` back as a
+ * `grant_type=cached_login`. `requirePassword` is false because platform ownership
+ * (the platform_auth ticket) is the credential for a cached login — no prompt.
+ */
+function toCachedLogin(account: Account) {
+	return {
+		platform: account.platform ?? 0,
+		platformId: account.platformId ?? '',
+		accountId: account.accountId,
+		lastLoginTime: account.lastLoginTime ?? account.createdAt,
+		requirePassword: false,
+	}
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -122,19 +143,36 @@ const app = new Hono<App>()
 	// EAC challenge — a fresh GUID, JSON-quoted, served as plain text.
 	.get('/eac/challenge', (c) => c.text(`"AA=="`))
 
-	// Cached logins for a platform id. No CachedLogins storage yet, so there's never
-	// a cached account — return []. The client then goes through a fresh login /
-	// create_account instead of auto-logging into a stub account.
-	.get('/cachedlogin/forplatformid/:platform/:id', (c) => {
+	// Cached logins for a platform id — the accounts linked to this platform-native
+	// id, so the client can offer them on the login screen (and post one back as a
+	// cached_login grant). No linked account → [], and the client falls back to a
+	// fresh login / create_account.
+	.get('/cachedlogin/forplatformid/:platform/:id', async (c) => {
 		const { platform, id } = c.req.param()
 		logger.info('cached login lookup', { platform, id })
-		// TODO: query CachedLogins once they're persisted.
-		return c.json([])
+		const platformInt = Number.parseInt(platform, 10)
+		const accounts = await getAccountsByPlatformId(c.env.DB, id)
+		return c.json(
+			accounts
+				.filter((a) => Number.isNaN(platformInt) || (a.platform ?? 0) === platformInt)
+				.map(toCachedLogin)
+		)
 	})
 
-	// Bulk cached-login lookup by platform id (friends resolution). The client
-	// POSTs repeated `id=` params on the auth host; no DB → no matches → [].
-	.post('/cachedlogin/forplatformids', (c) => c.json([]))
+	// Bulk cached-login lookup by platform id (friends resolution). The client POSTs
+	// repeated `id=` params on the auth host; resolve each to its linked accounts.
+	.post('/cachedlogin/forplatformids', async (c) => {
+		const body = await c.req
+			.parseBody({ all: true })
+			.catch(() => ({}) as Record<string, unknown>)
+		const raw = body.id
+		const ids = (Array.isArray(raw) ? raw : raw != null ? [raw] : []).map(String)
+		const out: Array<ReturnType<typeof toCachedLogin>> = []
+		for (const pid of ids) {
+			out.push(...(await getAccountsByPlatformId(c.env.DB, pid)).map(toCachedLogin))
+		}
+		return c.json(out)
+	})
 
 	// OAuth token endpoint — accepts a form-urlencoded body and issues a JWT.
 	.post('/connect/token', async (c) => {
@@ -148,6 +186,40 @@ const app = new Hono<App>()
 		// `platform` is the PlatformType int → its enum name (e.g. 0 → "Steam").
 		const platformInt = typeof body.platform === 'string' ? Number.parseInt(body.platform, 10) : NaN
 		let platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
+
+		// A platform-authenticated login proves who you are with the platform itself,
+		// and we can ONLY verify Steam (platform 0) — via its Steam-signed platform_auth
+		// ticket. So those logins must be Steam:
+		//   - cached_login authenticates purely by platform identity → always Steam-only.
+		//   - create_account that asserts a platform is rejected unless it's Steam, since
+		//     we won't bind an identity we can't prove. (create_account with NO platform
+		//     is the password-account path — allowed, but it binds no platformId.)
+		// The verified SteamID64 replaces the unauthenticated `platform_id` field and is
+		// the ONLY value ever written to an account's `platformId`. Credential (password)
+		// and refresh_token grants carry their own credential and aren't gated here.
+		let verifiedSteamId: string | null = null
+		const platformAsserted = !Number.isNaN(platformInt)
+		if (grantType === 'cached_login' || (grantType === 'create_account' && platformAsserted)) {
+			if (platformInt !== 0) {
+				return c.json(
+					{
+						error: 'invalid_grant',
+						error_description: 'unsupported platform; only Steam can be verified',
+					},
+					400
+				)
+			}
+			const platformAuth = typeof body.platform_auth === 'string' ? body.platform_auth : ''
+			const verified = platformAuth ? await verifySteamTicket(platformAuth) : null
+			if (!verified) {
+				return c.json(
+					{ error: 'invalid_grant', error_description: 'invalid or missing platform_auth ticket' },
+					400
+				)
+			}
+			verifiedSteamId = verified.steamId
+			platformId = verified.steamId
+		}
 
 		// Resolve the account this token is for:
 		//  - create_account: mint + persist a brand-new account (auto-assigned random
@@ -163,7 +235,16 @@ const app = new Hono<App>()
 		//    via create_account or /account/me/changepassword.
 		let accountId: string
 		if (grantType === 'create_account') {
-			const account = await createAccount(c.env.DB, { platforms: platformInt || 0 })
+			// Bind the platform identity ONLY when a Steam ticket proved it. That bound
+			// `platformId` (the SteamID64) is what a later cached login is checked against,
+			// so only this Steam user can log back into the account. A password/anonymous
+			// create_account (no platform) binds no platformId.
+			const account = await createAccount(c.env.DB, {
+				platforms: platformInt || 0,
+				platform: verifiedSteamId !== null ? 0 : undefined,
+				platformId: verifiedSteamId ?? undefined,
+				lastLoginTime: new Date().toISOString(),
+			})
 			accountId = String(account.accountId)
 			// Establish the login password when one is posted (raw password never stored).
 			const password = typeof body.password === 'string' ? body.password : ''
@@ -184,6 +265,32 @@ const app = new Hono<App>()
 			accountId = String(refreshed.accountId)
 			platform = refreshed.platform
 			platformId = refreshed.platformId
+		} else if (grantType === 'cached_login') {
+			// Platform-authenticated login into an already-linked account. The client posts
+			// the `account_id` it got from /cachedlogin/forplatformid together with the
+			// `platform_id` its platform_auth ticket vouches for. Authorize ONLY when that
+			// account is linked to exactly this platform identity — this is the check that
+			// keeps anyone but platform user `platform_id` out of the account (platform
+			// ownership is the credential; no password needed). An account with no stored
+			// platform identity can't be cached-logged-into and must use a fresh login.
+			//
+			// NB: `platform_id` here is the Steam-verified SteamID64 (set from the ticket
+			// above), never the client-supplied field. See steam-ticket.ts.
+			const postedId = typeof body.account_id === 'string' ? body.account_id.trim() : ''
+			const account = /^\d+$/.test(postedId) ? await getAccount(c.env.DB, Number(postedId)) : null
+			if (
+				!account ||
+				!account.platformId ||
+				account.platformId !== platformId ||
+				account.platform !== platformInt
+			) {
+				return c.json(
+					{ error: 'invalid_grant', error_description: 'no linked account for this platform identity' },
+					400
+				)
+			}
+			accountId = String(account.accountId)
+			await setLastLoginTime(c.env.DB, account.accountId, new Date().toISOString())
 		} else {
 			// Resolve the account from a posted numeric `account_id` or, as RecRoom's
 			// password grant sends, a `username` (case-insensitive; trailing whitespace
@@ -214,6 +321,7 @@ const app = new Hono<App>()
 				)
 			}
 			accountId = String(resolvedId)
+			await setLastLoginTime(c.env.DB, resolvedId, new Date().toISOString())
 		}
 
 		const accessToken = await generateToken(

@@ -757,7 +757,7 @@ const DORM_TEMPLATE_ROOM_ID = 1
 /** A player's username from the shared accounts table (for naming their dorm), or null. */
 export async function getUsername(db: D1Database, accountId: number): Promise<string | null> {
 	const row = await db
-		.prepare('SELECT data FROM accounts WHERE account_id = ?1')
+		.prepare('SELECT data FROM account WHERE account_id = ?1')
 		.bind(accountId)
 		.first<{ data: string }>()
 	if (!row) return null

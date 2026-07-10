@@ -62,12 +62,12 @@ beforeAll(async () => {
 	// Accounts table (owned by the auth worker) — dorm creation reads the username
 	// to name the room. Seed the players the dorm tests authenticate as.
 	await env.DB.prepare(
-		`CREATE TABLE IF NOT EXISTS accounts (
+		`CREATE TABLE IF NOT EXISTS account (
 			data TEXT NOT NULL,
 			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL
 		)`
 	).run()
-	const insertAccount = env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+	const insertAccount = env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 	await env.DB.batch([
 		insertAccount.bind(JSON.stringify({ accountId: 42, username: 'Tester' })),
 		insertAccount.bind(JSON.stringify({ accountId: 43, username: 'Roomie' })),

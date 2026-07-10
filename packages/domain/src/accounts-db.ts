@@ -13,14 +13,16 @@
 
 /** Schema DDL (mirror of migrations 0001_accounts + 0002_avatar, sans seed INSERTs). */
 export const SCHEMA_DDL: string[] = [
-	`CREATE TABLE IF NOT EXISTS accounts (
+	`CREATE TABLE IF NOT EXISTS account (
 		data TEXT NOT NULL,
 		avatar TEXT,
 		account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL,
-		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL
+		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL,
+		platform_id TEXT GENERATED ALWAYS AS (json_extract(data, '$.platformId')) VIRTUAL
 	)`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account_id ON accounts (account_id)`,
-	`CREATE INDEX IF NOT EXISTS idx_accounts_username_lower ON accounts (username_lower)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account_id ON account (account_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_accounts_username_lower ON account (username_lower)`,
+	`CREATE INDEX IF NOT EXISTS idx_accounts_platform_id ON account (platform_id)`,
 ]
 
 /** Client-facing account shape (camelCase, exactly as the client's AccountDTO). */
@@ -34,6 +36,19 @@ export interface Account {
 	personalPronouns: number
 	identityFlags: number
 	createdAt: string
+	/**
+	 * The platform-native identity linked to this account (e.g. a SteamID64 for
+	 * platform 0). Stored as a STRING on purpose — a SteamID64 exceeds 2^53 and
+	 * would lose precision as a JS number. Set at account creation from the login's
+	 * `platform_id`. A cached login is authorized ONLY to the account whose stored
+	 * `platformId` matches the (platform_auth-ticket-proven) platform id presented,
+	 * so no one but that platform user can log into the account.
+	 */
+	platformId?: string
+	/** PlatformType int (0 = Steam) that `platformId` belongs to. */
+	platform?: number
+	/** ISO-8601 time of the account's most recent successful login. */
+	lastLoginTime?: string
 	/** Set via POST /account/me/email; absent until the player provides one. */
 	email?: string
 	/** Set via POST /account/me/phone; absent until the player provides one. */
@@ -127,7 +142,7 @@ export function defaultAccount(id: number, overrides: Partial<Account> = {}): Ac
 /** Look up a single account by AccountId. */
 export async function getAccount(db: D1Database, id: number): Promise<Account | null> {
 	return parseOne(
-		await db.prepare('SELECT data FROM accounts WHERE account_id = ?1').bind(id).first<AccountRow>()
+		await db.prepare('SELECT data FROM account WHERE account_id = ?1').bind(id).first<AccountRow>()
 	)
 }
 
@@ -138,7 +153,7 @@ export async function getAccountByUsername(
 ): Promise<Account | null> {
 	return parseOne(
 		await db
-			.prepare('SELECT data FROM accounts WHERE username_lower = ?1')
+			.prepare('SELECT data FROM account WHERE username_lower = ?1')
 			.bind(username.toLowerCase())
 			.first<AccountRow>()
 	)
@@ -164,11 +179,36 @@ export async function searchAccounts(
 	if (q === '') return []
 	const { results } = await db
 		.prepare(
-			`SELECT data FROM accounts WHERE username_lower LIKE ?1 ESCAPE '\\' ORDER BY username_lower LIMIT ?2`
+			`SELECT data FROM account WHERE username_lower LIKE ?1 ESCAPE '\\' ORDER BY username_lower LIMIT ?2`
 		)
 		.bind(`${escapeLike(q)}%`, limit)
 		.all<AccountRow>()
 	return parseAll(results)
+}
+
+/**
+ * Accounts linked to a platform-native id (e.g. a SteamID64), for the cached-login
+ * account picker. Backed by the indexed `platform_id` generated column. Empty id
+ * yields no matches (avoids matching every account whose `platformId` is null).
+ */
+export async function getAccountsByPlatformId(
+	db: D1Database,
+	platformId: string
+): Promise<Account[]> {
+	if (platformId === '') return []
+	const { results } = await db
+		.prepare('SELECT data FROM account WHERE platform_id = ?1')
+		.bind(platformId)
+		.all<AccountRow>()
+	return parseAll(results)
+}
+
+/** Record the account's most recent successful login time (ISO-8601). */
+export async function setLastLoginTime(db: D1Database, id: number, time: string): Promise<void> {
+	await db
+		.prepare("UPDATE account SET data = json_set(data, '$.lastLoginTime', ?2) WHERE account_id = ?1")
+		.bind(id, time)
+		.run()
 }
 
 /** Look up multiple accounts by AccountId (order not guaranteed). */
@@ -176,7 +216,7 @@ export async function getAccountsByIds(db: D1Database, ids: number[]): Promise<A
 	if (ids.length === 0) return []
 	const placeholders = ids.map((_, i) => `?${i + 1}`).join(',')
 	const { results } = await db
-		.prepare(`SELECT data FROM accounts WHERE account_id IN (${placeholders})`)
+		.prepare(`SELECT data FROM account WHERE account_id IN (${placeholders})`)
 		.bind(...ids)
 		.all<AccountRow>()
 	return parseAll(results)
@@ -197,11 +237,11 @@ export async function updateAccount(
 	const updated: Account = { ...current, ...overrides, accountId: id }
 	const data = JSON.stringify(updated)
 	const res = await db
-		.prepare('UPDATE accounts SET data = ?2 WHERE account_id = ?1')
+		.prepare('UPDATE account SET data = ?2 WHERE account_id = ?1')
 		.bind(id, data)
 		.run()
 	if (!res.meta.changes) {
-		await db.prepare('INSERT INTO accounts (data) VALUES (?1)').bind(data).run()
+		await db.prepare('INSERT INTO account (data) VALUES (?1)').bind(data).run()
 	}
 	return updated
 }
@@ -216,12 +256,12 @@ export async function createAccount(
 	overrides: Partial<Account> = {}
 ): Promise<Account> {
 	const row = await db
-		.prepare('SELECT COALESCE(MAX(account_id), 1) + 1 AS next FROM accounts')
+		.prepare('SELECT COALESCE(MAX(account_id), 1) + 1 AS next FROM account')
 		.first<{ next: number }>()
 	const id = row?.next ?? 2
 	const username = overrides.username ?? randomUsername()
 	const account = defaultAccount(id, { username, displayName: username, ...overrides })
-	await db.prepare('INSERT INTO accounts (data) VALUES (?1)').bind(JSON.stringify(account)).run()
+	await db.prepare('INSERT INTO account (data) VALUES (?1)').bind(JSON.stringify(account)).run()
 	return account
 }
 
@@ -233,7 +273,7 @@ export async function createAccount(
 export async function getPasswordHash(db: D1Database, id: number): Promise<string | null> {
 	const row = await db
 		.prepare(
-			"SELECT json_extract(data, '$.passwordHash') AS hash FROM accounts WHERE account_id = ?1"
+			"SELECT json_extract(data, '$.passwordHash') AS hash FROM account WHERE account_id = ?1"
 		)
 		.bind(id)
 		.first<{ hash: string | null }>()
@@ -244,7 +284,7 @@ export async function getPasswordHash(db: D1Database, id: number): Promise<strin
 export async function setPasswordHash(db: D1Database, id: number, hash: string): Promise<boolean> {
 	const { meta } = await db
 		.prepare(
-			"UPDATE accounts SET data = json_set(data, '$.passwordHash', ?2) WHERE account_id = ?1"
+			"UPDATE account SET data = json_set(data, '$.passwordHash', ?2) WHERE account_id = ?1"
 		)
 		.bind(id, hash)
 		.run()

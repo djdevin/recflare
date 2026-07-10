@@ -11,13 +11,13 @@
 
 /** Schema DDL for tests — the accounts table including the avatar column. */
 export const SCHEMA_DDL: string[] = [
-	`CREATE TABLE IF NOT EXISTS accounts (
+	`CREATE TABLE IF NOT EXISTS account (
 		data TEXT NOT NULL,
 		avatar TEXT,
 		account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL,
 		username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL
 	)`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account_id ON accounts (account_id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account_id ON account (account_id)`,
 ]
 
 /** The stored avatar payload — opaque JSON the client sets and reads back. */
@@ -30,7 +30,7 @@ interface AvatarRow {
 /** Read the player's stored avatar, or null when they have none yet. */
 export async function getAvatar(db: D1Database, accountId: number): Promise<Avatar | null> {
 	const row = await db
-		.prepare('SELECT avatar FROM accounts WHERE account_id = ?1')
+		.prepare('SELECT avatar FROM account WHERE account_id = ?1')
 		.bind(accountId)
 		.first<AvatarRow>()
 	return row?.avatar ? (JSON.parse(row.avatar) as Avatar) : null
@@ -46,7 +46,7 @@ export async function setAvatar(
 	avatar: Avatar
 ): Promise<boolean> {
 	const { meta } = await db
-		.prepare('UPDATE accounts SET avatar = ?2 WHERE account_id = ?1')
+		.prepare('UPDATE account SET avatar = ?2 WHERE account_id = ?1')
 		.bind(accountId, JSON.stringify(avatar))
 		.run()
 	return meta.changes > 0

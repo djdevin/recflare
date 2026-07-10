@@ -179,7 +179,7 @@ async function getUsernames(db: D1Database, ids: number[]): Promise<Map<number, 
 	const { results } = await db
 		.prepare(
 			`SELECT account_id AS id, json_extract(data, '$.username') AS username
-			 FROM accounts WHERE account_id IN (${placeholders(ids.length)})`
+			 FROM account WHERE account_id IN (${placeholders(ids.length)})`
 		)
 		.bind(...ids)
 		.all<{ id: number; username: string }>()

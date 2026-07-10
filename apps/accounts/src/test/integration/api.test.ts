@@ -20,7 +20,7 @@ beforeAll(async () => {
 	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
-	const insert = env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+	const insert = env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 	await env.DB.batch([
 		insert.bind(JSON.stringify({ accountId: 0, username: 'RecRoom', displayName: 'Rec Room' })),
 		insert.bind(JSON.stringify({ accountId: 1, username: 'Coach', displayName: 'Coach' })),

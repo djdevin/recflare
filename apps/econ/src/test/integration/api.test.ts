@@ -20,7 +20,7 @@ beforeAll(async () => {
 	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
-	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(JSON.stringify({ accountId: 42, username: 'Tester', displayName: 'Tester' }))
 		.run()
 })
@@ -161,10 +161,10 @@ describe('econ endpoints', () => {
 
 	test('GET /api/avatar/v2/:id returns another player’s saved avatar, projected', async () => {
 		// Seed account 314 with a full avatar blob (superset of the projection).
-		await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 			.bind(JSON.stringify({ accountId: 314, username: 'Pi', displayName: 'Pi' }))
 			.run()
-		await env.DB.prepare('UPDATE accounts SET avatar = ?2 WHERE account_id = ?1')
+		await env.DB.prepare('UPDATE account SET avatar = ?2 WHERE account_id = ?1')
 			.bind(
 				314,
 				JSON.stringify({

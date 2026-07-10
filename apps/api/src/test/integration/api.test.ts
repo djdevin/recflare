@@ -55,13 +55,13 @@ beforeAll(async () => {
 	// profile thumbnails on the account row. Seed the account the test token (sub
 	// 42) authenticates as.
 	await env.DB.prepare(
-		`CREATE TABLE IF NOT EXISTS accounts (
+		`CREATE TABLE IF NOT EXISTS account (
 			data TEXT NOT NULL,
 			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL,
 			username_lower TEXT GENERATED ALWAYS AS (lower(json_extract(data, '$.username'))) VIRTUAL
 		)`
 	).run()
-	await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(
 			JSON.stringify({ accountId: 42, username: 'Tester', profileImage: 'DefaultProfileImage.jpg' })
 		)
@@ -477,7 +477,7 @@ describe('images', () => {
 		)
 
 		// The account row now points its profileImage at the uploaded key.
-		const row = await env.DB.prepare('SELECT data FROM accounts WHERE account_id = 42').first<{
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = 42').first<{
 			data: string
 		}>()
 		expect(JSON.parse(row!.data).profileImage).toBe(ImageName)

@@ -36,7 +36,7 @@ beforeAll(async () => {
 	// Seed the accounts the credential-login tests use, each with LOGIN_PASSWORD set.
 	const hash = await hashPassword(LOGIN_PASSWORD)
 	for (const id of [42, 77]) {
-		await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 			.bind(JSON.stringify({ accountId: id, username: `Player${id}`, passwordHash: hash }))
 			.run()
 	}
@@ -116,6 +116,79 @@ describe('auth worker routes', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	// Only Steam (platform 0) can be verified (via its signed platform_auth ticket),
+	// so every OTHER platform is rejected on the platform-authenticated grants — we
+	// won't bind or authorize an identity we can't prove.
+	test.each([1, 2, 3, 4, 5, 6, 7, 8])(
+		'create_account rejects unverifiable platform %i',
+		async (platform) => {
+			const res = await postToken(
+				`grant_type=create_account&platform=${platform}&platform_id=whoever`
+			)
+			expect(res.status).toBe(400)
+			expect(res.json.error).toBe('invalid_grant')
+			expect(res.json.error_description).toContain('only Steam')
+		}
+	)
+
+	test.each([1, 2, 3, 4, 5, 6, 7, 8])(
+		'cached_login rejects unverifiable platform %i',
+		async (platform) => {
+			const res = await postToken(
+				`grant_type=cached_login&account_id=42&platform=${platform}&platform_id=whoever`
+			)
+			expect(res.status).toBe(400)
+			expect(res.json.error).toBe('invalid_grant')
+			expect(res.json.error_description).toContain('only Steam')
+		}
+	)
+
+	test('Steam create_account requires a valid platform_auth ticket', async () => {
+		// platform=0 (Steam) with no verifiable ticket must not bind the spoofable
+		// platform_id field — it's rejected outright.
+		const res = await postToken('grant_type=create_account&platform=0&platform_id=76561197962463211')
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
+		expect(res.json.error_description).toContain('platform_auth')
+	})
+
+	test('Steam cached_login requires a valid platform_auth ticket', async () => {
+		const res = await postToken(
+			'grant_type=cached_login&account_id=42&platform=0&platform_id=76561197962463211'
+		)
+		expect(res.status).toBe(400)
+		expect(res.json.error).toBe('invalid_grant')
+		expect(res.json.error_description).toContain('platform_auth')
+	})
+
+	test('cachedlogin/forplatformid returns the DTO for a bound (Steam) account', async () => {
+		// Seed a Steam-linked account directly (a real create_account needs a live
+		// ticket); assert the picker projects the CachedLogin DTO the client expects.
+		const steamId = '76561197962463299'
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 31380,
+					username: 'SteamPlayer',
+					platform: 0,
+					platformId: steamId,
+					lastLoginTime: '2026-07-09T21:20:31.419Z',
+				})
+			)
+			.run()
+		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/0/${steamId}`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([
+			{
+				platform: 0,
+				platformId: steamId,
+				accountId: 31380,
+				lastLoginTime: '2026-07-09T21:20:31.419Z',
+				requirePassword: false,
+			},
+		])
+	})
+
 	test('POST /connect/token issues a bearer token with role/scope claims', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
 			method: 'POST',
@@ -179,7 +252,7 @@ describe('auth worker routes', () => {
 	test('POST /connect/token refuses login to an account with no password set', async () => {
 		// Account 999 exists but never set a password — it has no credential to verify,
 		// so login by id alone is refused (this is the closed takeover hole).
-		await env.DB.prepare('INSERT OR IGNORE INTO accounts (data) VALUES (?1)')
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 			.bind(JSON.stringify({ accountId: 999, username: 'NoPass' }))
 			.run()
 		const res = await postToken('account_id=999&password=anything')
@@ -228,7 +301,7 @@ describe('auth worker routes', () => {
 		const sub = Number.parseInt(payload.sub as string, 10)
 		expect(sub).toBeGreaterThanOrEqual(2)
 		// The account exists in the DB with an auto-assigned (non-default) username.
-		const row = await env.DB.prepare('SELECT data FROM accounts WHERE account_id = ?1')
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = ?1')
 			.bind(sub)
 			.first<{ data: string }>()
 		expect(row).not.toBeNull()
