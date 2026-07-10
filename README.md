@@ -1,6 +1,6 @@
 # RecFlare
 
-<img width="256" height="256" alt="be292b38-950c-4d7f-b4ee-57fe361ede7d" src="https://github.com/user-attachments/assets/d7bb9266-64a2-449f-9267-89116c870f74" />
+<img width="1063" height="409" alt="image" src="https://github.com/user-attachments/assets/521d5b11-fb93-4900-9158-71d51d2343ae" />
 
 RecFlare is a scalable implementation of RecNet — the Rec Room backend — built on
 Cloudflare Workers. It implements the network services the Rec Room client talks
@@ -97,5 +97,6 @@ missing pieces. Again, another reason to come together on one project and
 stop gatekeeping.
 
 Unfortunately, they were all leaked code except for
-[CannedNet](https://github.com/CannedNet/CannedNet) so I will not list them
-publicly.
+[CannedNet](https://github.com/CannedNet/CannedNet) and jordanparki7's postman
+collection of RecNet APIs which is gone for some reason. So I will not list the
+leaks publicly.
