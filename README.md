@@ -87,3 +87,15 @@ The services share types, auth logic, and tooling, so keeping them in one repo
 keeps those in sync: `pnpm` workspaces share dependencies, `@repo/` packages
 share code, Turborepo runs build/test/lint with a single cached task graph, and
 cross-service changes land in one atomic commit.
+
+## Credits
+
+I started this after the official servers shut down, so I could only see the
+request shapes coming from the game client. I used many different projects as
+resources to get response shapes, logic examples, enums, etc. They all had
+missing pieces. Again, another reason to come together on one project and
+stop gatekeeping.
+
+Unfortunately, they were all leaked code except for
+[CannedNet](https://github.com/CannedNet/CannedNet) so I will not list them
+publicly.
