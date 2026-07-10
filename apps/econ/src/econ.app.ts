@@ -2,13 +2,13 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
 import defaultAvatarItems from '../static/default-avatar-items.json'
 import defaultAvatar from '../static/default-avatar.json'
 import myProgress from '../static/my-progress.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
-import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
 import type { Avatar } from './avatar-db'

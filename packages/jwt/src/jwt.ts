@@ -1,8 +1,9 @@
 /**
- * Minimal HS256 JWT generation.
+ * Minimal HS256 JWT generation and validation.
  *
- * The signing key is supplied by the caller from the `JWT_SECRET` binding
- * (a Cloudflare secret in deployed envs, `.dev.vars` locally) — see context.ts.
+ * The signing key is supplied by the caller from the shared `JWT_SECRET` binding
+ * (a Cloudflare secret in deployed envs, `.dev.vars` locally) — see each worker's
+ * context.ts. `auth` signs tokens; every worker validates them with the same key.
  */
 
 /** Token lifetime in seconds (mirrored in the `expires_in` response field). */
@@ -81,7 +82,7 @@ const TOKEN_SCOPES = [
 ]
 
 /** Roles granted — the client needs `gameClient` to operate. */
-const TOKEN_ROLES = ['gameClient', /* 'developer', 'moderator', 'junior'*/];
+const TOKEN_ROLES = ['gameClient' /* 'developer', 'moderator', 'junior'*/]
 
 export async function generateToken(
 	accountId: string,

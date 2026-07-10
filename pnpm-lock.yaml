@@ -59,6 +59,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -90,6 +93,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -124,6 +130,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -155,6 +164,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -217,6 +229,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -279,6 +294,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -347,6 +365,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -440,6 +461,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -471,6 +495,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -502,6 +529,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/jwt':
+        specifier: workspace:*
+        version: link:../../packages/jwt
       hono:
         specifier: 4.12.27
         version: 4.12.27
@@ -625,6 +655,18 @@ importers:
       vitest:
         specifier: 4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@6.4.3(@types/node@26.0.1)(jiti@2.6.1)(lightningcss@1.29.2)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/jwt:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 4.20260630.1
+        version: 4.20260630.1
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
 
   packages/oxlint-config:
     dependencies:

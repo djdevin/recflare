@@ -3,8 +3,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { RoomInstanceType } from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
-import { validateAndGetAccountId } from './jwt'
 import {
 	createRoomInstance,
 	getJoinableInstance,

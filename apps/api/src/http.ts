@@ -1,4 +1,4 @@
-import { validateAndGetAccountId } from './jwt'
+import { validateAndGetAccountId } from '@repo/jwt'
 
 import type { Context } from 'hono'
 import type { App } from './context'

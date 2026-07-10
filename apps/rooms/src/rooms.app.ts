@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
-import { validateAndGetAccountId } from './jwt'
 import {
 	cloneRoom,
 	findSubRoom,

@@ -2,9 +2,9 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
 import loadingScreenTipData from '../static/loading-screen-tip-data.json'
-import { validateAndGetAccountId } from './jwt'
 
 import type { Context } from 'hono'
 import type { App, Env } from './context'

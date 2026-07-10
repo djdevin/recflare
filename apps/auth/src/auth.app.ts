@@ -9,8 +9,8 @@ import {
 	setPasswordHash,
 } from '@repo/domain'
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from '@repo/jwt'
 
-import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from './jwt'
 import { hashPassword, verifyPassword } from './password'
 import { consumeRefreshToken, issueRefreshToken } from './refresh-db'
 
