@@ -1,18 +1,26 @@
 /**
- * Room storage on D1. Each room is a single JSON blob in the `data` column;
- * queryable fields (RoomId, Name, CreatorAccountId, IsDorm) are SQLite
- * generated (virtual) columns extracted from that JSON and indexed. This keeps
- * the room shape flexible while still allowing fast lookups by id/name/creator.
+ * Room storage on the shared `recflare` D1 database. Each room is a single JSON
+ * blob in the `data` column; queryable fields (RoomId, Name, CreatorAccountId,
+ * IsDorm) are SQLite generated (virtual) columns extracted from that JSON and
+ * indexed. This keeps the room shape flexible while still allowing fast lookups
+ * by id/name/creator — the same JSON-blob pattern `accounts-db` uses.
  *
- * `SCHEMA_DDL` mirrors the head schema after all migrations (`0001_init.sql`
- * created the table as `rooms`; `0005_rename_room.sql` renamed it to `room`);
- * the room data is seeded from `static/ImportRooms.json` by
- * `migrations/0002_import_rooms.sql`. Tests apply `SCHEMA_DDL` then seed the
+ * `ROOM_SCHEMA_DDL` mirrors the head schema after all migrations (`0001_init.sql`
+ * created the table as `rooms`; `0005_rename_room.sql` renamed it to `room`); the
+ * room data is seeded from `apps/rooms/static/ImportRooms.json` by
+ * `migrations/0002_import_rooms.sql`. Tests apply `ROOM_SCHEMA_DDL` then seed the
  * imported rooms directly.
+ *
+ * This module is the single source of truth for the helpers: the `rooms` worker
+ * (which owns the schema/migrations) uses the read/write set; the `match` worker
+ * uses the room lookups plus the dorm helpers; the `api` worker binds the same
+ * database read-only and uses `getRoomById`. Each imports the subset it needs.
  */
 
+import { Accessibility, Role } from './enums'
+
 /** Schema DDL (mirror of the head migration schema, sans the seed INSERT). */
-export const SCHEMA_DDL: string[] = [
+export const ROOM_SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS room (
 		data TEXT NOT NULL,
 		room_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.RoomId')) VIRTUAL,
@@ -47,9 +55,6 @@ interface RoomRole {
 	InvitedRole: number
 }
 
-/** Owner role value (max byte) — the room creator's tier. */
-const ROLE_OWNER = 255
-
 /**
  * Clone an existing room into a new one owned by `accountId`. Copies the source
  * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
@@ -81,7 +86,7 @@ export async function cloneRoom(
 	// any co-owners, e.g. the seeded base-room roles for accounts 1/2) must NOT
 	// carry over, or the clone would still list the template's owner as owner.
 	const roles: RoomRole[] = [
-		{ AccountId: accountId, Role: ROLE_OWNER, LastChangedByAccountId: null, InvitedRole: 0 },
+		{ AccountId: accountId, Role: Role.Owner, LastChangedByAccountId: null, InvitedRole: 0 },
 	]
 
 	const cloned: Room = {
@@ -128,16 +133,16 @@ export async function setRoomImage(db: D1Database, roomId: number, imageName: st
 }
 
 /**
- * Add a user tag (`Type: 0`) to a room's `Tags`, skipping it when already present
- * (case-insensitive). The caller supplies the already-loaded room (owner-checked)
- * to avoid a re-read; the whole room JSON is rewritten. Returns the updated room.
- */
-/**
  * Mutually-exclusive "main" room tags. The UI presents these as radio buttons, so
  * setting one clears any other main tag. Compared case-insensitively.
  */
 const MAIN_TAGS = new Set(['pvp', 'quest', 'game', 'hangout', 'art'])
 
+/**
+ * Add a user tag (`Type: 0`) to a room's `Tags`, skipping it when already present
+ * (case-insensitive). The caller supplies the already-loaded room (owner-checked)
+ * to avoid a re-read; the whole room JSON is rewritten. Returns the updated room.
+ */
 export async function toggleRoomTag(
 	db: D1Database,
 	roomId: number,
@@ -667,4 +672,71 @@ export async function getBaseRooms(db: D1Database, skip: number, take: number): 
 		.filter((r) => roomHasAnyTag(r, base))
 		.sort((a, b) => roomIdOf(a) - roomIdOf(b))
 		.slice(skip, skip + take)
+}
+
+/** The seeded template dorm (RoomId 1) that personal dorms are cloned from. */
+const DORM_TEMPLATE_ROOM_ID = 1
+
+/** A player's username from the shared accounts table (for naming their dorm), or null. */
+export async function getUsername(db: D1Database, accountId: number): Promise<string | null> {
+	const row = await db
+		.prepare('SELECT data FROM accounts WHERE account_id = ?1')
+		.bind(accountId)
+		.first<{ data: string }>()
+	if (!row) return null
+	const account = JSON.parse(row.data) as { username?: string }
+	return typeof account.username === 'string' ? account.username : null
+}
+
+/** A player's personal dorm room (owned by them, IsDorm), or null if none yet. */
+export async function getDormRoom(db: D1Database, accountId: number): Promise<Room | null> {
+	return parseOne(
+		await db
+			.prepare('SELECT data FROM room WHERE creator_account_id = ?1 AND is_dorm = 1 LIMIT 1')
+			.bind(accountId)
+			.first<RoomRow>()
+	)
+}
+
+/**
+ * The player's personal dorm room, created on first access. Cloned from the
+ * seeded template dorm (RoomId 1) but owned by the player and flagged IsDorm — so
+ * matchmaking routes them into their own dorm and they can save it via the
+ * owner-gated room-save. Idempotent: returns the existing dorm once created.
+ *
+ * NOTE: this is the one place the match worker writes to the rooms table (the
+ * `rooms` worker otherwise owns the schema).
+ */
+export async function getOrCreateDormRoom(db: D1Database, accountId: number): Promise<Room> {
+	const existing = await getDormRoom(db, accountId)
+	if (existing) return existing
+
+	const template = await getRoomById(db, DORM_TEMPLATE_ROOM_ID)
+	const idRow = await db
+		.prepare('SELECT COALESCE(MAX(room_id), 1) + 1 AS next FROM room')
+		.first<{ next: number }>()
+	const roomId = idRow?.next ?? 2
+
+	// Reuse the template's subroom (scene/capacity), owned by the player, starting
+	// from a clean save. Fall back to the base dorm scene if the template is absent.
+	const templateSub =
+		template && Array.isArray(template.SubRooms) && template.SubRooms.length > 0
+			? (template.SubRooms[0] as Record<string, unknown>)
+			: { SubRoomId: 1, UnitySceneId: '76d98498-60a1-430c-ab76-b54a29b7a163', MaxPlayers: 4 }
+
+	// Named after the owner: `@<username>'s Dorm` (falls back to the account id).
+	const username = (await getUsername(db, accountId)) ?? `Player${accountId}`
+
+	const room: Room = {
+		...(template ?? { Accessibility: Accessibility.Unlisted }),
+		RoomId: roomId,
+		Name: `@${username}'s Dorm`,
+		CreatorAccountId: accountId,
+		IsDorm: true,
+		Roles: [{ AccountId: accountId, Role: Role.Owner, LastChangedByAccountId: null, InvitedRole: 0 }],
+		SubRooms: [{ ...templateSub, CreatorAccountId: accountId }],
+		CreatedAt: new Date().toISOString(),
+	}
+	await db.prepare('INSERT INTO room (data) VALUES (?1)').bind(JSON.stringify(room)).run()
+	return room
 }

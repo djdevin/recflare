@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 
+import { getRoomById } from '@repo/domain'
+
 import { authedId } from '../http'
-import { getRoomById } from '../rooms-db'
 
 import type { App } from '../context'
 

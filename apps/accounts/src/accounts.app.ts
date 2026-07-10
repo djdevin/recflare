@@ -49,7 +49,7 @@ function unauthorized(c: Context<App>) {
 }
 
 /** Username changes a fresh account starts with (until one has been consumed). */
-const DEFAULT_USERNAME_CHANGES = 1
+const DEFAULT_USERNAME_CHANGES = 5
 
 /**
  * Username-change result envelope: `{ success, error, value }`, always HTTP 200.

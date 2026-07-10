@@ -3,13 +3,14 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import '../../rooms.app'
 
+import { ROOM_SCHEMA_DDL } from '@repo/domain'
+
 import importRooms from '../../../static/ImportRooms.json'
 import {
 	createRoomInstance,
 	getRoomInstance,
 	SCHEMA_DDL as ROOM_INSTANCE_SCHEMA_DDL,
 } from '../../room-instance-db'
-import { SCHEMA_DDL } from '../../rooms-db'
 
 import type { Env } from '../../context'
 
@@ -47,7 +48,7 @@ async function bearer(sub: string): Promise<Record<string, string>> {
 beforeAll(async () => {
 	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
-	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of ROOM_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO room (data) VALUES (?1)')
 	await env.DB.batch(importRooms.map((r) => insert.bind(JSON.stringify(r))))

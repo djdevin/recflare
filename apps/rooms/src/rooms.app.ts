@@ -1,9 +1,6 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
-import { validateAndGetAccountId } from '@repo/jwt'
-
 import {
 	cloneRoom,
 	findSubRoom,
@@ -30,7 +27,9 @@ import {
 	toggleCheer,
 	toggleFavorite,
 	toggleRoomTag,
-} from './rooms-db'
+} from '@repo/domain'
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
 import type { Context } from 'hono'
 import type { App } from './context'

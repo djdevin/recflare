@@ -1,7 +1,12 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { RoomInstanceType } from '@repo/domain'
+import {
+	getOrCreateDormRoom,
+	getRoomById,
+	getRoomByName,
+	RoomInstanceType,
+} from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
@@ -11,11 +16,10 @@ import {
 	getRoomInstancesByRoom,
 	setRoomInstanceInProgress,
 } from './room-instance-db'
-import { getOrCreateDormRoom, getRoomById, getRoomByName } from './rooms-db'
 
+import type { Room } from '@repo/domain'
 import type { Context } from 'hono'
 import type { App } from './context'
-import type { Room } from './rooms-db'
 
 /**
  * The matchmaking surface. Rooms and room instances are D1-backed (matchmaking
