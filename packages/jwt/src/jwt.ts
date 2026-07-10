@@ -95,11 +95,11 @@ export async function generateToken(
 			idp: 'local',
 			platform,
 			platform_id: platformId,
-			'rn.ver': '20210129',
+			'rn.ver': '20230302',
 			'rn.plat': '0',
 			role: TOKEN_ROLES,
 			scope: TOKEN_SCOPES,
-			jti: crypto.randomUUID().replace(/-/g, '').toUpperCase(),
+			jti: crypto.randomUUID(),
 		},
 		secret
 	)

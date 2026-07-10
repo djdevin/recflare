@@ -64,7 +64,7 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		// The `img` worker serves it back by that key (slashes and all), which is the
 		// returned ImageName.
 		const datePrefix = new Date().toISOString().slice(0, 10) + '/'
-		const name = datePrefix + crypto.randomUUID().replace(/-/g, '') + extension
+		const name = datePrefix + crypto.randomUUID() + extension
 		await c.env.IMAGES.put(name, await file.arrayBuffer(), {
 			httpMetadata: { contentType: file.type || 'image/jpeg' },
 		})

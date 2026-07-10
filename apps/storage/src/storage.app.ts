@@ -14,7 +14,7 @@ import type { App } from './context'
 
 /**
  * The client's `UploadFileType` enum → the R2 subfolder uploads of that type are
- * stored under. `Unknown` (0) is intentionally absent: like the reference
+ * stored under. `Unknown` (0) is intentionally absent: like the referencecdn
  * server's `makeUploadName`, an unrecognized type has no destination and is
  * rejected rather than stored.
  *
@@ -65,7 +65,8 @@ const app = new Hono<App>()
 	// File upload. Auth-gated — any valid account token is allowed (no role check).
 	// Multipart form with `FileType` (the client's UploadFileType enum) and a binary
 	// part. Stores the file in the shared CDN R2 bucket under
-	// `<type-subfolder>/<random-name>` and returns the generated filename the client
+	// `<type-subfolder>/<upload-date>/<random-name>` and returns the generated name
+	// (the `<upload-date>/<random-name>` part the `cdn` worker serves back) the client
 	// references it by. Also accepts a name-only post (no binary) that just echoes
 	// back an explicit `name`/`filename`/`imagename`. Mirrors the reference `Upload`.
 	.post('/upload', async (c) => {
@@ -84,7 +85,11 @@ const app = new Hono<App>()
 				// makeUploadName == "" → no destination for an unknown/missing type.
 				return c.json({ error: 'missing or unknown FileType' }, 400)
 			}
-			const filename = crypto.randomUUID().replace(/-/g, '')
+			// Folder each upload under its date (e.g. `room/2026-02-03/<uuid>`) so the
+			// bucket stays browsable. The date is part of the returned name, so the key
+			// the `cdn` worker reads back (`<subfolder>/<name>`) still round-trips.
+			const datePrefix = new Date().toISOString().slice(0, 10)
+			const filename = `${datePrefix}/${crypto.randomUUID()}`
 			await c.env.CDN_ASSETS.put(`${subfolder}/${filename}`, await file.arrayBuffer(), {
 				httpMetadata: { contentType: file.type || 'application/octet-stream' },
 			})

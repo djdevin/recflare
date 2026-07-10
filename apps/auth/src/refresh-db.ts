@@ -38,11 +38,10 @@ async function hashToken(token: string): Promise<string> {
 
 /**
  * Mint and persist a new refresh token for the given login, returning the raw
- * token — the only moment it exists in plaintext (only its hash is stored). The
- * `-1` suffix mirrors the shape the client expects.
+ * token — the only moment it exists in plaintext (only its hash is stored).
  */
 export async function issueRefreshToken(db: D1Database, ctx: RefreshContext): Promise<string> {
-	const token = `${crypto.randomUUID().replace(/-/g, '').toUpperCase()}-1`
+	const token = `${crypto.randomUUID()}`
 	const now = Math.floor(Date.now() / 1000)
 	await db
 		.prepare(

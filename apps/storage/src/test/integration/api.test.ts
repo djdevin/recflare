@@ -73,7 +73,9 @@ it('POST /upload stores a RoomMetadata (FileType 6) file under roommetadata/ and
 	})
 	expect(res.status).toBe(200)
 	const { filename } = (await res.json()) as { filename: string }
-	expect(filename).toMatch(/^[0-9a-f]{32}$/)
+	expect(filename).toMatch(
+		/^\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+	)
 
 	// The bytes are persisted in the shared CDN bucket under the type subfolder.
 	const stored = await env.CDN_ASSETS.get(`roommetadata/${filename}`)

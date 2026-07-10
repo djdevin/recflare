@@ -102,7 +102,9 @@ const app = new Hono<App>()
 	.get('/sigs/:sigName', (c) => serveAsset(c, `sigs/${c.req.param('sigName')}`))
 
 	// Room build data by name. The client fetches this for a SubRoom's DataBlob to
-	// load the room. Streamed from R2 under `room/`.
-	.get('/room/:dataBlob', (c) => serveAsset(c, `room/${c.req.param('dataBlob')}`))
+	// load the room. Streamed from R2 under `room/`. The name may contain slashes
+	// (uploads are foldered by date, e.g. `2026-02-03/<uuid>`), so match the rest of
+	// the path.
+	.get('/room/:dataBlob{.+}', (c) => serveAsset(c, `room/${c.req.param('dataBlob')}`))
 
 export default app
