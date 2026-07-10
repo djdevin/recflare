@@ -34,13 +34,12 @@ resulting in bugs getting fixed faster. I hope.
 
 ## Game client
 
+See [RecFlare Client](https://github.com/djdevin/recflare-client)
+
 RecFlare is compatible with the
 [RecNet Plugin](https://github.com/djdevin/recnet-plugin) and the build of Rec
 Room with manifest `7859140924515540835` (around 2023). Other client or game versions may expect
 different endpoints and response shapes and are not supported.
-
-**There is no downloadable game yet!** But, see the above project page for
-information on how to download a regular copy of Rec Room to connect to the cloud.
 
 Generally speaking any client that effectively rewrites the nameserver with the
 right mods can be used with this server.
