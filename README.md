@@ -23,7 +23,7 @@ There are already so many multiplayer clones, why?
 
 # Infrastructure
 
-RecFlare uses a true microservice architecture which, near infinitely scalable
+RecFlare uses a true microservice architecture which is infinitely scalable
 and could support the same number of concurrent users as the original game. It
 will never run out of CPU, memory, or disk space.
 
