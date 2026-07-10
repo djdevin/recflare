@@ -4,6 +4,19 @@
 	"main": "src/clubs.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` DB (created manually with `wrangler d1 create recflare`; the
+	// "local" placeholder is spliced out at deploy time). The `clubs` worker owns the
+	// `club` / `club_member` tables (schema/migration here); its own migrations_table
+	// keeps history separate from the other workers' migrations on the shared database.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_clubs"
+		}
+	],
 	"logpush": false,
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
 	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"

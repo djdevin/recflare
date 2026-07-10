@@ -4,13 +4,17 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
+import {
+	createClub,
+	getClub,
+	getClubsByCreator,
+	getClubsByMember,
+	joinClub,
+	leaveClub,
+} from './clubs-db'
+
 import type { Context } from 'hono'
 import type { App } from './context'
-
-/**
- * The only endpoint is auth-gated and returns 404 unconditionally — no DB
- * binding involved.
- */
 
 /**
  * Resolve the account id from a Bearer token. Returns `null` when the header is
@@ -73,18 +77,81 @@ const app = new Hono<App>()
 	.get('/subscription/subscriberCount/:accountId{[0-9]+}', (c) => c.json(0))
 
 	// The player's clubs that have unread announcements (MyClubsWithUnread-
-	// Announcements). No DB → empty list.
+	// Announcements). No announcements backing yet → empty list.
 	.get('/announcements/v2/mine/unread', (c) => c.json([]))
 
-	// The clubs the player is a member of (GetMyMembershipClubs). No DB → empty.
-	.get('/club/mine/member', (c) => c.json([]))
+	// The clubs the player is a member of (GetMyMembershipClubs). Auth-gated; reads
+	// the caller's memberships from `club_member`.
+	.get('/club/mine/member', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+		return c.json(await getClubsByMember(c.env.DB, id))
+	})
 
-	// The clubs the player created (GetMyCreatedClubs). No DB → empty.
-	.get('/club/mine/created', (c) => c.json([]))
+	// The clubs the player created (GetMyCreatedClubs). Auth-gated.
+	.get('/club/mine/created', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+		return c.json(await getClubsByCreator(c.env.DB, id))
+	})
 
 	// The set of club category tags a club can be filed under — a fixed list.
 	.get('/club/categoryTags', (c) =>
 		c.json(['Social', 'Creative', 'Competitive', 'Casual', 'Entertainment'])
 	)
+
+	// Create a club owned by the caller. Auth-gated (401). Body carries the club
+	// fields (Name required; the rest fall back to the model defaults). The creator
+	// is auto-joined as the owner. Returns the new Club.
+	.post('/club', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+		const int = (v: unknown): number | undefined => {
+			const n = typeof v === 'string' ? Number.parseInt(v, 10) : Number.NaN
+			return Number.isNaN(n) ? undefined : n
+		}
+		const bool = (v: unknown): boolean | undefined =>
+			typeof v === 'string' ? v.toLowerCase() === 'true' : undefined
+
+		const name = str(body.Name)?.trim() ?? ''
+		if (name === '') return c.json({ error: 'You must enter a name for your club.' }, 400)
+
+		const club = await createClub(c.env.DB, id, {
+			name,
+			description: str(body.Description),
+			category: str(body.Category),
+			visibility: int(body.Visibility),
+			joinability: int(body.Joinability),
+			allowJuniors: bool(body.AllowJuniors),
+			mainImageName: str(body.MainImageName),
+			clubType: int(body.ClubType),
+			minLevel: int(body.MinLevel),
+		})
+		return c.json(club)
+	})
+
+	// A single club by id. 404 when the club isn't in the DB. Public.
+	.get('/club/:clubId{[0-9]+}', async (c) => {
+		const club = await getClub(c.env.DB, Number.parseInt(c.req.param('clubId'), 10))
+		return club ? c.json(club) : c.notFound()
+	})
+
+	// Join / leave a club (auth-gated, idempotent). Both return the club with its
+	// refreshed MemberCount; 404 when the club doesn't exist.
+	.post('/club/:clubId{[0-9]+}/join', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+		const club = await joinClub(c.env.DB, Number.parseInt(c.req.param('clubId'), 10), id)
+		return club ? c.json(club) : c.notFound()
+	})
+	.post('/club/:clubId{[0-9]+}/leave', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+		const club = await leaveClub(c.env.DB, Number.parseInt(c.req.param('clubId'), 10), id)
+		return club ? c.json(club) : c.notFound()
+	})
 
 export default app

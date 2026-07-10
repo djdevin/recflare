@@ -6,6 +6,8 @@ export type Env = SharedHonoEnv & {
 	// with `await env.JWT_SECRET.get()`; all workers bind the same store so tokens
 	// signed by `auth` verify here.
 	JWT_SECRET: SecretsStoreSecret
+	// Shared `recflare` D1 database holding the club / club_member tables. See clubs-db.ts.
+	DB: D1Database
 	// add additional Bindings here
 }
 
