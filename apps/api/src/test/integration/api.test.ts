@@ -5,10 +5,12 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import '../../api.app'
 
 import { SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
+import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL } from '../../inventions-db'
 import { SCHEMA_DDL as RELATIONSHIPS_SCHEMA_DDL } from '../../relationships-db'
 
 import type { Env } from '../../context'
 import type { SavedImage } from '../../images-db'
+import type { SavedInvention } from '../../inventions-db'
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -72,6 +74,9 @@ beforeAll(async () => {
 
 	// Relationships table (owned by the api worker) — friendship endpoints use it.
 	for (const stmt of RELATIONSHIPS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+
+	// Inventions table (owned by the api worker) — invention save/mine use it.
+	for (const stmt of INVENTIONS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 })
 
 // Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
@@ -247,10 +252,92 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual({})
 	})
 
-	test('GET /api/inventions/v2/mine returns []', async () => {
+	test('GET /api/inventions/v2/mine 401s without a bearer token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/mine`)
+		expect(res.status).toBe(401)
+	})
+
+	test('GET /api/inventions/v2/mine returns [] for a player with none', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/mine`, {
+			headers: await bearer('7777'),
+		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
+	})
+
+	test('POST /api/inventions/v6/save persists the invention and lists it in mine', async () => {
+		const body = {
+			name: '071126 13:10:50',
+			description: 'No description yet',
+			imageName: '2026-07-11/0ff3d5f9-e544-422d-84a0-dec46195a82b.jpg',
+			instantiationCost: 103,
+			lightsCost: 0,
+			chipsCost: 0,
+			cloudVariablesCost: 0,
+			aiCost: 0,
+			creationRoomId: 73,
+			inventionDataFilename: '2026-07-11/cc15a7fa-2e81-4da0-b8f1-2a4dcd8ae1a3',
+			referencedInventions: [],
+			creatorAccountRole: 255,
+		}
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('5150')), 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+		})
+		expect(res.status).toBe(200)
+		const saved = (await res.json()) as SavedInvention
+		expect(saved.InventionId).toBeGreaterThan(0)
+		expect(saved.CreatorPlayerId).toBe(5150)
+		expect(saved.Name).toBe(body.name)
+		expect(saved.Description).toBe(body.description)
+		expect(saved.ImageName).toBe(body.imageName)
+		// Costs + the data blob live on the nested CurrentVersion.
+		expect(saved.CurrentVersion.InstantiationCost).toBe(103)
+		expect(saved.CurrentVersion.BlobName).toBe(body.inventionDataFilename)
+		expect(saved.CreationRoomId).toBe(73)
+		expect(saved.CreatorPermission).toBe(255)
+		// Freshly saved → private/unpublished until the player publishes it.
+		expect(saved.IsPublished).toBe(false)
+		expect(saved.FirstPublishedAt).toBeNull()
+		expect(typeof saved.CreatedAt).toBe('string')
+
+		const mine = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/mine`, {
+			headers: await bearer('5150'),
+		})
+		expect(mine.status).toBe(200)
+		const list = (await mine.json()) as SavedInvention[]
+		expect(list.map((i) => i.InventionId)).toContain(saved.InventionId)
+
+		// The saved invention is fetchable by id via the v1 lookup.
+		const one = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1?inventionId=${saved.InventionId}`
+		)
+		expect(one.status).toBe(200)
+		expect((await one.json()) as SavedInvention).toMatchObject({ InventionId: saved.InventionId })
+	})
+
+	test('POST /api/inventions/v6/save 401s without a bearer token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'x' }),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /api/inventions/v6/save 400s without a name', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer()), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ description: 'no name' }),
+		})
+		expect(res.status).toBe(400)
+	})
+
+	test('GET /api/inventions/v1 404s for an unknown invention', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v1?inventionId=999999`)
+		expect(res.status).toBe(404)
 	})
 
 	test('POST /api/sanitize/v1 echoes the value; isPure reports true', async () => {
@@ -663,18 +750,30 @@ describe('relationships', () => {
 
 	test('send → the two sides see Sent / Received; accept → both Friend; remove → gone', async () => {
 		// 500 sends 501 a request.
-		const sent = (await (await mutate('/api/relationships/v2/sendfriendrequest', '500', 501)).json()) as Rel
+		const sent = (await (
+			await mutate('/api/relationships/v2/sendfriendrequest', '500', 501)
+		).json()) as Rel
 		expect(sent).toMatchObject({ PlayerID: 501, RelationshipType: 1 })
 
 		// 500 sees it as Sent (1); 501 sees the mirror as Received (2).
-		expect(await relationships('500')).toEqual([{ PlayerID: 501, RelationshipType: 1, Favorited: 0, Ignored: 0, Muted: 0 }])
-		expect(await relationships('501')).toEqual([{ PlayerID: 500, RelationshipType: 2, Favorited: 0, Ignored: 0, Muted: 0 }])
+		expect(await relationships('500')).toEqual([
+			{ PlayerID: 501, RelationshipType: 1, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
+		expect(await relationships('501')).toEqual([
+			{ PlayerID: 500, RelationshipType: 2, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
 
 		// 501 accepts → both are Friends (3).
-		const accepted = (await (await mutate('/api/relationships/v2/acceptfriendrequest', '501', 500)).json()) as Rel
+		const accepted = (await (
+			await mutate('/api/relationships/v2/acceptfriendrequest', '501', 500)
+		).json()) as Rel
 		expect(accepted).toMatchObject({ PlayerID: 500, RelationshipType: 3 })
-		expect(await relationships('500')).toEqual([{ PlayerID: 501, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
-		expect(await relationships('501')).toEqual([{ PlayerID: 500, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+		expect(await relationships('500')).toEqual([
+			{ PlayerID: 501, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
+		expect(await relationships('501')).toEqual([
+			{ PlayerID: 500, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
 
 		// 500 removes → neither side has a relationship.
 		expect((await mutate('/api/relationships/v2/removefriend', '500', 501)).status).toBe(200)
@@ -685,15 +784,21 @@ describe('relationships', () => {
 	test('addfriend makes them friends directly', async () => {
 		const res = (await (await mutate('/api/relationships/v2/addfriend', '510', 511)).json()) as Rel
 		expect(res).toMatchObject({ PlayerID: 511, RelationshipType: 3 })
-		expect(await relationships('511')).toEqual([{ PlayerID: 510, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+		expect(await relationships('511')).toEqual([
+			{ PlayerID: 510, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
 	})
 
 	test('crossing friend requests become a friendship', async () => {
 		await mutate('/api/relationships/v2/sendfriendrequest', '520', 521)
 		// 521 sends back to 520 → the crossing requests resolve to Friend for both.
-		const crossed = (await (await mutate('/api/relationships/v2/sendfriendrequest', '521', 520)).json()) as Rel
+		const crossed = (await (
+			await mutate('/api/relationships/v2/sendfriendrequest', '521', 520)
+		).json()) as Rel
 		expect(crossed).toMatchObject({ PlayerID: 520, RelationshipType: 3 })
-		expect(await relationships('520')).toEqual([{ PlayerID: 521, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 }])
+		expect(await relationships('520')).toEqual([
+			{ PlayerID: 521, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
 	})
 
 	test('a self-targeted request is rejected', async () => {
@@ -739,6 +844,8 @@ describe('relationships', () => {
 		})
 		// 710's own side is untouched — the requester never ignored anyone.
 		const view710 = (await relationships('710')) as unknown as FullRel[]
-		expect(view710).toEqual([expect.objectContaining({ PlayerID: 711, RelationshipType: 1, Ignored: 0 })])
+		expect(view710).toEqual([
+			expect.objectContaining({ PlayerID: 711, RelationshipType: 1, Ignored: 0 }),
+		])
 	})
 })
