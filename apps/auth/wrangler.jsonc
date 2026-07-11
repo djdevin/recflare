@@ -18,14 +18,6 @@
 			"migrations_table": "d1_migrations_auth"
 		}
 	],
-	// Shared match-presence KV (owned by the `match` worker) — used to place new
-	// accounts into the Orientation room on signup.
-	"kv_namespaces": [
-		{
-			"binding": "RECFLARE_MATCH_PRESENCE",
-			"id": "local"
-		}
-	],
 	"logpush": false,
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
 	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"

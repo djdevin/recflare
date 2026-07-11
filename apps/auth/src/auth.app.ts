@@ -10,6 +10,7 @@ import {
 	RoomInstanceType,
 	setLastLoginTime,
 	setPasswordHash,
+	setPresence,
 } from '@repo/domain'
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from '@repo/jwt'
@@ -48,16 +49,14 @@ const ORIENTATION_ROOM_ID = 13
  * client treats presence as out-of-sync and bounces the player to the dorm.
  */
 const ORIENTATION_INSTANCE_ID = -2
-/** Presence TTL (s) — matches the match worker; refreshed by each heartbeat. */
-const PRESENCE_TTL = 900
 
 /**
  * Seed a freshly created account's match presence to the Orientation room. The
  * client is placed into Orientation by its new-user flow without a matchmake
  * call, so the match heartbeat would otherwise report no/stale (dorm) presence
  * and bounce the player out. We write the Orientation instance (built from the
- * shared rooms D1, matching the match worker's `roomInstanceFromRoom` shape) so
- * the heartbeat keeps them there.
+ * shared rooms D1, matching the match worker's `roomInstanceFromRoom` shape) into
+ * the shared `presence` table (see @repo/domain) so the heartbeat keeps them there.
  */
 async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: number): Promise<void> {
 	const row = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
@@ -92,16 +91,14 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 		isInProgress: false,
 		EncryptVoiceChat: false,
 	}
-	const presence = {
+	await setPresence(env.DB, {
+		accountId,
 		roomInstance,
 		statusVisibility: 0,
 		deviceClass: 0,
 		vrMovementMode: 1,
 		platform: 0,
 		appVersion: '20230302',
-	}
-	await env.RECFLARE_MATCH_PRESENCE.put(`presence:${accountId}`, JSON.stringify(presence), {
-		expirationTtl: PRESENCE_TTL,
 	})
 }
 

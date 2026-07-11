@@ -2,7 +2,12 @@ import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import { ROOM_INSTANCE_SCHEMA_DDL } from '@repo/domain'
+import {
+	countPlayersInInstance,
+	getRoomInstance,
+	PRESENCE_SCHEMA_DDL,
+	ROOM_INSTANCE_SCHEMA_DDL,
+} from '@repo/domain'
 
 import '../../match.app'
 
@@ -40,6 +45,14 @@ const TEST_ROOMS = [
 		CreatorAccountId: 42,
 		SubRooms: [{ SubRoomId: 3, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 8 }],
 	},
+	{
+		// A single-seat room so one player fills its instance (fullness tests).
+		RoomId: 5,
+		Name: 'SoloRoom',
+		IsDorm: false,
+		Accessibility: 1,
+		SubRooms: [{ SubRoomId: 5, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 1 }],
+	},
 ]
 
 beforeAll(async () => {
@@ -58,6 +71,8 @@ beforeAll(async () => {
 	await env.DB.batch(TEST_ROOMS.map((r) => insert.bind(JSON.stringify(r))))
 	// Room instances (owned by the rooms worker) — matchmaking finds/creates here.
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	// Presence table (owned by the rooms worker) — written/read by matchmake + heartbeat.
+	for (const stmt of PRESENCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 
 	// Accounts table (owned by the auth worker) — dorm creation reads the username
 	// to name the room. Seed the players the dorm tests authenticate as.
@@ -456,6 +471,117 @@ describe('auth-gated endpoints', () => {
 			appVersion: '20210129',
 			isOnline: true,
 		})
+	})
+
+	// Seed presence directly into D1 with a chosen `expiresAt` (epoch seconds) so the
+	// TTL-refresh branch can be exercised deterministically (independent of timing).
+	const seedPresence = (id: number, expiresAt: number) =>
+		env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: id,
+					roomInstance: { roomInstanceId: 1000042, roomId: 1 },
+					statusVisibility: 0,
+					deviceClass: 0,
+					vrMovementMode: 1,
+					platform: 0,
+					appVersion: '20230302',
+					expiresAt,
+				})
+			)
+			.run()
+
+	const storedExpiresAt = async (id: number): Promise<number> => {
+		const row = await env.DB.prepare('SELECT data FROM presence WHERE account_id = ?1')
+			.bind(id)
+			.first<{ data: string }>()
+		return (JSON.parse(row!.data) as { expiresAt: number }).expiresAt
+	}
+
+	const nowSeconds = () => Math.floor(Date.now() / 1000)
+
+	test('heartbeat refreshes presence when its TTL is close to lapsing', async () => {
+		// TTL about to lapse (well inside the refresh window).
+		const nearExpiry = nowSeconds() + 10
+		await seedPresence(700, nearExpiry)
+		await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+			method: 'POST',
+			headers: await bearer('700'),
+		})
+		// The heartbeat re-wrote the row, pushing expiry ~PRESENCE_TTL_SECONDS ahead.
+		expect(await storedExpiresAt(700)).toBeGreaterThan(nearExpiry + 60)
+	})
+
+	test('heartbeat skips the write when nothing changed and the TTL is healthy', async () => {
+		// A distinctive, far-future expiry (outside the refresh window) survives
+		// untouched — proving the unchanged heartbeat did not re-write the row.
+		const healthyExpiry = nowSeconds() + 800
+		await seedPresence(701, healthyExpiry)
+		await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+			method: 'POST',
+			headers: await bearer('701'),
+		})
+		expect(await storedExpiresAt(701)).toBe(healthyExpiry)
+	})
+
+	test('countPlayersInInstance counts live players in a room instance (excludes expired)', async () => {
+		// Three players in instance 1000099 — two live, one expired.
+		const seedInInstance = (id: number, expiresAt: number) =>
+			env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+				.bind(
+					JSON.stringify({
+						accountId: id,
+						roomInstance: { roomInstanceId: 1000099, roomId: 2 },
+						statusVisibility: 0,
+						deviceClass: 0,
+						vrMovementMode: 1,
+						platform: 0,
+						appVersion: '20230302',
+						expiresAt,
+					})
+				)
+				.run()
+		await seedInInstance(710, nowSeconds() + 800)
+		await seedInInstance(711, nowSeconds() + 800)
+		await seedInInstance(712, nowSeconds() - 10) // already expired → not counted
+		expect(await countPlayersInInstance(env.DB, 1000099)).toBe(2)
+		expect(await countPlayersInInstance(env.DB, 999999)).toBe(0)
+	})
+
+	// Matchmake into a room, returning the resulting instance id.
+	const matchmakeInto = async (room: string, sub: string): Promise<number> => {
+		const res = (await (
+			await exports.default.fetch(`${ORIGIN}/matchmake/${room}`, {
+				method: 'POST',
+				headers: await bearer(sub),
+			})
+		).json()) as { roomInstance: { roomInstanceId: number } }
+		return res.roomInstance.roomInstanceId
+	}
+
+	test('matchmaking flags an instance full once it reaches capacity, and routes the next player elsewhere', async () => {
+		// SoloRoom (RoomId 5, MaxPlayers 1): one player fills its instance.
+		const first = await matchmakeInto('5', '820')
+		expect((await getRoomInstance(env.DB, first))?.isFull).toBe(true)
+		// A second player can't join the full instance — matchmaking makes a fresh one.
+		const second = await matchmakeInto('5', '821')
+		expect(second).not.toBe(first)
+		expect((await getRoomInstance(env.DB, second))?.isFull).toBe(true)
+	})
+
+	test('matchmaking leaves an instance not full below capacity', async () => {
+		// RecCenter (RoomId 2, MaxPlayers 12): one player does not fill it.
+		const instanceId = await matchmakeInto('2', '822')
+		expect((await getRoomInstance(env.DB, instanceId))?.isFull).toBe(false)
+	})
+
+	test('leaving a full instance clears its full flag', async () => {
+		// Fill SoloRoom, then the same player matchmakes into RecCenter — the SoloRoom
+		// instance they left should no longer be full.
+		const solo = await matchmakeInto('5', '823')
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(true)
+		await matchmakeInto('2', '823')
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
 	})
 
 	test('player/login, exclusivelogin and logout all preserve presence', async () => {

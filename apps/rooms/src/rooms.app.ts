@@ -10,6 +10,7 @@ import {
 	getFeaturedRooms,
 	getHotRooms,
 	getInteraction,
+	getPresence,
 	getPublicRoomsByCreator,
 	getRecommendedRooms,
 	getRoomById,
@@ -66,13 +67,9 @@ function allIds(idParam: string): number[] {
  * hardcoded moderator/dev accounts. */
 const MAKER_PEN_ACCOUNT_IDS = new Set([1, 2, 3])
 
-/** Presence KV key (owned by the `match` worker); keep in sync with match's `presenceKey`. */
-const presenceKey = (id: number) => `presence:${id}`
-
-/** The slice of the match worker's presence record we read — the caller's current
- * room instance. Mirrors the reference server's HeartbeatDB row. */
+/** The slice of the shared presence row we read — the caller's current room instance. */
 interface PresenceView {
-	roomInstance?: { roomInstanceId?: number } | null
+	roomInstanceId?: number
 }
 
 /**
@@ -117,15 +114,12 @@ function photonAccessToken(accountId: number, roomInstanceId: number | null) {
 /**
  * Photon access-token handler (served bare and under `/roomserver`). Auth-gated:
  * resolves the caller, reads their current room instance from the shared
- * presence KV, and returns the permissions + token.
+ * `presence` table (see @repo/domain), and returns the permissions + token.
  */
 async function handlePhotonAccessToken(c: Context<App>) {
 	const accountId = await authedAccountId(c)
 	if (accountId === null) return unauthorized(c)
-	const presence = await c.env.RECFLARE_MATCH_PRESENCE.get<PresenceView>(
-		presenceKey(accountId),
-		'json'
-	)
+	const presence = await getPresence<PresenceView>(c.env.DB, accountId)
 	const roomInstanceId = presence?.roomInstance?.roomInstanceId ?? null
 	return c.json(photonAccessToken(accountId, roomInstanceId))
 }

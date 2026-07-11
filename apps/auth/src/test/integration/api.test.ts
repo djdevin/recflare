@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../auth.app'
 
-import { SCHEMA_DDL } from '@repo/domain'
+import { PRESENCE_SCHEMA_DDL, SCHEMA_DDL } from '@repo/domain'
 
 import { hashPassword } from '../../password'
 import { REFRESH_SCHEMA_DDL } from '../../refresh-db'
@@ -32,6 +32,8 @@ beforeAll(async () => {
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of REFRESH_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	// Presence table (owned by the rooms worker) — signup seeds the Orientation row.
+	for (const stmt of PRESENCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 
 	// Seed the accounts the credential-login tests use, each with LOGIN_PASSWORD set.
 	const hash = await hashPassword(LOGIN_PASSWORD)
@@ -312,11 +314,15 @@ describe('auth worker routes', () => {
 	test('POST /connect/token create_account seeds the new player into Orientation', async () => {
 		const payload = await tokenFor('grant_type=create_account&platform_id=steam-456')
 		const sub = payload.sub as string
-		const presence = await env.RECFLARE_MATCH_PRESENCE.get<{
+		// Presence is written to the shared `presence` D1 table (account_id keyed).
+		const row = await env.DB.prepare('SELECT data FROM presence WHERE account_id = ?1')
+			.bind(Number(sub))
+			.first<{ data: string }>()
+		expect(row).not.toBeNull()
+		const presence = JSON.parse(row!.data) as {
 			roomInstance: { roomInstanceId: number; roomId: number; location: string; name: string }
-		}>(`presence:${sub}`, 'json')
-		expect(presence).not.toBeNull()
-		expect(presence!.roomInstance).toMatchObject({
+		}
+		expect(presence.roomInstance).toMatchObject({
 			roomInstanceId: -2,
 			roomId: 13,
 			location: ORIENTATION_SCENE,

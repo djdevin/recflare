@@ -6,6 +6,7 @@ import '../../rooms.app'
 import {
 	createRoomInstance,
 	getRoomInstance,
+	PRESENCE_SCHEMA_DDL,
 	ROOM_INSTANCE_SCHEMA_DDL,
 	ROOM_SCHEMA_DDL,
 } from '@repo/domain'
@@ -50,6 +51,8 @@ beforeAll(async () => {
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of ROOM_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of ROOM_INSTANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	// Presence table (read by the photon access-token handler).
+	for (const stmt of PRESENCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	const insert = env.DB.prepare('INSERT OR IGNORE INTO room (data) VALUES (?1)')
 	await env.DB.batch(importRooms.map((r) => insert.bind(JSON.stringify(r))))
 })
@@ -785,10 +788,15 @@ describe('rooms endpoints', () => {
 
 	it('GET /photon_access_token (bare + /roomserver) returns permissions + presence instance', async () => {
 		// Seed the caller's presence so RoomInstanceId reflects their current instance.
-		await env.RECFLARE_MATCH_PRESENCE.put(
-			'presence:777',
-			JSON.stringify({ roomInstance: { roomInstanceId: 1000042 } })
-		)
+		await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 777,
+					roomInstance: { roomInstanceId: 1000042 },
+					expiresAt: Math.floor(Date.now() / 1000) + 900,
+				})
+			)
+			.run()
 		const headers = await bearer('777')
 		for (const path of ['/photon_access_token', '/roomserver/photon_access_token']) {
 			const res = await SELF.fetch(`${ORIGIN}${path}`, { headers })

@@ -19,14 +19,6 @@
 			"migrations_dir": "migrations"
 		}
 	],
-	// Shared player-presence KV (owned by the `match` worker). Read-only here to
-	// resolve the caller's current room instance for the photon access token.
-	"kv_namespaces": [
-		{
-			"binding": "RECFLARE_MATCH_PRESENCE",
-			"id": "local"
-		}
-	],
 	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by
 	// the `notify` worker). We only invoke its RPC methods; no migration here.
 	"durable_objects": {

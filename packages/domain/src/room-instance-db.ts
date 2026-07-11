@@ -12,6 +12,8 @@
  * the client DTO (`toDto`).
  */
 
+import { countPlayersInInstance } from './presence-db'
+
 /** Schema DDL (mirror of migrations/0004_room_instance.sql). */
 export const ROOM_INSTANCE_SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS room_instance (
@@ -199,6 +201,37 @@ export async function setRoomInstanceInProgress(
 		.bind(JSON.stringify(stored), id)
 		.run()
 	return toDto(stored)
+}
+
+/**
+ * Recompute an instance's `isFull` flag from live match presence: full once the
+ * number of players currently present in the instance reaches its `maxCapacity`
+ * (capacity 0 — unset — is never full). Rewrites the JSON blob (the generated
+ * `is_full` column follows it) only when the flag actually changes. Returns the
+ * new fullness, or null when the instance has no row (e.g. the synthetic
+ * dorm/orientation instances). Matchmaking calls this for the instance a player
+ * enters and the one they leave, so the flag matchmaking selects on stays accurate.
+ */
+export async function refreshInstanceFullness(
+	db: D1Database,
+	roomInstanceId: number
+): Promise<boolean | null> {
+	const row = await db
+		.prepare('SELECT data FROM room_instance WHERE id = ?1')
+		.bind(roomInstanceId)
+		.first<{ data: string }>()
+	if (!row) return null
+	const stored = parse(row.data)
+	const count = await countPlayersInInstance(db, roomInstanceId)
+	const isFull = stored.maxCapacity > 0 && count >= stored.maxCapacity
+	if (stored.isFull !== isFull) {
+		stored.isFull = isFull
+		await db
+			.prepare('UPDATE room_instance SET data = ?1 WHERE id = ?2')
+			.bind(JSON.stringify(stored), roomInstanceId)
+			.run()
+	}
+	return isFull
 }
 
 /**

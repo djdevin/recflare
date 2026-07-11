@@ -4,19 +4,10 @@
 	"main": "src/match.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
-	// Per-player presence store (room instance the player is currently in). Create
-	// with `wrangler kv namespace create RECFLARE_MATCH_PRESENCE`, then put the id in
-	// the root .env under RECFLARE_KV (see .env.example) — it is spliced into the
-	// "local" placeholder below at deploy time.
-	"kv_namespaces": [
-		{
-			"binding": "RECFLARE_MATCH_PRESENCE",
-			"id": "local"
-		}
-	],
-	// Shared `recflare` DB. Mostly read (room scenes for matchmaking); also writes a
-	// player's personal dorm room on first dorm entry (see getOrCreateDormRoom). The
-	// "local" placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
+	// Shared `recflare` DB. Reads room scenes for matchmaking, writes a player's
+	// personal dorm room on first dorm entry (see getOrCreateDormRoom), and holds
+	// player presence (the `presence` table — owned/migrated by the `rooms` worker).
+	// The "local" placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",

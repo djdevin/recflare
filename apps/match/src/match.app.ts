@@ -5,23 +5,28 @@ import {
 	createRoomInstance,
 	getJoinableInstance,
 	getOrCreateDormRoom,
+	getPresence,
+	getPresences,
 	getRoomById,
 	getRoomByName,
 	getRoomInstancesByRoom,
+	refreshInstanceFullness,
 	RoomInstanceType,
+	setPresence,
 	setRoomInstanceInProgress,
 } from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
-import type { Room } from '@repo/domain'
+import type { Room, StoredPresence } from '@repo/domain'
 import type { Context } from 'hono'
 import type { App } from './context'
 
 /**
  * The matchmaking surface. Rooms and room instances are D1-backed (matchmaking
  * finds/creates a `room_instance` row per session); player lookups still fall back
- * to default values when nothing is found. Presence lives in the match KV.
+ * to default values when nothing is found. Presence is D1-backed too (the
+ * `presence` table; see @repo/domain's presence-db).
  *
  * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
  */
@@ -72,20 +77,19 @@ type RoomInstance = ReturnType<typeof dormRoomInstance>
 
 /**
  * Stored presence for a player — the room instance they matchmade into plus the
- * status fields the heartbeat echoes back. Mirrors the reference server's
- * HeartbeatDB row.
+ * status fields the heartbeat echoes back. The generic StoredPresence lives in
+ * @repo/domain; here it's specialized to the match worker's RoomInstance shape.
  */
-interface Presence {
-	roomInstance: RoomInstance | null
-	statusVisibility: number
-	deviceClass: number
-	vrMovementMode: number
-	platform: number
-	appVersion: string
-}
+type Presence = StoredPresence<RoomInstance>
 
-/** Presence is kept this long (s) after the last matchmake/heartbeat refresh. */
-const PRESENCE_TTL = 900
+/**
+ * A heartbeat that changes nothing re-writes presence only once its TTL drops
+ * within this window of expiring (s), instead of on every beat. So a player who's
+ * sitting still is refreshed at most once per (PRESENCE_TTL_SECONDS − this) rather
+ * than on every heartbeat — far fewer D1 writes, while still staying comfortably
+ * ahead of expiry (the client heartbeats many times inside this window).
+ */
+const PRESENCE_REFRESH_THRESHOLD = 300
 
 /**
  * Game build version reported in presence. This is a server-side constant — the
@@ -94,24 +98,11 @@ const PRESENCE_TTL = 900
  */
 const GAME_VERSION = '20230302'
 
-const presenceKey = (id: number) => `presence:${id}`
-
-/** Persist the player's presence (room instance + status), refreshing the TTL. */
-async function setPresence(c: Context<App>, id: number, presence: Presence): Promise<void> {
-	await c.env.RECFLARE_MATCH_PRESENCE.put(presenceKey(id), JSON.stringify(presence), {
-		expirationTtl: PRESENCE_TTL,
-	})
-}
-
-/** Read the player's stored presence, or null when they aren't in a room. */
-async function getPresence(c: Context<App>, id: number): Promise<Presence | null> {
-	return c.env.RECFLARE_MATCH_PRESENCE.get<Presence>(presenceKey(id), 'json')
-}
-
 /** Store the room instance the player just matchmade into, preserving status. */
 async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance): Promise<void> {
-	const prev = await getPresence(c, id)
-	await setPresence(c, id, {
+	const prev = await getPresence<RoomInstance>(c.env.DB, id)
+	await setPresence(c.env.DB, {
+		accountId: id,
 		roomInstance,
 		statusVisibility: prev?.statusVisibility ?? 0,
 		deviceClass: prev?.deviceClass ?? 0,
@@ -119,6 +110,15 @@ async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance
 		platform: prev?.platform ?? 0,
 		appVersion: prev?.appVersion || GAME_VERSION,
 	})
+	// Keep the destination instance's is_full flag in sync with live presence (the
+	// player's own presence, just written, is counted). Then re-evaluate the
+	// instance they left — its head-count dropped — so a full room frees up when
+	// players move on. Both no-op for the synthetic dorm/orientation instances.
+	await refreshInstanceFullness(c.env.DB, roomInstance.roomInstanceId)
+	const leftId = prev?.roomInstance?.roomInstanceId
+	if (leftId != null && leftId !== roomInstance.roomInstanceId) {
+		await refreshInstanceFullness(c.env.DB, leftId)
+	}
 }
 
 /**
@@ -330,21 +330,22 @@ const app = new Hono<App>()
 			.filter((n) => !Number.isNaN(n))
 		if (!ids || ids.length === 0) return c.json(DEFAULT_GET_PLAYER)
 
-		const players = await Promise.all(
-			ids.map(async (playerId) => {
-				const p = await getPresence(c, playerId)
-				return {
-					playerId,
-					statusVisibility: p?.statusVisibility ?? 0,
-					deviceClass: p?.deviceClass ?? 0,
-					vrMovementMode: p?.vrMovementMode ?? 1,
-					roomInstance: p?.roomInstance ?? null,
-					isOnline: p?.roomInstance != null,
-					appVersion: p?.appVersion || GAME_VERSION,
-					platform: p?.platform ?? 0,
-				}
-			})
-		)
+		// One query for the whole batch (D1 `WHERE account_id IN (…)`), rather than a
+		// point read per id as the KV store required.
+		const presences = await getPresences<RoomInstance>(c.env.DB, ids)
+		const players = ids.map((playerId) => {
+			const p = presences.get(playerId)
+			return {
+				playerId,
+				statusVisibility: p?.statusVisibility ?? 0,
+				deviceClass: p?.deviceClass ?? 0,
+				vrMovementMode: p?.vrMovementMode ?? 1,
+				roomInstance: p?.roomInstance ?? null,
+				isOnline: p?.roomInstance != null,
+				appVersion: p?.appVersion || GAME_VERSION,
+				platform: p?.platform ?? 0,
+			}
+		})
 		return c.json(players)
 	})
 
@@ -367,16 +368,34 @@ const app = new Hono<App>()
 		// Return the player's stored presence (set by matchmake/goto), mirroring the
 		// reference server's HeartbeatDB.GetPlayerHeartbeat. No presence → the player
 		// isn't in a room yet, so roomInstance=null / isOnline=false. Posted status
-		// fields are merged back and the TTL refreshed so presence stays alive.
-		const presence = await getPresence(c, id)
+		// fields are merged back; the row is re-written (refreshing the TTL) only when
+		// something changed or its TTL is close to lapsing — see below.
+		const presence = await getPresence<RoomInstance>(c.env.DB, id)
 		if (presence) {
-			if (hb.statusVisibility !== undefined) presence.statusVisibility = hb.statusVisibility
-			if (hb.deviceClass !== undefined) presence.deviceClass = hb.deviceClass
-			if (hb.vrMovementMode !== undefined) presence.vrMovementMode = hb.vrMovementMode
-			if (hb.platform !== undefined) presence.platform = hb.platform
-			if (hb.appVersion) presence.appVersion = hb.appVersion
-			if (!presence.appVersion) presence.appVersion = GAME_VERSION
-			await setPresence(c, id, presence)
+			// Merge the posted status fields, tracking whether any actually changed.
+			let changed = false
+			const apply = <K extends keyof Presence>(key: K, value: Presence[K]) => {
+				if (presence[key] !== value) {
+					presence[key] = value
+					changed = true
+				}
+			}
+			if (hb.statusVisibility !== undefined) apply('statusVisibility', hb.statusVisibility)
+			if (hb.deviceClass !== undefined) apply('deviceClass', hb.deviceClass)
+			if (hb.vrMovementMode !== undefined) apply('vrMovementMode', hb.vrMovementMode)
+			if (hb.platform !== undefined) apply('platform', hb.platform)
+			if (hb.appVersion) apply('appVersion', hb.appVersion)
+			if (!presence.appVersion) apply('appVersion', GAME_VERSION)
+
+			// Extending the TTL means re-writing the row, so skip the write on an
+			// unchanged heartbeat until the TTL is within PRESENCE_REFRESH_THRESHOLD
+			// (s) of lapsing — a still player is refreshed periodically rather than on
+			// every beat. `expiresAt` is epoch seconds (set by setPresence).
+			const nowSeconds = Math.floor(Date.now() / 1000)
+			const dueForRefresh = presence.expiresAt - nowSeconds <= PRESENCE_REFRESH_THRESHOLD
+			if (changed || dueForRefresh) {
+				await setPresence(c.env.DB, presence)
+			}
 		}
 
 		return c.json({
@@ -397,10 +416,10 @@ const app = new Hono<App>()
 			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 			const sv =
 				typeof body.statusVisibility === 'string' ? Number.parseInt(body.statusVisibility, 10) : NaN
-			const presence = await getPresence(c, id)
+			const presence = await getPresence<RoomInstance>(c.env.DB, id)
 			if (presence && !Number.isNaN(sv)) {
 				presence.statusVisibility = sv
-				await setPresence(c, id, presence)
+				await setPresence(c.env.DB, presence)
 			}
 		}
 		return c.body(null, 200)
@@ -434,7 +453,7 @@ const app = new Hono<App>()
 		// So: preserve existing presence; only fall back to the offline dorm when the
 		// player has none (e.g. the title screen before they've entered any room).
 		if (id !== null) {
-			const presence = await getPresence(c, id)
+			const presence = await getPresence<RoomInstance>(c.env.DB, id)
 			if (presence?.roomInstance) {
 				return c.json({ errorCode: 0, roomInstance: presence.roomInstance })
 			}
