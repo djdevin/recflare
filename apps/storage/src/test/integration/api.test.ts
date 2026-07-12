@@ -103,6 +103,25 @@ it('POST /upload folders each FileType under its own subfolder', async () => {
 	}
 })
 
+it('POST /upload names an Invention (FileType 5) upload with the .inv extension', async () => {
+	// The client expects the `.inv` extension on the BlobName it later reads back from
+	// the api worker, so the extension has to be on the stored key too — otherwise the
+	// cdn worker would have nothing to serve at that name.
+	const bytes = new Uint8Array([0x49, 0x4e, 0x56])
+	const res = await SELF.fetch(`${ORIGIN}/upload`, {
+		method: 'POST',
+		headers: await bearer(),
+		body: uploadForm('5', bytes),
+	})
+	expect(res.status).toBe(200)
+	const { filename } = (await res.json()) as { filename: string }
+	expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\.inv$/)
+
+	const stored = await env.CDN_ASSETS.get(`invention/${filename}`)
+	expect(stored).not.toBeNull()
+	expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
+})
+
 it('POST /upload 400s for a binary with an unknown/missing FileType', async () => {
 	// Unknown type (999) and the Unknown enum value (0) have no destination → 400.
 	for (const fileType of ['999', '0']) {

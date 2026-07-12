@@ -107,4 +107,10 @@ const app = new Hono<App>()
 	// the path.
 	.get('/room/:dataBlob{.+}', (c) => serveAsset(c, `room/${c.req.param('dataBlob')}`))
 
+	// Invention data by name. The client fetches this for an invention's
+	// `CurrentVersion.BlobName` to spawn it. Streamed from R2 under `invention/`.
+	// Like room blobs the name is date-foldered, and it carries the `.inv` extension
+	// the upload stored it under, so the rest of the path is matched as-is.
+	.get('/invention/:dataBlob{.+}', (c) => serveAsset(c, `invention/${c.req.param('dataBlob')}`))
+
 export default app

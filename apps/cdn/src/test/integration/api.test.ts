@@ -64,4 +64,19 @@ describe('cdn endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/room/missing.room`)
 		expect(res.status).toBe(404)
 	})
+
+	test('GET /invention/:dataBlob streams the invention blob from R2', async () => {
+		// Date-foldered, `.inv`-suffixed — the name the storage worker generates and the
+		// api worker hands back as the invention's BlobName.
+		const name = '2026-07-12/6f1c0c3e-1b6a-4a52-9f52-0f4a1a6d2f77.inv'
+		await env.CDN_ASSETS.put(`invention/${name}`, new Uint8Array([1, 2, 3]))
+		const res = await exports.default.fetch(`${ORIGIN}/invention/${name}`)
+		expect(res.status).toBe(200)
+		expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+	})
+
+	test('GET /invention/:dataBlob 404s when the blob is absent', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/invention/missing.inv`)
+		expect(res.status).toBe(404)
+	})
 })

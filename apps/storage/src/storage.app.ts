@@ -36,6 +36,20 @@ function subfolderForFileType(fileType: string): string | undefined {
 	return UPLOAD_SUBFOLDER[Number.parseInt(fileType, 10)]
 }
 
+/**
+ * The file extension an upload of a given type keeps. Invention data blobs are
+ * named `<name>.inv` — the client expects the extension on the `BlobName` it later
+ * gets back from the api worker, so it has to be part of the stored key too, or the
+ * blob wouldn't be there to download. Other types are stored under a bare name.
+ */
+const UPLOAD_EXTENSION: Record<number, string> = {
+	5: '.inv',
+}
+
+function extensionForFileType(fileType: string): string {
+	return UPLOAD_EXTENSION[Number.parseInt(fileType, 10)] ?? ''
+}
+
 /** Read a text form field by any of its accepted names, matched case-insensitively. */
 function textField(body: Record<string, unknown>, ...names: string[]): string | undefined {
 	for (const [key, value] of Object.entries(body)) {
@@ -80,16 +94,18 @@ const app = new Hono<App>()
 		const file = Object.values(body).find((v): v is File => v instanceof File)
 
 		if (file) {
-			const subfolder = subfolderForFileType(textField(body, 'filetype') ?? '0')
+			const fileType = textField(body, 'filetype') ?? '0'
+			const subfolder = subfolderForFileType(fileType)
 			if (subfolder === undefined) {
 				// makeUploadName == "" → no destination for an unknown/missing type.
 				return c.json({ error: 'missing or unknown FileType' }, 400)
 			}
 			// Folder each upload under its date (e.g. `room/2026-02-03/<uuid>`) so the
 			// bucket stays browsable. The date is part of the returned name, so the key
-			// the `cdn` worker reads back (`<subfolder>/<name>`) still round-trips.
+			// the `cdn` worker reads back (`<subfolder>/<name>`) still round-trips — as
+			// does the extension, which is why it goes on the key, not just the name.
 			const datePrefix = new Date().toISOString().slice(0, 10)
-			const filename = `${datePrefix}/${crypto.randomUUID()}`
+			const filename = `${datePrefix}/${crypto.randomUUID()}${extensionForFileType(fileType)}`
 			await c.env.CDN_ASSETS.put(`${subfolder}/${filename}`, await file.arrayBuffer(), {
 				httpMetadata: { contentType: file.type || 'application/octet-stream' },
 			})

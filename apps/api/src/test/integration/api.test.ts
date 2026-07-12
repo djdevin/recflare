@@ -10,7 +10,7 @@ import { SCHEMA_DDL as RELATIONSHIPS_SCHEMA_DDL } from '../../relationships-db'
 
 import type { Env } from '../../context'
 import type { SavedImage } from '../../images-db'
-import type { SavedInvention } from '../../inventions-db'
+import type { InventionSaveResult, SavedInvention } from '../../inventions-db'
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -286,17 +286,43 @@ describe('public endpoints', () => {
 			body: JSON.stringify(body),
 		})
 		expect(res.status).toBe(200)
-		const saved = (await res.json()) as SavedInvention
+		// Save answers with the `{ Status, Invention, InventionVersion }` envelope —
+		// the version sits alongside the invention, not only nested inside it.
+		const result = (await res.json()) as InventionSaveResult
+		expect(result.Status).toBe(0)
+		const saved = result.Invention
 		expect(saved.InventionId).toBeGreaterThan(0)
 		expect(saved.CreatorPlayerId).toBe(5150)
 		expect(saved.Name).toBe(body.name)
 		expect(saved.Description).toBe(body.description)
 		expect(saved.ImageName).toBe(body.imageName)
-		// Costs + the data blob live on the nested CurrentVersion.
-		expect(saved.CurrentVersion.InstantiationCost).toBe(103)
-		expect(saved.CurrentVersion.BlobName).toBe(body.inventionDataFilename)
+		// Costs + the data blob live on the version. The blob name always carries the
+		// `.inv` extension the client expects, whether or not the client sent it.
+		expect(result.InventionVersion).toMatchObject({
+			InventionId: saved.InventionId,
+			VersionNumber: 1,
+			InstantiationCost: 103,
+			LightsCost: 0,
+			BlobName: `${body.inventionDataFilename}.inv`,
+		})
+		expect(saved.CurrentVersion.BlobName).toBe(`${body.inventionDataFilename}.inv`)
+
+		// An extension the client already supplied isn't doubled up.
+		const withExt = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('5150')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Already .inv', inventionDataFilename: '2026-07-12/x.inv' }),
+		})
+		expect(((await withExt.json()) as InventionSaveResult).InventionVersion.BlobName).toBe(
+			'2026-07-12/x.inv'
+		)
 		expect(saved.CreationRoomId).toBe(73)
-		expect(saved.CreatorPermission).toBe(255)
+		// Fully permissioned from the start (the client's creatorAccountRole is a room
+		// role, not an invention permission, so it's ignored); publishing is what
+		// narrows GeneralPermission down.
+		expect(saved.CreatorPermission).toBe(100)
+		expect(saved.GeneralPermission).toBe(100)
+		expect(saved.AllowTrial).toBe(true)
 		// Freshly saved → private/unpublished until the player publishes it.
 		expect(saved.IsPublished).toBe(false)
 		expect(saved.FirstPublishedAt).toBeNull()
@@ -321,23 +347,561 @@ describe('public endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: 'x' }),
+			body: JSON.stringify({ name: 'x', inventionDataFilename: 'a.inv' }),
 		})
 		expect(res.status).toBe(401)
 	})
 
-	test('POST /api/inventions/v6/save 400s without a name', async () => {
+	test('POST /api/inventions/v6/save 400s without the invention data blob', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
 			method: 'POST',
 			headers: { ...(await bearer()), 'Content-Type': 'application/json' },
-			body: JSON.stringify({ description: 'no name' }),
+			body: JSON.stringify({ name: 'no blob' }),
 		})
 		expect(res.status).toBe(400)
+	})
+
+	test('POST /api/inventions/v6/save defaults a missing name and description', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('6161')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ inventionDataFilename: 'a.inv', name: '  ' }),
+		})
+		expect(res.status).toBe(200)
+		expect(((await res.json()) as InventionSaveResult).Invention).toMatchObject({
+			Name: 'Untitled',
+			Description: 'No description yet',
+		})
 	})
 
 	test('GET /api/inventions/v1 404s for an unknown invention', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v1?inventionId=999999`)
 		expect(res.status).toBe(404)
+	})
+
+	test('GET /api/inventions/v1/details returns the tag list; 404s on an unknown id', async () => {
+		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('6060')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Tagless Sofabed', inventionDataFilename: 'a.inv' }),
+		})
+		const { Invention } = (await save.json()) as InventionSaveResult
+
+		// A freshly saved invention is untagged until settags writes to it.
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/details?inventionId=${Invention.InventionId}`
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ Tags: [] })
+
+		// Tags stored on the record are echoed back under `Tags`.
+		const tagged = { ...Invention, InventionId: 5150, Tags: [{ Tag: 'medium', Type: 1 }] }
+		await env.DB.prepare('INSERT INTO invention (data) VALUES (?1)')
+			.bind(JSON.stringify(tagged))
+			.run()
+		const withTags = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/details?inventionId=5150`
+		)
+		expect(await withTags.json()).toEqual({ Tags: [{ Tag: 'medium', Type: 1 }] })
+
+		const unknown = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/details?inventionId=999999`
+		)
+		expect(unknown.status).toBe(404)
+	})
+
+	test('POST /api/inventions/v1/settags tags the invention; details serves them back', async () => {
+		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('4242')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Sofabed', inventionDataFilename: 'a.inv' }),
+		})
+		const { Invention } = (await save.json()) as InventionSaveResult
+		const settags = async (body: unknown, sub = '4242'): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/api/inventions/v1/settags`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/json' },
+				body: JSON.stringify(body),
+			})
+
+		// Custom tags are Type 0, auto tags Type 2.
+		const res = await settags({
+			InventionId: Invention.InventionId,
+			AutoTags: ['lowink'],
+			CustomTags: ['blah'],
+		})
+		expect(res.status).toBe(200)
+		// settags answers the flat list of tag *names*, auto first, then custom.
+		expect(await res.json()).toEqual({ Result: 0, Tags: ['lowink', 'blah'] })
+
+		// details serves the typed objects: custom is Type 0, auto is Type 2.
+		const details = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/details?inventionId=${Invention.InventionId}`
+		)
+		expect(await details.json()).toEqual({
+			Tags: [
+				{ Tag: 'lowink', Type: 2 },
+				{ Tag: 'blah', Type: 0 },
+			],
+		})
+
+		// Both lists are replaced wholesale, and tags are normalized + de-duplicated.
+		const replaced = await settags({
+			InventionId: Invention.InventionId,
+			AutoTags: [],
+			CustomTags: ['Modern', ' modern ', 'Bed'],
+		})
+		expect(await replaced.json()).toEqual({ Result: 0, Tags: ['modern', 'bed'] })
+
+		// Only the creator may retag; unknown inventions 404; no token → 401.
+		const notMine = await settags({ InventionId: Invention.InventionId, CustomTags: ['x'] }, '9999')
+		expect(notMine.status).toBe(403)
+
+		const unknown = await settags({ InventionId: 999999, CustomTags: ['x'] })
+		expect(unknown.status).toBe(404)
+
+		const anon = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/settags`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ InventionId: Invention.InventionId, CustomTags: ['x'] }),
+		})
+		expect(anon.status).toBe(401)
+	})
+
+	test('GET /api/inventions/v2/search returns published inventions, filtered by value', async () => {
+		// Only published inventions are searchable, and nothing published exists via
+		// the save path (a fresh save is private), so seed the rows directly.
+		const published = (id: number, name: string, description: string): SavedInvention =>
+			({
+				InventionId: id,
+				ReplicationId: crypto.randomUUID(),
+				CreatorPlayerId: 8080,
+				Name: name,
+				Description: description,
+				ImageName: '',
+				CurrentVersionNumber: 1,
+				CurrentVersion: { InventionId: id, VersionNumber: 1, BlobName: '' },
+				IsPublished: true,
+				HideFromPlayer: false,
+				CreatedAt: `2026-07-0${id}T00:00:00Z`,
+			}) as unknown as SavedInvention
+
+		for (const inv of [
+			published(101, 'Modern Sofabed', 'Stylistic modern bed'),
+			published(102, 'Racing Game', 'A retro inspired TV gaming set'),
+			// Unpublished + hidden rows must stay out of the results.
+			{ ...published(103, 'Secret Sofabed', ''), IsPublished: false },
+			{ ...published(104, 'Hidden Sofabed', ''), HideFromPlayer: true },
+		]) {
+			await env.DB.prepare('INSERT INTO invention (data) VALUES (?1)')
+				.bind(JSON.stringify(inv))
+				.run()
+		}
+
+		// No `value` → browse everything published, newest first.
+		const all = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/search?skip=0&take=100`)
+		expect(all.status).toBe(200)
+		expect(((await all.json()) as SavedInvention[]).map((i) => i.InventionId)).toEqual([102, 101])
+
+		// `value` matches name or description, case-insensitively.
+		const hit = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v2/search?value=${encodeURIComponent('modern sofabed')}`
+		)
+		expect(((await hit.json()) as SavedInvention[]).map((i) => i.InventionId)).toEqual([101])
+
+		// skip/take paginate the published set.
+		const page = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/search?skip=1&take=1`)
+		expect(((await page.json()) as SavedInvention[]).map((i) => i.InventionId)).toEqual([101])
+
+		const miss = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/search?value=nomatch`)
+		expect(await miss.json()).toEqual([])
+	})
+
+	test('GET /api/inventions/v1/tagfilters ranks the tags in use', async () => {
+		// Two published inventions tagged `furniture`, one `bed` — plus a tagged draft,
+		// whose tags must not leak into the public filter chips.
+		const make = async (name: string, tags: string[], publish: boolean): Promise<void> => {
+			const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+				method: 'POST',
+				headers: { ...(await bearer('9090')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, inventionDataFilename: 'a.inv' }),
+			})
+			const { Invention } = (await save.json()) as InventionSaveResult
+			await exports.default.fetch(`${ORIGIN}/api/inventions/v1/settags`, {
+				method: 'POST',
+				headers: { ...(await bearer('9090')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ InventionId: Invention.InventionId, CustomTags: tags }),
+			})
+			if (publish) {
+				await exports.default.fetch(
+					`${ORIGIN}/api/inventions/v3/publish?inventionId=${Invention.InventionId}`,
+					{ headers: await bearer('9090') }
+				)
+			}
+		}
+		await make('Filter Sofa', ['furniture', 'bed'], true)
+		await make('Filter Chair', ['furniture'], true)
+		await make('Filter Draft', ['secrettag'], false)
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/tagfilters`)
+		expect(res.status).toBe(200)
+		const filters = (await res.json()) as {
+			PinnedFilters: string[]
+			PopularFilters: string[]
+			TrendingFilters: null
+		}
+		// Most-used tag first, and the draft's tag is nowhere to be seen.
+		expect(filters.PopularFilters.slice(0, 2)).toEqual(['furniture', 'bed'])
+		expect(filters.PopularFilters).not.toContain('secrettag')
+		expect(filters.PinnedFilters).toEqual(filters.PopularFilters.slice(0, 5))
+		expect(filters.TrendingFilters).toBeNull()
+	})
+
+	test('GET /api/inventions/v2/batch returns the requested inventions', async () => {
+		const save = async (name: string): Promise<SavedInvention> => {
+			const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+				method: 'POST',
+				headers: { ...(await bearer('5566')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, inventionDataFilename: 'a.inv' }),
+			})
+			return ((await res.json()) as InventionSaveResult).Invention
+		}
+		const batch = async (query: string, sub?: string): Promise<SavedInvention[]> => {
+			const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v2/batch?${query}`, {
+				headers: sub === undefined ? {} : await bearer(sub),
+			})
+			expect(res.status).toBe(200)
+			return (await res.json()) as SavedInvention[]
+		}
+
+		const first = await save('Batch One')
+		const draft = await save('Batch Draft')
+		await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v3/publish?inventionId=${first.InventionId}`,
+			{
+				headers: await bearer('5566'),
+			}
+		)
+
+		// Repeated ids and comma-separated ids both work, and order is preserved.
+		const ids = await batch(`id=${first.InventionId}&id=${first.InventionId}`)
+		expect(ids.map((i) => i.InventionId)).toEqual([first.InventionId, first.InventionId])
+		const commaSeparated = await batch(`id=${first.InventionId},999999`)
+		expect(commaSeparated.map((i) => i.InventionId)).toEqual([first.InventionId])
+
+		// The draft is hidden from everyone but its creator.
+		expect((await batch(`id=${draft.InventionId}`)).map((i) => i.InventionId)).toEqual([])
+		expect((await batch(`id=${draft.InventionId}`, '9999')).map((i) => i.InventionId)).toEqual([])
+		expect((await batch(`id=${draft.InventionId}`, '5566')).map((i) => i.InventionId)).toEqual([
+			draft.InventionId,
+		])
+
+		// No ids at all → an empty list, not an error.
+		expect(await batch('')).toEqual([])
+	})
+
+	test('GET /api/inventions/v1/room lists a room’s published inventions', async () => {
+		// Two inventions created in room 76, one of them still a draft.
+		const create = async (name: string, room: number): Promise<SavedInvention> => {
+			const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+				method: 'POST',
+				headers: { ...(await bearer('8484')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, creationRoomId: room, inventionDataFilename: 'a.inv' }),
+			})
+			return ((await res.json()) as InventionSaveResult).Invention
+		}
+		const publish = async (id: number): Promise<void> => {
+			await exports.default.fetch(`${ORIGIN}/api/inventions/v3/publish?inventionId=${id}`, {
+				headers: await bearer('8484'),
+			})
+		}
+
+		const inRoom = await create('Room Lamp', 76)
+		const draft = await create('Draft Lamp In Room', 76)
+		const otherRoom = await create('Other Room Lamp', 77)
+		await publish(inRoom.InventionId)
+		await publish(otherRoom.InventionId)
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/room?id=76`)
+		expect(res.status).toBe(200)
+		const ids = ((await res.json()) as SavedInvention[]).map((i) => i.InventionId)
+		expect(ids).toEqual([inRoom.InventionId])
+		// The unpublished one and the other room's are both excluded.
+		expect(ids).not.toContain(draft.InventionId)
+		expect(ids).not.toContain(otherRoom.InventionId)
+
+		// A room with no inventions is an empty list, not a 404.
+		const empty = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/room?id=999`)
+		expect(await empty.json()).toEqual([])
+
+		const noId = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/room`)
+		expect(noId.status).toBe(400)
+	})
+
+	test('GET /api/inventions/v1/personaldetails/:id reports the cheer flag', async () => {
+		// No cheer storage yet, so nobody is ever cheering — signed in or not.
+		const res = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/personaldetails/2`, {
+			headers: await bearer('42'),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ IsCheering: false })
+
+		const anon = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/personaldetails/2`)
+		expect(anon.status).toBe(200)
+		expect(await anon.json()).toEqual({ IsCheering: false })
+	})
+
+	test('GET /api/inventions/v1/version serves the version; unknown versions 404', async () => {
+		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('7373')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: 'Versioned Lamp',
+				instantiationCost: 42,
+				inventionDataFilename: '2026-07-12/lamp.inv',
+			}),
+		})
+		const { Invention } = (await save.json()) as InventionSaveResult
+
+		// The bare RRInventionVersion — the blob name is what the client downloads.
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/version?inventionId=${Invention.InventionId}&version=1`
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			InventionId: Invention.InventionId,
+			VersionNumber: 1,
+			BlobName: '2026-07-12/lamp.inv',
+			InstantiationCost: 42,
+		})
+
+		// Only the current version exists; anything else 404s, as does an unknown id.
+		const v2 = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/version?inventionId=${Invention.InventionId}&version=2`
+		)
+		expect(v2.status).toBe(404)
+		const unknown = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/version?inventionId=999999&version=1`
+		)
+		expect(unknown.status).toBe(404)
+
+		// Both params are required.
+		const noVersion = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/version?inventionId=${Invention.InventionId}`
+		)
+		expect(noVersion.status).toBe(400)
+		const noId = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/version?version=1`)
+		expect(noId.status).toBe(400)
+	})
+
+	test('GET /api/inventions/v1/update edits metadata + permission, creator only', async () => {
+		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('3131')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: 'Draft Lamp',
+				description: 'No description yet',
+				inventionDataFilename: 'a.inv',
+			}),
+		})
+		const { Invention } = (await save.json()) as InventionSaveResult
+		const update = async (query: string, sub = '3131'): Promise<Response> =>
+			exports.default.fetch(
+				`${ORIGIN}/api/inventions/v1/update?inventionId=${Invention.InventionId}&${query}`,
+				{ headers: await bearer(sub) }
+			)
+
+		// Update answers the save envelope. Only the params present change — the name
+		// is left alone here.
+		const res = await update(`description=${encodeURIComponent('my description')}`)
+		expect(res.status).toBe(200)
+		const edited = (await res.json()) as InventionSaveResult
+		expect(edited.Status).toBe(0)
+		expect(edited.InventionVersion.InventionId).toBe(Invention.InventionId)
+		expect(edited.Invention).toMatchObject({
+			InventionId: Invention.InventionId,
+			Description: 'my description',
+			Name: 'Draft Lamp',
+			IsPublished: false,
+		})
+
+		// `permission` takes a name or the raw number, and lands on GeneralPermission.
+		const byName = (await (await update('permission=edit_and_save')).json()) as InventionSaveResult
+		expect(byName.Invention.GeneralPermission).toBe(40)
+		const byNumber = (await (await update('permission=80')).json()) as InventionSaveResult
+		expect(byNumber.Invention.GeneralPermission).toBe(80)
+
+		// An empty description clears it; an empty name does *not* blank the invention.
+		const cleared = (await (await update('description=&name=')).json()) as InventionSaveResult
+		expect(cleared.Invention).toMatchObject({ Description: '', Name: 'Draft Lamp' })
+
+		// allowTrial takes true/1.
+		const trial = (await (await update('allowTrial=true')).json()) as InventionSaveResult
+		expect(trial.Invention.AllowTrial).toBe(true)
+
+		// Update does not publish or price — those are v3/publish and v1/updateprice.
+		expect(trial.Invention.IsPublished).toBe(false)
+
+		// Only the creator may edit; unknown inventions 404; no token → 401.
+		expect((await update('description=nope', '9999')).status).toBe(403)
+		const unknown = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/update?inventionId=999999&description=x`,
+			{ headers: await bearer('3131') }
+		)
+		expect(unknown.status).toBe(404)
+		const anon = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v1/update?inventionId=${Invention.InventionId}&description=x`
+		)
+		expect(anon.status).toBe(401)
+	})
+
+	test('GET /api/inventions/v3/publish publishes + prices; search then lists it', async () => {
+		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('2121')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Publishable Lamp', inventionDataFilename: 'a.inv' }),
+		})
+		const { Invention } = (await save.json()) as InventionSaveResult
+		const search = async (): Promise<number[]> => {
+			const res = await exports.default.fetch(
+				`${ORIGIN}/api/inventions/v2/search?value=${encodeURIComponent('Publishable Lamp')}`
+			)
+			return ((await res.json()) as SavedInvention[]).map((i) => i.InventionId)
+		}
+
+		// A saved draft is invisible until it's published.
+		expect(await search()).toEqual([])
+
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v3/publish?inventionId=${Invention.InventionId}&permissionLevel=charge&price=250`,
+			{ headers: await bearer('2121') }
+		)
+		expect(res.status).toBe(200)
+		const published = (await res.json()) as InventionSaveResult
+		expect(published.Status).toBe(0)
+		expect(published.Invention).toMatchObject({
+			IsPublished: true,
+			GeneralPermission: 80, // charge
+			Price: 250,
+		})
+		expect(typeof published.Invention.FirstPublishedAt).toBe('string')
+
+		expect(await search()).toEqual([Invention.InventionId])
+
+		// Publishing with no permissionLevel defaults to UseOnly, and price to 0.
+		const other = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('2121')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Plain Lamp', inventionDataFilename: 'a.inv' }),
+		})
+		const plain = ((await other.json()) as InventionSaveResult).Invention
+		const defaulted = (await (
+			await exports.default.fetch(
+				`${ORIGIN}/api/inventions/v3/publish?inventionId=${plain.InventionId}`,
+				{ headers: await bearer('2121') }
+			)
+		).json()) as InventionSaveResult
+		expect(defaulted.Invention).toMatchObject({
+			IsPublished: true,
+			GeneralPermission: 20, // useonly
+			Price: 0,
+		})
+
+		// Creator-gated like the other writes.
+		const notMine = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v3/publish?inventionId=${Invention.InventionId}`,
+			{ headers: await bearer('9999') }
+		)
+		expect(notMine.status).toBe(403)
+	})
+
+	test('POST /api/inventions/v1/updateprice sets the price, creator only', async () => {
+		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+			method: 'POST',
+			headers: { ...(await bearer('1212')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Priced Lamp', inventionDataFilename: 'a.inv' }),
+		})
+		const { Invention } = (await save.json()) as InventionSaveResult
+		const updateprice = async (body: unknown, sub = '1212'): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/api/inventions/v1/updateprice`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/json' },
+				body: JSON.stringify(body),
+			})
+
+		const res = await updateprice({ InventionId: Invention.InventionId, Price: 500 })
+		expect(res.status).toBe(200)
+		const priced = (await res.json()) as InventionSaveResult
+		expect(priced.Status).toBe(0)
+		expect(priced.Invention.Price).toBe(500)
+
+		// A negative price is rejected; other players can't reprice someone's invention.
+		expect((await updateprice({ InventionId: Invention.InventionId, Price: -1 })).status).toBe(400)
+		expect(
+			(await updateprice({ InventionId: Invention.InventionId, Price: 10 }, '9999')).status
+		).toBe(403)
+	})
+
+	test('GET /api/inventions/v1/toptoday + v1/featured serve the invention feeds', async () => {
+		const ids = async (res: Response): Promise<number[]> =>
+			((await res.json()) as SavedInvention[]).map((i) => i.InventionId)
+
+		// Nothing is flagged IsFeatured yet → featured falls back to the top feed.
+		const beforeTop = await ids(await exports.default.fetch(`${ORIGIN}/api/inventions/v1/toptoday`))
+		const beforeFeatured = await ids(
+			await exports.default.fetch(`${ORIGIN}/api/inventions/v1/featured`)
+		)
+		expect(beforeFeatured).toEqual(beforeTop)
+
+		const feedInvention = (
+			id: number,
+			downloads: number,
+			extra: Partial<SavedInvention> = {}
+		): SavedInvention =>
+			({
+				InventionId: id,
+				CreatorPlayerId: 8080,
+				Name: `Feed ${id}`,
+				Description: '',
+				ImageName: '',
+				CurrentVersionNumber: 1,
+				CurrentVersion: { InventionId: id, VersionNumber: 1, BlobName: '' },
+				IsPublished: true,
+				IsFeatured: false,
+				HideFromPlayer: false,
+				NumDownloads: downloads,
+				CheerCount: 0,
+				NumPlayersHaveUsedInRoom: 0,
+				CreatedAt: '2026-07-01T00:00:00Z',
+				...extra,
+			}) as unknown as SavedInvention
+
+		for (const inv of [
+			feedInvention(201, 500),
+			feedInvention(202, 9000, { IsFeatured: true, CreatedAt: '2026-07-02T00:00:00Z' }),
+			feedInvention(203, 3000, { IsFeatured: true, CreatedAt: '2026-07-03T00:00:00Z' }),
+			// Unpublished/hidden inventions stay out of both feeds, featured or not.
+			feedInvention(204, 99999, { IsPublished: false, IsFeatured: true }),
+			feedInvention(205, 99999, { HideFromPlayer: true, IsFeatured: true }),
+		]) {
+			await env.DB.prepare('INSERT INTO invention (data) VALUES (?1)')
+				.bind(JSON.stringify(inv))
+				.run()
+		}
+
+		// Top: engagement-ranked, so the biggest download counts lead.
+		const top = await ids(await exports.default.fetch(`${ORIGIN}/api/inventions/v1/toptoday`))
+		expect(top.slice(0, 3)).toEqual([202, 203, 201])
+		expect(top).not.toContain(204)
+		expect(top).not.toContain(205)
+
+		// Featured: only the flagged, visible inventions — newest first.
+		const featured = await ids(await exports.default.fetch(`${ORIGIN}/api/inventions/v1/featured`))
+		expect(featured).toEqual([203, 202])
+
+		// skip/take paginate the top feed.
+		const page = await exports.default.fetch(`${ORIGIN}/api/inventions/v1/toptoday?skip=1&take=1`)
+		expect(await ids(page)).toEqual([203])
 	})
 
 	test('POST /api/sanitize/v1 echoes the value; isPure reports true', async () => {
