@@ -6,6 +6,7 @@ import '../../auth.app'
 
 import { PRESENCE_SCHEMA_DDL, SCHEMA_DDL } from '@repo/domain'
 
+import { isLinkedToPlatformIdentity } from '../../auth.app'
 import { hashPassword } from '../../password'
 import { REFRESH_SCHEMA_DDL } from '../../refresh-db'
 
@@ -148,7 +149,9 @@ describe('auth worker routes', () => {
 	test('Steam create_account requires a valid platform_auth ticket', async () => {
 		// platform=0 (Steam) with no verifiable ticket must not bind the spoofable
 		// platform_id field — it's rejected outright.
-		const res = await postToken('grant_type=create_account&platform=0&platform_id=76561197962463211')
+		const res = await postToken(
+			'grant_type=create_account&platform=0&platform_id=76561197962463211'
+		)
 		expect(res.status).toBe(400)
 		expect(res.json.error).toBe('invalid_grant')
 		expect(res.json.error_description).toContain('platform_auth')
@@ -189,6 +192,34 @@ describe('auth worker routes', () => {
 				requirePassword: false,
 			},
 		])
+	})
+
+	test('a Steam-linked account with no stored `platform` field still cached-logs in', async () => {
+		// Regression: nothing defaults an account's `platform` (see defaultAccount), so a
+		// Steam-linked account can carry a platformId with no platform. The picker offered
+		// such an account (it treats a missing platform as Steam) while the cached_login
+		// grant rejected it — "no linked account for this platform identity" forever.
+		// Both now run the same check.
+		const steamId = '76561197962463211'
+		const account = { platformId: steamId } // no `platform` field
+
+		// The grant now accepts it — this is what was returning invalid_grant.
+		expect(isLinkedToPlatformIdentity(account, 0, steamId)).toBe(true)
+
+		// The identity is still the credential: another SteamID, an account with no
+		// platform identity, and an account bound to a different platform are all refused.
+		expect(isLinkedToPlatformIdentity(account, 0, '76561197962463299')).toBe(false)
+		expect(isLinkedToPlatformIdentity({}, 0, steamId)).toBe(false)
+		expect(isLinkedToPlatformIdentity({ ...account, platform: 3 }, 0, steamId)).toBe(false)
+
+		// And the picker offers exactly the accounts the grant accepts.
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: 8, username: 'SteamOnly', platformId: steamId }))
+			.run()
+		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/0/${steamId}`)
+		const offered = (await res.json()) as Array<{ accountId: number; platform: number }>
+		expect(offered.map((a) => a.accountId)).toContain(8)
+		expect(offered.find((a) => a.accountId === 8)?.platform).toBe(0)
 	})
 
 	test('POST /connect/token issues a bearer token with role/scope claims', async () => {
@@ -263,7 +294,9 @@ describe('auth worker routes', () => {
 	})
 
 	test('POST /connect/token create_account can set a password used for later login', async () => {
-		const created = await postToken('grant_type=create_account&platform_id=steam-pw2&password=hunter2')
+		const created = await postToken(
+			'grant_type=create_account&platform_id=steam-pw2&password=hunter2'
+		)
 		expect(created.status).toBe(200)
 		const sub = decodePayload(created.json.access_token as string).sub as string
 

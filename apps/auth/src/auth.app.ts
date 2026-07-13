@@ -19,8 +19,8 @@ import { hashPassword, verifyPassword } from './password'
 import { consumeRefreshToken, issueRefreshToken } from './refresh-db'
 import { verifySteamTicket } from './steam-ticket'
 
-import type { Account } from '@repo/domain'
 import type { Context } from 'hono'
+import type { Account } from '@repo/domain'
 import type { App } from './context'
 
 /** OAuth scopes granted by `/connect/token`. */
@@ -108,6 +108,35 @@ async function authedId(c: Context<App>): Promise<number | null> {
 }
 
 /**
+ * The platform an account's `platformId` belongs to. Nothing defaults the `platform`
+ * field (see defaultAccount), so an account can carry a platform identity with no
+ * platform recorded — and Steam is the only platform whose identity we can prove, so
+ * an unset one *is* Steam.
+ */
+function accountPlatform(account: Pick<Account, 'platform'>): number {
+	return account.platform ?? 0
+}
+
+/**
+ * Whether an account is the one linked to a given platform identity — the single
+ * check behind both the cached-login picker and the `cached_login` grant. It lives in
+ * one place on purpose: if the picker offers an account the grant then rejects, the
+ * client is handed an `account_id` it can never log into ("no linked account for this
+ * platform identity" on every attempt).
+ *
+ * `platformId` must be the *proven* identity (the SteamID64 from a verified
+ * platform_auth ticket), never the client-supplied `platform_id` field.
+ */
+export function isLinkedToPlatformIdentity(
+	account: Pick<Account, 'platform' | 'platformId'>,
+	platform: number,
+	platformId: string
+): boolean {
+	if (!account.platformId || platformId === '') return false
+	return account.platformId === platformId && accountPlatform(account) === platform
+}
+
+/**
  * Project a linked account into the client's CachedLogin DTO — the account-picker
  * entry on the login screen. The client posts the chosen `accountId` back as a
  * `grant_type=cached_login`. `requirePassword` is false because platform ownership
@@ -115,7 +144,7 @@ async function authedId(c: Context<App>): Promise<number | null> {
  */
 function toCachedLogin(account: Account) {
 	return {
-		platform: account.platform ?? 0,
+		platform: accountPlatform(account),
 		platformId: account.platformId ?? '',
 		accountId: account.accountId,
 		lastLoginTime: account.lastLoginTime ?? account.createdAt,
@@ -149,9 +178,10 @@ const app = new Hono<App>()
 		logger.info('cached login lookup', { platform, id })
 		const platformInt = Number.parseInt(platform, 10)
 		const accounts = await getAccountsByPlatformId(c.env.DB, id)
+		// Offer only accounts the `cached_login` grant will actually accept — same check.
 		return c.json(
 			accounts
-				.filter((a) => Number.isNaN(platformInt) || (a.platform ?? 0) === platformInt)
+				.filter((a) => Number.isNaN(platformInt) || isLinkedToPlatformIdentity(a, platformInt, id))
 				.map(toCachedLogin)
 		)
 	})
@@ -159,9 +189,7 @@ const app = new Hono<App>()
 	// Bulk cached-login lookup by platform id (friends resolution). The client POSTs
 	// repeated `id=` params on the auth host; resolve each to its linked accounts.
 	.post('/cachedlogin/forplatformids', async (c) => {
-		const body = await c.req
-			.parseBody({ all: true })
-			.catch(() => ({}) as Record<string, unknown>)
+		const body = await c.req.parseBody({ all: true }).catch(() => ({}) as Record<string, unknown>)
 		const raw = body.id
 		const ids = (Array.isArray(raw) ? raw : raw != null ? [raw] : []).map(String)
 		const out: Array<ReturnType<typeof toCachedLogin>> = []
@@ -273,16 +301,15 @@ const app = new Hono<App>()
 			//
 			// NB: `platform_id` here is the Steam-verified SteamID64 (set from the ticket
 			// above), never the client-supplied field. See steam-ticket.ts.
+			//
 			const postedId = typeof body.account_id === 'string' ? body.account_id.trim() : ''
 			const account = /^\d+$/.test(postedId) ? await getAccount(c.env.DB, Number(postedId)) : null
-			if (
-				!account ||
-				!account.platformId ||
-				account.platformId !== platformId ||
-				account.platform !== platformInt
-			) {
+			if (!account || !isLinkedToPlatformIdentity(account, platformInt, platformId)) {
 				return c.json(
-					{ error: 'invalid_grant', error_description: 'no linked account for this platform identity' },
+					{
+						error: 'invalid_grant',
+						error_description: 'no linked account for this platform identity',
+					},
 					400
 				)
 			}
