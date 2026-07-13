@@ -22,6 +22,16 @@ const SavedImageType = {
 	InventionThumbnail: 5,
 } as const
 
+/** Bucket folder each SavedImageType is stored under; unknown types fall back to `none`. */
+const typeFolder: Record<number, string> = {
+	[SavedImageType.None]: 'none',
+	[SavedImageType.ShareCamera]: 'sharecamera',
+	[SavedImageType.OutfitThumbnail]: 'outfit',
+	[SavedImageType.RoomThumbnail]: 'room',
+	[SavedImageType.ProfileThumbnail]: 'profile',
+	[SavedImageType.InventionThumbnail]: 'invention',
+}
+
 // ---- Images ----------------------------------------------------------------
 export const imageRoutes = new Hono<App>({ strict: false })
 	.get('/api/images/v2/named', (c) => c.json([])) // TODO: hydrate from JSON/namedimages.json
@@ -60,11 +70,12 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		const extension = valid.includes(ext) ? ext : '.jpg'
 
 		// Store the upload in the shared image bucket under a random key, foldered by
-		// the upload date (e.g. `2026-06-15/`) so the bucket stays browsable over time.
-		// The `img` worker serves it back by that key (slashes and all), which is the
-		// returned ImageName.
+		// the image type and then the upload date (e.g. `sharecamera/2026-06-15/`) so
+		// the bucket stays browsable over time. The `img` worker serves it back by that
+		// key (slashes and all), which is the returned ImageName.
+		const typePrefix = (typeFolder[savedImageType] ?? typeFolder[SavedImageType.None]) + '/'
 		const datePrefix = new Date().toISOString().slice(0, 10) + '/'
-		const name = datePrefix + crypto.randomUUID() + extension
+		const name = typePrefix + datePrefix + crypto.randomUUID() + extension
 		await c.env.IMAGES.put(name, await file.arrayBuffer(), {
 			httpMetadata: { contentType: file.type || 'image/jpeg' },
 		})
