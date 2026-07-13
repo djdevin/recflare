@@ -22,6 +22,7 @@ const ORIGIN = 'https://example.com'
 // Matchmaking into a room resolves its real scene from the shared recflare D1.
 // Seed the schema + a couple of rooms (matching the rooms worker's migration).
 const RECCENTER_SCENE = 'cbad71af-0831-44d8-b8ef-69edafa841f6'
+const SECOND_SUBROOM_SCENE = '3f0f6cd0-5c9f-42b2-9c07-2a5a2a1c9f11'
 const TEST_ROOMS = [
 	{
 		RoomId: 1,
@@ -52,6 +53,18 @@ const TEST_ROOMS = [
 		IsDorm: false,
 		Accessibility: 1,
 		SubRooms: [{ SubRoomId: 5, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 1 }],
+	},
+	{
+		// Two subrooms (separate scenes) — matchmaking into one must not land you in
+		// the other.
+		RoomId: 77,
+		Name: 'MultiRoom',
+		IsDorm: false,
+		Accessibility: 1,
+		SubRooms: [
+			{ SubRoomId: 34, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 10 },
+			{ SubRoomId: 35, UnitySceneId: SECOND_SUBROOM_SCENE, MaxPlayers: 6 },
+		],
 	},
 ]
 
@@ -132,18 +145,38 @@ describe('public endpoints', () => {
 	test('GET /player?id=N synthesizes a player payload for that id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player?id=99`)
 		expect(res.status).toBe(200)
-		const players = (await res.json()) as Array<{
-			playerId: number
-			isOnline: boolean
-			appVersion: string
-			roomInstance: unknown
-		}>
-		expect(players[0]).toMatchObject({
-			playerId: 99,
-			isOnline: false,
-			appVersion: '20230302',
-			roomInstance: null,
-		})
+		// The full presence shape the client deserializes — including the connection
+		// fields, which only ever carry values in a matchmaking response.
+		expect(await res.json()).toEqual([
+			{
+				appVersion: '20230302',
+				deviceClass: 0,
+				errorCode: 0,
+				isOnline: false,
+				playerId: 99,
+				roomInstance: null,
+				statusVisibility: 0,
+				vrMovementMode: 1,
+				platform: 0,
+				photonAuthToken: null,
+				photonRealtimeAppId: null,
+				photonVoiceAppId: null,
+				photonChatAppId: null,
+				photonRegion: null,
+				photonRoomId: null,
+				voiceConnectionInfo: null,
+				voiceServerId: null,
+				experiments: null,
+			},
+		])
+	})
+
+	test('GET /player?id=&id= returns one payload per id, in order', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/player?id=1070&id=1380`)
+		const players = (await res.json()) as Array<{ playerId: number; isOnline: boolean }>
+		expect(players.map((p) => p.playerId)).toEqual([1070, 1380])
+		// Neither has presence → both offline.
+		expect(players.every((p) => p.isOnline === false)).toBe(true)
 	})
 
 	test('GET /player without an id returns the default payload', async () => {
@@ -188,6 +221,53 @@ describe('public endpoints', () => {
 			location: RECCENTER_SCENE,
 			isPrivate: true,
 		})
+	})
+
+	test('POST /matchmake/room/:roomId/:subRoomId enters that subroom', async () => {
+		type Instance = {
+			roomId: number
+			subRoomId: number
+			location: string
+			maxCapacity: number
+			roomInstanceId: number
+		}
+		const matchmake = async (path: string, sub: string): Promise<Instance> => {
+			const res = await exports.default.fetch(`${ORIGIN}${path}`, {
+				method: 'POST',
+				headers: {
+					...(await bearer(sub)),
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				// The client's real body: JoinMode 0 (public) plus flags we ignore.
+				body: 'BypassMovementModeRestriction=True&MaxPersistenceVersion=41&JoinMode=0&ClientJoinData=%7B%22WelcomeMatName%22%3A%22%22%7D&AdditionalPlayersAutoFollow=False',
+			})
+			expect(res.status).toBe(200)
+			const body = (await res.json()) as { errorCode: number; roomInstance: Instance }
+			expect(body.errorCode).toBe(0)
+			return body.roomInstance
+		}
+
+		// Subroom 35 → that subroom's own scene and capacity, not the first subroom's.
+		const second = await matchmake('/matchmake/room/77/35', '90')
+		expect(second).toMatchObject({
+			roomId: 77,
+			subRoomId: 35,
+			location: SECOND_SUBROOM_SCENE,
+			maxCapacity: 6,
+		})
+
+		// A second player asking for the same subroom joins the same instance...
+		const alsoSecond = await matchmake('/matchmake/room/77/35', '91')
+		expect(alsoSecond.roomInstanceId).toBe(second.roomInstanceId)
+
+		// ...but the other subroom is a separate place, with its own instance + scene.
+		const first = await matchmake('/matchmake/room/77/34', '92')
+		expect(first.roomInstanceId).not.toBe(second.roomInstanceId)
+		expect(first).toMatchObject({ subRoomId: 34, location: RECCENTER_SCENE, maxCapacity: 10 })
+
+		// An unknown subroom falls back to the room's first (its default entrance).
+		const unknown = await matchmake('/matchmake/room/77/999', '93')
+		expect(unknown).toMatchObject({ subRoomId: 34, location: RECCENTER_SCENE })
 	})
 
 	test('POST /matchmake/room/:roomId returns NoSuchRoom for an unknown room', async () => {
@@ -615,9 +695,7 @@ describe('auth-gated endpoints', () => {
 
 	test('GET /room/:id/instances is auth-gated, owner-only, and lists the room’s instances', async () => {
 		// No token → 401.
-		expect(
-			(await exports.default.fetch(`${ORIGIN}/room/3/instances`)).status
-		).toBe(401)
+		expect((await exports.default.fetch(`${ORIGIN}/room/3/instances`)).status).toBe(401)
 
 		// Not the owner (room 3 is owned by account 42) → 403.
 		expect(

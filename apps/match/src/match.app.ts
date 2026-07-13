@@ -18,8 +18,8 @@ import {
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
-import type { Room, StoredPresence } from '@repo/domain'
 import type { Context } from 'hono'
+import type { Room, StoredPresence } from '@repo/domain'
 import type { App } from './context'
 
 /**
@@ -32,21 +32,45 @@ import type { App } from './context'
  */
 
 /**
- * Default `/player` payload, served whenever the `id` is missing/invalid or the
- * account isn't found. Inlined here (Workers have no filesystem).
+ * The connection fields the client expects on a player payload but that only ever
+ * carry a value in a matchmaking response — the photon/voice credentials for the
+ * instance you were just placed into. Reading someone else's presence never hands
+ * out credentials, so they're always null here; the client needs the keys present.
  */
-const DEFAULT_GET_PLAYER = [
-	{
-		playerId: 1,
-		statusVisibility: 0,
-		deviceClass: 0,
-		vrMovementMode: 1,
-		roomInstance: null,
-		isOnline: true,
-		appVersion: '20230302',
-		platform: 0,
-	},
-]
+const NULL_CONNECTION_INFO = {
+	photonAuthToken: null,
+	photonRealtimeAppId: null,
+	photonVoiceAppId: null,
+	photonChatAppId: null,
+	photonRegion: null,
+	photonRoomId: null,
+	voiceConnectionInfo: null,
+	voiceServerId: null,
+	experiments: null,
+} as const
+
+/**
+ * A player's presence as the client reads it (`/player`, `/player/heartbeat`).
+ * `isOnline` means "has a live presence row" — presence rows expire, so a player who
+ * stopped heartbeating drops offline — and is deliberately *not* derived from being
+ * in a room: you can be online in the lobby with `roomInstance` null. `errorCode` 0
+ * is "no error"; it only turns non-zero on a failed matchmake.
+ */
+function playerPayload(playerId: number, presence?: Presence | null) {
+	return {
+		appVersion: presence?.appVersion || GAME_VERSION,
+		deviceClass: presence?.deviceClass ?? 0,
+		errorCode: 0,
+		// `getPresence` yields null and the batch map yields undefined — neither is online.
+		isOnline: presence != null,
+		playerId,
+		roomInstance: presence?.roomInstance ?? null,
+		statusVisibility: presence?.statusVisibility ?? 0,
+		vrMovementMode: presence?.vrMovementMode ?? 1,
+		platform: presence?.platform ?? 0,
+		...NULL_CONNECTION_INFO,
+	}
+}
 
 /** Heartbeat body posted by the client (all fields optional). */
 interface HeartbeatRequest {
@@ -97,6 +121,13 @@ const PRESENCE_REFRESH_THRESHOLD = 300
  * presence/version handling. Matches our target 2023 client build.
  */
 const GAME_VERSION = '20230302'
+
+/**
+ * Default `/player` payload, served whenever the `id` is missing/invalid or the
+ * account isn't found. Inlined here (Workers have no filesystem). The stub player
+ * reads as online — it's a placeholder for a real, present player.
+ */
+const DEFAULT_GET_PLAYER = [{ ...playerPayload(1), isOnline: true }]
 
 /** Store the room instance the player just matchmade into, preserving status. */
 async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance): Promise<void> {
@@ -165,10 +196,18 @@ function dormRoomInstance() {
  * Instance-relevant fields pulled from a stored room (scene, name, capacity, …).
  * The `location` is the SubRoom's real `UnitySceneId` — an empty/unknown location
  * makes the client reject the session with "unknown scene location ID".
+ *
+ * `subRoomId` picks which of the room's subrooms to enter (the client matchmakes
+ * into one with `/matchmake/room/{roomId}/{subRoomId}`); an unknown or unspecified
+ * subroom falls back to the room's first, which is its default entrance.
  */
-function instanceFieldsFromRoom(room: Room) {
-	const sub = (Array.isArray(room.SubRooms) ? room.SubRooms[0] : undefined) as
-		Record<string, unknown> | undefined
+function instanceFieldsFromRoom(room: Room, subRoomId?: number) {
+	const subRooms = (Array.isArray(room.SubRooms) ? room.SubRooms : []) as Array<
+		Record<string, unknown>
+	>
+	const sub =
+		(subRoomId === undefined ? undefined : subRooms.find((s) => s.SubRoomId === subRoomId)) ??
+		subRooms[0]
 	const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
 	const num = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback)
 	// Room instance names are prefixed with `^` so the client resolves the instance
@@ -197,9 +236,10 @@ function roomInstanceFromRoom(
 	room: Room,
 	isPrivate: boolean,
 	instanceId: number,
-	photonRoomId: string
+	photonRoomId: string,
+	subRoomId?: number
 ): RoomInstance {
-	const f = instanceFieldsFromRoom(room)
+	const f = instanceFieldsFromRoom(room, subRoomId)
 	return {
 		roomInstanceId: instanceId,
 		roomId: f.roomId,
@@ -237,7 +277,8 @@ async function resolveRoomInstance(
 	c: Context<App>,
 	roomKey: string,
 	isPrivate: boolean,
-	ownerId: number
+	ownerId: number,
+	subRoomId?: number
 ): Promise<RoomInstance | null> {
 	const id = Number.parseInt(roomKey, 10)
 	const room = Number.isNaN(id)
@@ -245,10 +286,11 @@ async function resolveRoomInstance(
 		: await getRoomById(c.env.DB, id)
 	if (!room) return null
 
-	const f = instanceFieldsFromRoom(room)
-	// Reuse an existing joinable public instance; private matchmakes always get a
-	// fresh instance. Create one when there's nothing to join.
-	let instance = isPrivate ? null : await getJoinableInstance(c.env.DB, f.roomId)
+	const f = instanceFieldsFromRoom(room, subRoomId)
+	// Reuse an existing joinable public instance *of the same subroom* — subrooms are
+	// separate places, so joining one must never land you in another. Private
+	// matchmakes always get a fresh instance. Create one when there's nothing to join.
+	let instance = isPrivate ? null : await getJoinableInstance(c.env.DB, f.roomId, f.subRoomId)
 	if (!instance) {
 		instance = await createRoomInstance(c.env.DB, {
 			ownerAccountId: ownerId,
@@ -263,7 +305,13 @@ async function resolveRoomInstance(
 			roomInstanceType: f.roomInstanceType,
 		})
 	}
-	return roomInstanceFromRoom(room, isPrivate, instance.roomInstanceId, instance.photonRoomId)
+	return roomInstanceFromRoom(
+		room,
+		isPrivate,
+		instance.roomInstanceId,
+		instance.photonRoomId,
+		f.subRoomId
+	)
 }
 
 /**
@@ -333,20 +381,7 @@ const app = new Hono<App>()
 		// One query for the whole batch (D1 `WHERE account_id IN (…)`), rather than a
 		// point read per id as the KV store required.
 		const presences = await getPresences<RoomInstance>(c.env.DB, ids)
-		const players = ids.map((playerId) => {
-			const p = presences.get(playerId)
-			return {
-				playerId,
-				statusVisibility: p?.statusVisibility ?? 0,
-				deviceClass: p?.deviceClass ?? 0,
-				vrMovementMode: p?.vrMovementMode ?? 1,
-				roomInstance: p?.roomInstance ?? null,
-				isOnline: p?.roomInstance != null,
-				appVersion: p?.appVersion || GAME_VERSION,
-				platform: p?.platform ?? 0,
-			}
-		})
-		return c.json(players)
+		return c.json(ids.map((playerId) => playerPayload(playerId, presences.get(playerId))))
 	})
 
 	.post('/player/heartbeat', async (c) => {
@@ -398,13 +433,13 @@ const app = new Hono<App>()
 			}
 		}
 
+		// The heartbeat echoes the same player payload `/player` serves; with no stored
+		// presence it falls back to what the client just posted.
 		return c.json({
-			playerId: hb.playerId ? hb.playerId : id,
+			...playerPayload(hb.playerId ? hb.playerId : id, presence),
 			statusVisibility: presence?.statusVisibility ?? hb.statusVisibility ?? 0,
 			deviceClass: presence?.deviceClass ?? hb.deviceClass ?? 0,
 			vrMovementMode: presence?.vrMovementMode ?? (hb.vrMovementMode ? hb.vrMovementMode : 1),
-			roomInstance: presence?.roomInstance ?? null,
-			isOnline: presence?.roomInstance != null,
 			appVersion: presence?.appVersion || hb.appVersion || GAME_VERSION,
 			platform: presence?.platform ?? hb.platform ?? 0,
 		})
@@ -463,6 +498,27 @@ const app = new Hono<App>()
 		if (id !== null) await enterRoom(c, id, instance)
 		return c.json({ errorCode: 0, roomInstance: instance })
 	})
+	// Matchmake into a specific subroom of a room (`/matchmake/room/{roomId}/{subRoomId}`
+	// — the client uses this to enter a room's other scenes). The subroom decides the
+	// scene the client loads and which instances are joinable, so it must be carried
+	// through; an unknown subroom falls back to the room's first.
+	.post('/matchmake/room/:roomId/:subRoomId{[0-9]+}', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const joinMode = await readJoinMode(c)
+		const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+		const instance = await resolveRoomInstance(
+			c,
+			c.req.param('roomId'),
+			joinMode === 2,
+			id,
+			subRoomId
+		)
+		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+		await enterRoom(c, id, instance)
+		return c.json({ errorCode: 0, roomInstance: instance })
+	})
+
 	// The 2023 client uses a two-segment matchmake/room/{roomId}. Look the room up
 	// in D1 so the instance carries its real scene, and store it as presence.
 	.post('/matchmake/room/:roomId', async (c) => {
