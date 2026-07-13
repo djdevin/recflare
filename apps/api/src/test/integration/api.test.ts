@@ -154,11 +154,61 @@ describe('public endpoints', () => {
 	})
 
 	test('GET /api/playerReputation/v2/bulk?id= returns a reputation per id', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk?id=1&id=2`)
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk?id=1380`)
 		expect(res.status).toBe(200)
-		const reps = (await res.json()) as Array<{ AccountId: number; CheerCredit: number }>
+		// The full reputation shape the client expects, field for field.
+		expect(await res.json()).toEqual([
+			{
+				AccountId: 1380,
+				IsCheerful: true,
+				Noteriety: 0,
+				SelectedCheer: 0,
+				CheerCredit: 20,
+				CheerGeneral: 0,
+				CheerHelpful: 0,
+				CheerCreative: 0,
+				CheerGreatHost: 0,
+				CheerSportsman: 0,
+				SubscriberCount: 0,
+				SubscribedCount: 0,
+			},
+		])
+
+		const many = await exports.default.fetch(`${ORIGIN}/api/playerReputation/v2/bulk?id=1&id=2`)
+		const reps = (await many.json()) as Array<{ AccountId: number }>
 		expect(reps.map((r) => r.AccountId)).toEqual([1, 2])
-		expect(reps[0]).toMatchObject({ CheerCredit: 20 })
+	})
+
+	test('GET /api/playerevents/v1/clubs returns an empty event list', async () => {
+		// The client deserializes this as a bare array — an envelope here fails with
+		// "expected:'[', actual:'{'". No player-event storage yet → empty.
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerevents/v1/clubs?id=1&id=2`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+
+		// The single-club form does wrap its events with a paging cursor.
+		const one = await exports.default.fetch(`${ORIGIN}/api/playerevents/v1/club/1`)
+		expect(one.status).toBe(200)
+		expect(await one.json()).toEqual({ ContinuationToken: '', Events: [] })
+	})
+
+	test('GET /api/PlayerReporting/v1/moderationBlockDetails reports "not blocked"', async () => {
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/PlayerReporting/v1/moderationBlockDetails`
+		)
+		expect(res.status).toBe(200)
+		// ReportCategory -1 = no category (0 is a real one), and Message is null.
+		expect(await res.json()).toEqual({
+			ReportCategory: -1,
+			Duration: 0,
+			GameSessionId: 0,
+			IsBan: false,
+			IsHostKick: false,
+			IsVoiceModAutoban: false,
+			Message: null,
+			PlayerIdReporter: null,
+			TimeoutStartedAt: null,
+		})
 	})
 
 	test('POST /api/playerReputation/v2/bulk returns a reputation per id', async () => {

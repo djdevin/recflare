@@ -4,18 +4,26 @@ import { parseFormIds, queryIds } from '../http'
 
 import type { App } from '../context'
 
-/** Default reputation for an account — the fallback used with no DB. */
+/**
+ * Default reputation for an account — the fallback used with no DB. Nobody has
+ * earned cheers yet, so every counter is 0 and everyone has their full cheer credit.
+ * `SelectedCheer` is an int (0 = none selected), not null, and `IsCheerful` is true:
+ * the client reads it to decide whether the player may hand out cheers at all.
+ */
 function defaultReputation(id: number) {
 	return {
 		AccountId: id,
+		IsCheerful: true,
 		Noteriety: 0,
+		SelectedCheer: 0,
+		CheerCredit: 20,
 		CheerGeneral: 0,
 		CheerHelpful: 0,
 		CheerCreative: 0,
 		CheerGreatHost: 0,
 		CheerSportsman: 0,
-		CheerCredit: 20,
-		SelectedCheer: null,
+		SubscriberCount: 0,
+		SubscribedCount: 0,
 	}
 }
 

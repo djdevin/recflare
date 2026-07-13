@@ -24,6 +24,18 @@ export const gameplayRoutes = new Hono<App>({ strict: false })
 	.post('/api/objectives/v1/updateobjective', (c) => c.body(null, 200))
 	.get('/api/communityboard/v2/current', (c) => c.json({})) // TODO: hydrate from JSON/communityboard.json
 	.get('/api/playerevents/v1/all', (c) => c.json({ Created: [], Responses: [] }))
+
+	// Player events for a set of clubs (`?id=1&id=2`) — the events shelf on a club's
+	// page. A bare array: the client deserializes this one as a list, and chokes on the
+	// `{ ContinuationToken, Events }` envelope the single-club form uses. No
+	// player-event storage yet, so the feed is empty.
+	.get('/api/playerevents/v1/clubs', (c) => c.json([]))
+
+	// The same feed for a single club (`/club/1`) — the form the reference serves,
+	// which *does* wrap the events with a paging cursor (empty = no next page).
+	.get('/api/playerevents/v1/club/:clubId{[0-9]+}', (c) =>
+		c.json({ ContinuationToken: '', Events: [] })
+	)
 	.get('/api/announcement/v1/get', (c) => c.json([])) // TODO: hydrate from JSON/announcements.json
 
 	// GameSight attribution/analytics event sink. Accept and ack without persisting.

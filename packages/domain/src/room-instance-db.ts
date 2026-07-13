@@ -166,7 +166,10 @@ export async function createRoomInstance(
 		joinDisabled: input.joinDisabled ?? false,
 		createdAt: new Date().toISOString(),
 	}
-	await db.prepare('INSERT INTO room_instance (data) VALUES (?1)').bind(JSON.stringify(stored)).run()
+	await db
+		.prepare('INSERT INTO room_instance (data) VALUES (?1)')
+		.bind(JSON.stringify(stored))
+		.run()
 	return toDto(stored)
 }
 
@@ -238,19 +241,25 @@ export async function refreshInstanceFullness(
  * The oldest joinable public instance of a room (not private, not full, joins
  * enabled, not already in progress), or null when there's none to join. Used by
  * matchmaking to reuse an existing instance before creating a new one.
+ *
+ * A room's subrooms are separate places, so `subRoomId` scopes the search: joining
+ * subroom 35 must never drop you into a live instance of subroom 1. Omitting it
+ * matches any subroom.
  */
 export async function getJoinableInstance(
 	db: D1Database,
-	roomId: number
+	roomId: number,
+	subRoomId?: number
 ): Promise<RoomInstanceDto | null> {
+	const bySubRoom = subRoomId === undefined ? '' : 'AND sub_room_id = ?2'
 	const row = await db
 		.prepare(
 			`SELECT data FROM room_instance
 			 WHERE room_id = ?1 AND is_private = 0 AND is_full = 0 AND join_disabled = 0
-			   AND is_in_progress = 0
+			   AND is_in_progress = 0 ${bySubRoom}
 			 ORDER BY id LIMIT 1`
 		)
-		.bind(roomId)
+		.bind(...(subRoomId === undefined ? [roomId] : [roomId, subRoomId]))
 		.first<{ data: string }>()
 	return row ? toDto(parse(row.data)) : null
 }
