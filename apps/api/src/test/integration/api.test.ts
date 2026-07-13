@@ -222,13 +222,12 @@ describe('public endpoints', () => {
 		})
 	})
 
-	test('POST /api/PlayerReporting/v1/deviceId stores the new device id', async () => {
+	// Unauthenticated by design — the client posts this before it has an account, so
+	// there's no bearer token to check and nothing to attribute the id to.
+	test('POST /api/PlayerReporting/v1/deviceId accepts an unauthenticated report', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/PlayerReporting/v1/deviceId`, {
 			method: 'POST',
-			headers: {
-				...(await bearer()),
-				'Content-Type': 'application/x-www-form-urlencoded',
-			},
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({
 				oldDeviceId: '491e8b9',
 				newDeviceId: '491e8b9566cb1b593367c72860e978b3d5765326',
@@ -237,20 +236,6 @@ describe('public endpoints', () => {
 		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
-
-		const row = await env.DB.prepare(
-			"SELECT json_extract(data, '$.deviceId') AS deviceId FROM account WHERE account_id = 42"
-		).first<{ deviceId: string | null }>()
-		expect(row?.deviceId).toBe('491e8b9566cb1b593367c72860e978b3d5765326')
-	})
-
-	test('POST /api/PlayerReporting/v1/deviceId 401s without a bearer token', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/PlayerReporting/v1/deviceId`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: new URLSearchParams({ newDeviceId: 'abc' }),
-		})
-		expect(res.status).toBe(401)
 	})
 
 	test('POST /api/playerReputation/v2/bulk returns a reputation per id', async () => {

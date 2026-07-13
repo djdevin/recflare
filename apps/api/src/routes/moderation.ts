@@ -1,9 +1,5 @@
 import { Hono } from 'hono'
 
-import { setDeviceId } from '@repo/domain'
-
-import { authedId, unauthorized } from '../http'
-
 import type { App } from '../context'
 
 // ---- Player reporting ------------------------------------------------------
@@ -29,19 +25,8 @@ export const moderationRoutes = new Hono<App>({ strict: false })
 	.post('/api/PlayerReporting/v1/hile', (c) => c.json(false))
 
 	// The client reporting its device id (form-encoded `oldDeviceId`, `newDeviceId`,
-	// `platform`), rotating from the id it thinks we hold to the current one. We don't
-	// reconcile the two: the client is the only source for either, so a mismatch tells
-	// us nothing and last write wins. `platform` is ignored — the account already
-	// records the platform its login is linked to. Auth-gated; the client ignores the
-	// response body, and the real service answers with an empty array.
-	.post('/api/PlayerReporting/v1/deviceId', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const newDeviceId = body.newDeviceId
-		if (typeof newDeviceId !== 'string' || newDeviceId === '') {
-			return c.json({ error: 'newDeviceId is required' }, 400)
-		}
-		await setDeviceId(c.env.DB, id, newDeviceId)
-		return c.json([])
-	})
+	// `platform`), rotating from the id it thinks we hold to the current one. Carries no
+	// bearer token and fires before account creation, so there is no caller to attribute
+	// the id to and nothing to store it against — we accept it and drop it. The client
+	// ignores the response body; the real service answers with an empty array.
+	.post('/api/PlayerReporting/v1/deviceId', (c) => c.json([]))
