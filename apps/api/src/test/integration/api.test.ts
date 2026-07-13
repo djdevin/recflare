@@ -179,6 +179,17 @@ describe('public endpoints', () => {
 		expect(reps.map((r) => r.AccountId)).toEqual([1, 2])
 	})
 
+	test('GET /api/playerevents/v1/tagfilters returns empty filter chips', async () => {
+		// No player-event storage → no tags in use → no chips. Trending is null.
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerevents/v1/tagfilters`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			PinnedFilters: [],
+			PopularFilters: [],
+			TrendingFilters: null,
+		})
+	})
+
 	test('GET /api/playerevents/v1/clubs returns an empty event list', async () => {
 		// The client deserializes this as a bare array — an envelope here fails with
 		// "expected:'[', actual:'{'". No player-event storage yet → empty.

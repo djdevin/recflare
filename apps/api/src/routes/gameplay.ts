@@ -21,9 +21,17 @@ export const gameplayRoutes = new Hono<App>({ strict: false })
 	.get('/api/keepsakes/categories', (c) => c.json([]))
 
 	// ---- Objectives / events / rewards ---------------------------------------
-	.post('/api/objectives/v1/updateobjective', (c) => c.body(null, 200))
+	// Objectives live on the `econ` host (`updateobjective` / `myprogress`), which is
+	// where the client calls them — they are not served here.
 	.get('/api/communityboard/v2/current', (c) => c.json({})) // TODO: hydrate from JSON/communityboard.json
 	.get('/api/playerevents/v1/all', (c) => c.json({ Created: [], Responses: [] }))
+
+	// The tag filter chips on the player-events browse screen. Derived from the tags in
+	// use across events — we store no events, so there are no chips to offer.
+	// `TrendingFilters` is null even in the reference (it needs recent-activity data).
+	.get('/api/playerevents/v1/tagfilters', (c) =>
+		c.json({ PinnedFilters: [], PopularFilters: [], TrendingFilters: null })
+	)
 
 	// Player events for a set of clubs (`?id=1&id=2`) — the events shelf on a club's
 	// page. A bare array: the client deserializes this one as a list, and chokes on the
