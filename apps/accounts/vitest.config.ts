@@ -18,7 +18,7 @@ export default defineConfig({
 					{
 						name: 'notify',
 						modules: true,
-						compatibilityDate: '2025-09-20',
+						compatibilityDate: '2026-06-16',
 						compatibilityFlags: ['nodejs_compat'],
 						durableObjects: { RECFLARE_NOTIFICATIONS_HUB: 'NotificationsHub' },
 						script: `

@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "accounts",
 	"main": "src/accounts.app.ts",
-	"compatibility_date": "2025-09-20",
+	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
 	// Shared `recflare` D1 database. The `accounts` table schema/migrations are owned
 	// by the `auth` worker; this worker binds it read/write to look up and create

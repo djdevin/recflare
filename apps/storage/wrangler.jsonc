@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "storage",
 	"main": "src/storage.app.ts",
-	"compatibility_date": "2025-09-20",
+	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
 	"routes": [],
 	// Shared CDN R2 bucket (owned by the `cdn` worker). Uploads land here under a

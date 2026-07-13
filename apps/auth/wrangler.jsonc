@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "auth",
 	"main": "src/auth.app.ts",
-	"compatibility_date": "2025-09-20",
+	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
 	// Shared `recflare` D1 database (also used by the rooms worker). The `auth` worker
 	// owns the `accounts` table; a dedicated migrations_table keeps its migration

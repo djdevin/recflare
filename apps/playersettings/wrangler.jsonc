@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "playersettings",
 	"main": "src/playersettings.app.ts",
-	"compatibility_date": "2025-09-20",
+	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
 	// Per-player settings persistence.
 	"kv_namespaces": [

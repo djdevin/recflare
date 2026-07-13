@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "econ",
 	"main": "src/econ.app.ts",
-	"compatibility_date": "2025-09-20",
+	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
 	// Storefront catalogs served dynamically by id: `/api/storefronts/v3/giftdropstore/:id`
 	// fetches `sf{id}.json` from this directory via the ASSETS binding. Drop a new

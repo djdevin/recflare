@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "api",
 	"main": "src/api.app.ts",
-	"compatibility_date": "2025-09-20",
+	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
 	// Shared `recflare` DB. Created manually with `wrangler d1 create recflare`; its
 	// id lives in RECFLARE_D1 (see .env) and the "local" placeholder below is
