@@ -209,9 +209,15 @@ const app = new Hono<App>()
 		return c.json({ accountId: id, disallowInAppPurchases: false })
 	})
 
-	// Privacy settings for an account. The client deserializes this into an
-	// object, so it must return `{}` (not `[]`).
-	.get('/accountprivacysettings/:id', (c) => c.json({}))
+	// Privacy settings for an account. A bare `{}` fails the client's deserializer
+	// ("Deserialization returned null") — it needs the fields, so echo the id back and
+	// report recent history as visible. Nothing stores per-player privacy yet.
+	.get('/accountprivacysettings/:id{[0-9]+}', (c) =>
+		c.json({
+			accountId: Number.parseInt(c.req.param('id'), 10),
+			isRecentHistoryVisible: true,
+		})
+	)
 
 	// ---- Profile mutations ---------------------------------------------------
 	// Set the player's display name (persisted on the account row).

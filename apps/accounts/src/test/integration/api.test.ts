@@ -177,6 +177,13 @@ describe('auth-gated endpoints', () => {
 		expect(await res.json()).toEqual({ accountId: 42, disallowInAppPurchases: false })
 	})
 
+	test('GET /accountprivacysettings/:id echoes the id with the privacy flags', async () => {
+		// A bare {} fails the client's deserializer, so the fields have to be there.
+		const res = await exports.default.fetch(`${ORIGIN}/accountprivacysettings/145`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ accountId: 145, isRecentHistoryVisible: true })
+	})
+
 	test('PUT /account/me/displayname 401s without a token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/account/me/displayname`, {
 			...form({ displayName: 'Bob' }),
