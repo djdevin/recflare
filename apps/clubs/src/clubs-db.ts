@@ -43,6 +43,20 @@ export const SCHEMA_DDL: string[] = [
 	)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_club_member_pair ON club_member (club_id, account_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_club_member_account ON club_member (account_id)`,
+	// Club announcements — the club's noticeboard, newest first. Columns rather than a
+	// JSON blob (mirroring the Go model), since nothing here is client-shaped beyond
+	// the fields themselves.
+	`CREATE TABLE IF NOT EXISTS club_announcement (
+		announcement_id INTEGER PRIMARY KEY AUTOINCREMENT,
+		club_id INTEGER NOT NULL,
+		account_id INTEGER NOT NULL,
+		title TEXT NOT NULL DEFAULT '',
+		body TEXT NOT NULL DEFAULT '',
+		image_name TEXT NOT NULL DEFAULT '',
+		meta TEXT NOT NULL DEFAULT '',
+		created_at TEXT
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_club_announcement_club ON club_announcement (club_id)`,
 ]
 
 /**
@@ -102,9 +116,15 @@ export interface Club {
 	MemberCount: number
 }
 
-/** The stored club — the DTO plus `CreatedAt` (kept in the blob, `json:"-"` in Go). */
+/**
+ * The stored club — the DTO plus fields the client never sees on the Club object
+ * itself: `CreatedAt` (`json:"-"` in Go) and the club's custom tags, which the Go
+ * server keeps in a `club_custom_tags` table but which we keep on the blob, since
+ * they're only ever read and written with the club.
+ */
 interface StoredClub extends Club {
 	CreatedAt: string
+	CustomTags?: string[]
 }
 
 interface ClubRow {
@@ -134,7 +154,8 @@ function toDto(s: StoredClub): Club {
 
 const parseOne = (row: ClubRow | null): Club | null =>
 	row ? toDto(JSON.parse(row.data) as StoredClub) : null
-const parseAll = (rows: ClubRow[]): Club[] => rows.map((r) => toDto(JSON.parse(r.data) as StoredClub))
+const parseAll = (rows: ClubRow[]): Club[] =>
+	rows.map((r) => toDto(JSON.parse(r.data) as StoredClub))
 
 /**
  * Recompute a club's `MemberCount` from the `club_member` rows and write it back
@@ -245,6 +266,384 @@ export async function createClub(
 	return { ...toDto(stored), MemberCount: count }
 }
 
+/**
+ * What each membership tier is allowed to do in a club. These are the defaults every
+ * new club gets (co-owners can do everything, moderators can approve/ban, plain
+ * members can do none of it); nothing edits them yet, so they're derived per club
+ * rather than stored.
+ */
+export interface ClubPermission {
+	ClubId: number
+	Type: number
+	ApproveMember: boolean
+	BanUnban: boolean
+	CreateEvent: boolean
+	EditDetails: boolean
+	EditPermissionSettings: boolean
+	PostAnnouncement: boolean
+}
+
+function clubPermission(
+	clubId: number,
+	type: ClubMembershipType,
+	granted: Partial<Omit<ClubPermission, 'ClubId' | 'Type'>> = {}
+): ClubPermission {
+	return {
+		ClubId: clubId,
+		Type: type,
+		ApproveMember: false,
+		BanUnban: false,
+		CreateEvent: false,
+		EditDetails: false,
+		EditPermissionSettings: false,
+		PostAnnouncement: false,
+		...granted,
+	}
+}
+
+/** The club-details payload the client reads from create/details. */
+export interface ClubDetails {
+	AdditionalImages: unknown[]
+	Club: Club
+	ClubId: number
+	CoownerPermissions: ClubPermission
+	CustomTags: string[]
+	MemberPermissions: ClubPermission
+	ModeratorPermissions: ClubPermission
+	MyMembershipType: number
+}
+
+/**
+ * Build the club-details view for a caller. `MyMembershipType` is the caller's own
+ * membership (0 = none, e.g. a signed-out viewer). Additional images have no storage
+ * yet, so they're empty; custom tags come from the club (set via `modifydetails`).
+ */
+export async function getClubDetails(
+	db: D1Database,
+	club: Club,
+	accountId: number | null
+): Promise<ClubDetails> {
+	return {
+		AdditionalImages: [],
+		Club: club,
+		ClubId: club.ClubId,
+		CoownerPermissions: clubPermission(club.ClubId, ClubMembershipType.Coowner, {
+			ApproveMember: true,
+			BanUnban: true,
+			CreateEvent: true,
+			EditDetails: true,
+			EditPermissionSettings: true,
+			PostAnnouncement: true,
+		}),
+		CustomTags: await getClubCustomTags(db, club.ClubId),
+		MemberPermissions: clubPermission(club.ClubId, ClubMembershipType.Member),
+		ModeratorPermissions: clubPermission(club.ClubId, ClubMembershipType.Moderator, {
+			ApproveMember: true,
+			BanUnban: true,
+		}),
+		MyMembershipType: accountId === null ? 0 : await getMembership(db, club.ClubId, accountId),
+	}
+}
+
+/** A club announcement (mirror of the Go `ClubAnnouncement`). */
+export interface ClubAnnouncement {
+	AnnouncementId: number
+	ClubId: number
+	AccountId: number
+	Title: string
+	Body: string
+	ImageName: string
+	Meta: string
+	CreatedAt: string | null
+}
+
+/** A club's announcements, newest first. An unknown club simply has none. */
+export async function getClubAnnouncements(
+	db: D1Database,
+	clubId: number
+): Promise<ClubAnnouncement[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT announcement_id, club_id, account_id, title, body, image_name, meta, created_at
+			 FROM club_announcement
+			 WHERE club_id = ?1
+			 ORDER BY created_at DESC, announcement_id DESC`
+		)
+		.bind(clubId)
+		.all<{
+			announcement_id: number
+			club_id: number
+			account_id: number
+			title: string
+			body: string
+			image_name: string
+			meta: string
+			created_at: string | null
+		}>()
+
+	return results.map((r) => ({
+		AnnouncementId: r.announcement_id,
+		ClubId: r.club_id,
+		AccountId: r.account_id,
+		Title: r.title,
+		Body: r.body,
+		ImageName: r.image_name,
+		Meta: r.meta,
+		CreatedAt: r.created_at,
+	}))
+}
+
+/** Post an announcement to a club, returning its new id. */
+export async function createClubAnnouncement(
+	db: D1Database,
+	clubId: number,
+	accountId: number,
+	fields: { title?: string; body?: string; imageName?: string; meta?: string }
+): Promise<number> {
+	const row = await db
+		.prepare(
+			`INSERT INTO club_announcement (club_id, account_id, title, body, image_name, meta, created_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+			 RETURNING announcement_id`
+		)
+		.bind(
+			clubId,
+			accountId,
+			fields.title ?? '',
+			fields.body ?? '',
+			fields.imageName ?? '',
+			fields.meta ?? '',
+			new Date().toISOString()
+		)
+		.first<{ announcement_id: number }>()
+	return row?.announcement_id ?? 0
+}
+
+/** What club search answers: the page of clubs plus the total that matched. */
+export interface ClubSearchResult {
+	Clubs: Club[]
+	ContinuationToken: null
+	TotalClubs: number
+}
+
+/**
+ * Club search (`/club/search`). Public, non-subscription clubs only. `category` is an
+ * exact (case-insensitive) match, `query` a substring of the name or description.
+ * `sort`: 1 = newest first, 2 = by name, anything else (including the client's 0) =
+ * biggest first, then newest. `count` caps the page — out-of-range values fall back to
+ * 30, as the reference does. `TotalClubs` is the full match count, not the page size.
+ */
+export async function searchClubs(
+	db: D1Database,
+	category: string,
+	query: string,
+	sort: string | undefined,
+	count: number
+): Promise<ClubSearchResult> {
+	const { results } = await db
+		.prepare(
+			`SELECT data FROM club
+			 WHERE visibility = ?1
+			   AND json_extract(data, '$.ClubType') != ?2`
+		)
+		.bind(ClubVisibility.Public, SUBSCRIPTION_CLUB_TYPE)
+		.all<ClubRow>()
+
+	const stored = results.map((r) => JSON.parse(r.data) as StoredClub)
+	const term = query.trim().toLowerCase()
+	const wanted = category.trim().toLowerCase()
+
+	const matched = stored.filter((club) => {
+		if (wanted !== '' && club.Category.toLowerCase() !== wanted) return false
+		if (term === '') return true
+		return club.Name.toLowerCase().includes(term) || club.Description.toLowerCase().includes(term)
+	})
+
+	const byNewest = (a: StoredClub, b: StoredClub) => b.CreatedAt.localeCompare(a.CreatedAt)
+	matched.sort((a, b) => {
+		if (sort === '1') return byNewest(a, b)
+		if (sort === '2') return a.Name.localeCompare(b.Name)
+		return b.MemberCount - a.MemberCount || byNewest(a, b)
+	})
+
+	return {
+		Clubs: matched.slice(0, count).map(toDto),
+		ContinuationToken: null,
+		TotalClubs: matched.length,
+	}
+}
+
+/**
+ * The player's "home club" — the one whose clubhouse they spawn into. It's a field
+ * on the *account* row (owned by the `auth` worker, on the same shared database, the
+ * way the `api` worker writes the account's profile image), not on the club: one
+ * home club per player.
+ *
+ * Returns null when they haven't set one, when the club is gone, or when it has no
+ * clubhouse room — a home club with nowhere to go isn't usable, and the reference
+ * 404s all three cases identically.
+ */
+export async function getHomeClub(db: D1Database, accountId: number): Promise<Club | null> {
+	const row = await db
+		.prepare(
+			"SELECT json_extract(data, '$.homeClubId') AS clubId FROM account WHERE account_id = ?1"
+		)
+		.bind(accountId)
+		.first<{ clubId: number | null }>()
+	if (row?.clubId == null) return null
+
+	const club = await getClub(db, row.clubId)
+	// `== null` catches a club row that predates the field (undefined), not just an
+	// explicit null — either way it has no clubhouse to spawn into.
+	if (club === null || club.ClubhouseRoomId == null) return null
+	return club
+}
+
+/** Point the player's home club at `clubId` (stored on their account row). */
+export async function setHomeClub(
+	db: D1Database,
+	accountId: number,
+	clubId: number
+): Promise<void> {
+	await db
+		.prepare("UPDATE account SET data = json_set(data, '$.homeClubId', ?2) WHERE account_id = ?1")
+		.bind(accountId, clubId)
+		.run()
+}
+
+/** A club membership row, as the members list serves it (mirror of the Go `ClubMember`). */
+export interface ClubMember {
+	ClubMemberId: number
+	ClubId: number
+	AccountId: number
+	MembershipType: number
+	CreatedAt: string | null
+}
+
+/**
+ * A club's members (`/club/:id/members`). `membershipType` filters to exactly that
+ * tier when given — note it's an exact match, not a threshold, so `30` lists only
+ * co-owners (not the creator above them). `sortBy` picks the order: 1 = by account
+ * id, 2 = oldest membership first, anything else = the default, highest tier first
+ * then oldest. An unknown club has no members, so it's an empty list, not a 404.
+ */
+export async function getClubMembers(
+	db: D1Database,
+	clubId: number,
+	membershipType: number | undefined,
+	sortBy: string | undefined
+): Promise<ClubMember[]> {
+	const order =
+		sortBy === '1'
+			? 'account_id ASC'
+			: sortBy === '2'
+				? 'created_at ASC'
+				: 'membership_type DESC, created_at ASC'
+	const filter = membershipType === undefined ? '' : 'AND membership_type = ?2'
+
+	const { results } = await db
+		.prepare(
+			`SELECT club_member_id, club_id, account_id, membership_type, created_at
+			 FROM club_member
+			 WHERE club_id = ?1 ${filter}
+			 ORDER BY ${order}`
+		)
+		.bind(...(membershipType === undefined ? [clubId] : [clubId, membershipType]))
+		.all<{
+			club_member_id: number
+			club_id: number
+			account_id: number
+			membership_type: number
+			created_at: string | null
+		}>()
+
+	return results.map((r) => ({
+		ClubMemberId: r.club_member_id,
+		ClubId: r.club_id,
+		AccountId: r.account_id,
+		MembershipType: r.membership_type,
+		CreatedAt: r.created_at,
+	}))
+}
+
+/** Fields `modifydetails` can change. Anything left undefined keeps its stored value. */
+export interface ClubPatch {
+	name?: string
+	description?: string
+	category?: string
+	visibility?: number
+	joinability?: number
+	allowJuniors?: boolean
+	mainImageName?: string
+	minLevel?: number
+	/** Replaces the club's tags wholesale when present; absent leaves them alone. */
+	customTags?: string[]
+	/** The club's clubhouse room; `null` clears it (undefined leaves it alone). */
+	clubhouseRoomId?: number | null
+}
+
+/**
+ * Apply an edit to a club's details (`modifydetails`). Only the keys present on the
+ * patch change. Custom tags are replaced as a set — trimmed, de-duplicated
+ * case-insensitively, first spelling wins. Returns the updated club, or null when
+ * there's no such club.
+ */
+export async function updateClub(
+	db: D1Database,
+	clubId: number,
+	patch: ClubPatch
+): Promise<Club | null> {
+	const row = await db
+		.prepare('SELECT data FROM club WHERE club_id = ?1')
+		.bind(clubId)
+		.first<ClubRow>()
+	if (row === null) return null
+	const stored = JSON.parse(row.data) as StoredClub
+
+	const updated: StoredClub = {
+		...stored,
+		Name: patch.name ?? stored.Name,
+		Description: patch.description ?? stored.Description,
+		Category: patch.category ?? stored.Category,
+		Visibility: patch.visibility ?? stored.Visibility,
+		Joinability: patch.joinability ?? stored.Joinability,
+		AllowJuniors: patch.allowJuniors ?? stored.AllowJuniors,
+		MainImageName: patch.mainImageName ?? stored.MainImageName,
+		MinLevel: patch.minLevel ?? stored.MinLevel,
+		CustomTags: patch.customTags === undefined ? stored.CustomTags : dedupeTags(patch.customTags),
+		// `null` clears the clubhouse, so this can't collapse to `??`.
+		ClubhouseRoomId:
+			patch.clubhouseRoomId === undefined ? stored.ClubhouseRoomId : patch.clubhouseRoomId,
+	}
+	await db
+		.prepare('UPDATE club SET data = ?1 WHERE club_id = ?2')
+		.bind(JSON.stringify(updated), clubId)
+		.run()
+	return toDto(updated)
+}
+
+/** Trim, drop blanks, and de-duplicate tags case-insensitively (first spelling wins). */
+function dedupeTags(tags: string[]): string[] {
+	const seen = new Set<string>()
+	const out: string[] = []
+	for (const raw of tags) {
+		const tag = raw.trim()
+		if (tag === '' || seen.has(tag.toLowerCase())) continue
+		seen.add(tag.toLowerCase())
+		out.push(tag)
+	}
+	return out
+}
+
+/** A club's custom tags (stored on the blob; empty when it has none). */
+export async function getClubCustomTags(db: D1Database, clubId: number): Promise<string[]> {
+	const row = await db
+		.prepare('SELECT data FROM club WHERE club_id = ?1')
+		.bind(clubId)
+		.first<ClubRow>()
+	return row === null ? [] : ((JSON.parse(row.data) as StoredClub).CustomTags ?? [])
+}
+
 /** Look up a single club by its ClubId. */
 export async function getClub(db: D1Database, clubId: number): Promise<Club | null> {
 	return parseOne(
@@ -252,18 +651,30 @@ export async function getClub(db: D1Database, clubId: number): Promise<Club | nu
 	)
 }
 
-/** All clubs created by an account (GetMyCreatedClubs). */
+/**
+ * Subscription clubs (`ClubType` 1) are a creator's paid-subscriber club, not a
+ * club you browse or list among your own — they're excluded from the "my clubs"
+ * lists (the client reaches them through the `/subscription/*` endpoints instead).
+ */
+const SUBSCRIPTION_CLUB_TYPE = 1
+
+/** All clubs created by an account (GetMyCreatedClubs), oldest first. */
 export async function getClubsByCreator(db: D1Database, accountId: number): Promise<Club[]> {
 	const { results } = await db
-		.prepare('SELECT data FROM club WHERE creator_account_id = ?1')
-		.bind(accountId)
+		.prepare(
+			`SELECT data FROM club
+			 WHERE creator_account_id = ?1
+			   AND json_extract(data, '$.ClubType') != ?2
+			 ORDER BY json_extract(data, '$.CreatedAt') ASC`
+		)
+		.bind(accountId, SUBSCRIPTION_CLUB_TYPE)
 		.all<ClubRow>()
 	return parseAll(results)
 }
 
 /**
- * All clubs an account is an actual member of (GetMyMembershipClubs), most recently
- * joined first. Only memberships at/above `Member` count — pending requests, denied
+ * All clubs an account is an actual member of (GetMyMembershipClubs), oldest club
+ * first. Only memberships at/above `Member` count — pending requests, denied
  * requests, and bans are excluded. Joins `club_member` to `club`, so a membership
  * whose club is gone is simply absent.
  */
@@ -274,9 +685,10 @@ export async function getClubsByMember(db: D1Database, accountId: number): Promi
 			 FROM club_member m
 			 JOIN club c ON c.club_id = m.club_id
 			 WHERE m.account_id = ?1 AND m.membership_type >= ?2
-			 ORDER BY m.created_at DESC`
+			   AND json_extract(c.data, '$.ClubType') != ?3
+			 ORDER BY json_extract(c.data, '$.CreatedAt') ASC`
 		)
-		.bind(accountId, MEMBER_THRESHOLD)
+		.bind(accountId, MEMBER_THRESHOLD, SUBSCRIPTION_CLUB_TYPE)
 		.all<ClubRow>()
 	return parseAll(results)
 }
