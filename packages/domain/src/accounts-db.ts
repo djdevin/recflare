@@ -55,6 +55,12 @@ export interface Account {
 	phone?: string
 	/** Set via PUT /account/me/bio; read back via GET /account/:id/bio. */
 	bio?: string
+	/**
+	 * Hardware/install id the client last reported (POST /api/PlayerReporting/v1/deviceId).
+	 * The client rotates it — it posts the id it believes we hold plus the new one —
+	 * so this is simply the most recent value it told us about, not a proven identity.
+	 */
+	deviceId?: string
 	/** Remaining username changes; decremented by PUT /account/me/username. */
 	availableUsernameChanges?: number
 	/**
@@ -209,6 +215,15 @@ export async function setLastLoginTime(db: D1Database, id: number, time: string)
 		.prepare("UPDATE account SET data = json_set(data, '$.lastLoginTime', ?2) WHERE account_id = ?1")
 		.bind(id, time)
 		.run()
+}
+
+/** Record the device id the client last reported. False when no such account exists. */
+export async function setDeviceId(db: D1Database, id: number, deviceId: string): Promise<boolean> {
+	const { meta } = await db
+		.prepare("UPDATE account SET data = json_set(data, '$.deviceId', ?2) WHERE account_id = ?1")
+		.bind(id, deviceId)
+		.run()
+	return meta.changes > 0
 }
 
 /** Look up multiple accounts by AccountId (order not guaranteed). */
