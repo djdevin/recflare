@@ -15,6 +15,13 @@
 			"database_id": "local"
 		}
 	],
+	// Presence sweep. Rows expire on their own TTL (15m) and reads already ignore
+	// expired ones, so this is housekeeping: it purges them and recomputes the
+	// fullness of the instances the departed players were in (a crashed player never
+	// matchmakes out, so nothing else notices they left). Every 5 minutes.
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	},
 	"logpush": false,
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
 	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"

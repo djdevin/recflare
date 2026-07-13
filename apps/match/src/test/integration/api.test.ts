@@ -1,4 +1,10 @@
-import { adminSecretsStore, env } from 'cloudflare:test'
+import {
+	adminSecretsStore,
+	createExecutionContext,
+	createScheduledController,
+	env,
+	waitOnExecutionContext,
+} from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
@@ -9,7 +15,7 @@ import {
 	ROOM_INSTANCE_SCHEMA_DDL,
 } from '@repo/domain'
 
-import '../../match.app'
+import worker from '../../match.app'
 
 import type { Env } from '../../context'
 
@@ -580,6 +586,14 @@ describe('auth-gated endpoints', () => {
 
 	const nowSeconds = () => Math.floor(Date.now() / 1000)
 
+	/** Rows for an account, expired ones included — the sweep should leave none. */
+	const countPresenceRows = async (id: number): Promise<number> => {
+		const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM presence WHERE account_id = ?1')
+			.bind(id)
+			.first<{ n: number }>()
+		return row?.n ?? 0
+	}
+
 	test('heartbeat refreshes presence when its TTL is close to lapsing', async () => {
 		// TTL about to lapse (well inside the refresh window).
 		const nearExpiry = nowSeconds() + 10
@@ -661,6 +675,28 @@ describe('auth-gated endpoints', () => {
 		const solo = await matchmakeInto('5', '823')
 		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(true)
 		await matchmakeInto('2', '823')
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
+	})
+
+	test('the cron sweep purges expired presence and frees the instance those players were in', async () => {
+		// A player fills SoloRoom, then vanishes without matchmaking out (a crash) —
+		// nothing recomputes fullness, so the instance sits full with nobody in it.
+		const solo = await matchmakeInto('5', '824')
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(true)
+		await env.DB.prepare(
+			"UPDATE presence SET data = json_set(data, '$.expiresAt', ?2) WHERE account_id = ?1"
+		)
+			.bind(824, nowSeconds() - 10)
+			.run()
+
+		// Driven through the module's own export rather than the `exports` proxy — a
+		// ScheduledController can't cross the isolate boundary the proxy serializes over.
+		const ctx = createExecutionContext()
+		await worker.scheduled(createScheduledController(), env, ctx)
+		await waitOnExecutionContext(ctx)
+
+		// Expired row gone, and the instance is joinable again.
+		expect(await countPresenceRows(824)).toBe(0)
 		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
 	})
 

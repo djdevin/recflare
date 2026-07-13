@@ -138,6 +138,27 @@ export async function countPlayersInInstance(
 }
 
 /**
+ * The room instances that expired presence rows still point at — the instances a
+ * player was in when they stopped heartbeating (a crash or a hard quit, where no
+ * matchmake ever moved them out). Their head-count has really dropped, so callers
+ * purging presence use this to recompute those instances' fullness. Distinct ids,
+ * lobby (null-instance) presence excluded.
+ */
+export async function getExpiredPresenceInstanceIds(
+	db: D1Database,
+	now = nowSeconds()
+): Promise<number[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT DISTINCT room_instance_id AS id FROM presence
+			 WHERE expires_at <= ?1 AND room_instance_id IS NOT NULL`
+		)
+		.bind(now)
+		.all<{ id: number }>()
+	return results.map((r) => r.id)
+}
+
+/**
  * Purge expired presence rows — housekeeping only, since reads already ignore them
  * (and `INSERT OR REPLACE` keeps a single row per account, so the table is bounded
  * by account count). Returns the number of rows removed.

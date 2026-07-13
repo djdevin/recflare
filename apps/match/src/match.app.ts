@@ -3,6 +3,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
 	createRoomInstance,
+	deleteExpiredPresence,
+	getExpiredPresenceInstanceIds,
 	getJoinableInstance,
 	getOrCreateDormRoom,
 	getPresence,
@@ -20,7 +22,7 @@ import { validateAndGetAccountId } from '@repo/jwt'
 
 import type { Context } from 'hono'
 import type { Room, StoredPresence } from '@repo/domain'
-import type { App } from './context'
+import type { App, Env } from './context'
 
 /**
  * The matchmaking surface. Rooms and room instances are D1-backed (matchmaking
@@ -603,4 +605,31 @@ const app = new Hono<App>()
 	// Rooms flagged as requiring an RR+ subscription. No such queue yet → empty list.
 	.get('/rooms/requiring/rrplus', (c) => c.json([]))
 
-export default app
+/**
+ * Cron: sweep presence that has aged past its TTL. Reads already ignore expired rows,
+ * so this isn't about correctness of `/player` — it's that a player who crashed or
+ * hard-quit never matchmakes out of their instance, so nothing recomputes that
+ * instance's fullness and it can stay flagged full (and unjoinable) with nobody in it.
+ * Recompute the instances the expiring rows point at, *then* delete: the sweep is the
+ * only thing that notices those departures. Fullness is recomputed after the delete so
+ * the head-count no longer sees them.
+ */
+async function sweepExpiredPresence(env: Env): Promise<void> {
+	const staleInstanceIds = await getExpiredPresenceInstanceIds(env.DB)
+	const removed = await deleteExpiredPresence(env.DB)
+	for (const instanceId of staleInstanceIds) {
+		await refreshInstanceFullness(env.DB, instanceId)
+	}
+	// The tagged logger is request-scoped (its middleware never runs for a cron), so
+	// log plainly here — Workers observability picks it up either way.
+	console.log(
+		`presence sweep: removed ${removed} expired rows, refreshed ${staleInstanceIds.length} instances`
+	)
+}
+
+export default {
+	fetch: app.fetch,
+	scheduled: async (_controller, env, ctx) => {
+		ctx.waitUntil(sweepExpiredPresence(env))
+	},
+} satisfies ExportedHandler<Env>
