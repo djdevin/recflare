@@ -99,9 +99,12 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 	})
 
 	// Custom avatar item gates — real Rec Room client endpoints with no backing
-	// implementation yet. Each returns a bare JSON boolean; we enable them. Flip
-	// to `false` to disable the corresponding flow.
-	.get('/api/customAvatarItems/v1/isCreationAllowedForAccount', (c) => c.json(true))
+	// implementation yet; we enable them. Flip to `false` to disable the
+	// corresponding flow. `isCreationAllowedForAccount` wraps its answer in the
+	// success/value envelope; the other two return a bare JSON boolean.
+	.get('/api/customAvatarItems/v1/isCreationAllowedForAccount', (c) =>
+		c.json({ success: true, value: null })
+	)
 	.get('/api/customAvatarItems/v1/isCreationEnabled', (c) => c.json(true))
 	.get('/api/customAvatarItems/v1/isRenderingEnabled', (c) => c.json(true))
 

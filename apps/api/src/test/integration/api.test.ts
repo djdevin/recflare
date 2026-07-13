@@ -290,12 +290,12 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('GET /api/customAvatarItems/v1/isCreationAllowedForAccount returns true', async () => {
+	test('GET /api/customAvatarItems/v1/isCreationAllowedForAccount returns a success envelope', async () => {
 		const res = await exports.default.fetch(
 			`${ORIGIN}/api/customAvatarItems/v1/isCreationAllowedForAccount`
 		)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toBe(true)
+		expect(await res.json()).toEqual({ success: true, value: null })
 	})
 
 	test('GET /api/customAvatarItems/v1/isCreationEnabled returns true', async () => {
