@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { authedId, unauthorized } from '../http'
 import {
 	acceptFriendRequest,
 	addFriend,
@@ -8,7 +9,6 @@ import {
 	sendFriendRequest,
 	setRelationshipFlag,
 } from '../relationships-db'
-import { authedId, unauthorized } from '../http'
 
 import type { Context } from 'hono'
 import type { App } from '../context'
@@ -107,6 +107,25 @@ export const socialRoutes = new Hono<App>({ strict: false })
 		const target = await targetPlayerId(c)
 		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
 		return c.json(await setRelationshipFlag(c.env.DB, id, target, 'muted', true))
+	})
+
+	// Favorite / unfavorite another player (the client calls these as a GET with the
+	// target in `?id=`). Same per-side flag mechanics as ignore/mute above: the write
+	// lands on the *caller's* side of the row, and favoriting someone you have no
+	// relationship with creates a bare (None) row. Auth-gated.
+	.on(['GET', 'POST'], '/api/relationships/v1/favorite', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const target = await targetPlayerId(c)
+		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
+		return c.json(await setRelationshipFlag(c.env.DB, id, target, 'favorited', true))
+	})
+	.on(['GET', 'POST'], '/api/relationships/v1/unfavorite', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const target = await targetPlayerId(c)
+		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
+		return c.json(await setRelationshipFlag(c.env.DB, id, target, 'favorited', false))
 	})
 
 	.get('/api/messages/v2/get', (c) => c.json([]))

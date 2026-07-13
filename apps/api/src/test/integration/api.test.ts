@@ -1398,6 +1398,8 @@ describe('relationships', () => {
 			'/api/relationships/v2/addfriend',
 			'/api/relationships/v1/ignore',
 			'/api/relationships/v1/mute',
+			'/api/relationships/v1/favorite',
+			'/api/relationships/v1/unfavorite',
 		]) {
 			const res = await exports.default.fetch(`${ORIGIN}${path}?id=1`)
 			expect(res.status).toBe(401)
@@ -1503,5 +1505,39 @@ describe('relationships', () => {
 		expect(view710).toEqual([
 			expect.objectContaining({ PlayerID: 711, RelationshipType: 1, Ignored: 0 }),
 		])
+	})
+
+	test('v1 favorite/unfavorite toggle the caller’s own side, leaving the friendship intact', async () => {
+		// 720 and 721 are friends; 720 favorites 721 — the real client shape, a GET with `?id=`.
+		await mutate('/api/relationships/v2/addfriend', '720', 721)
+		expect(
+			(await (await mutate('/api/relationships/v1/favorite', '720', 721)).json()) as Rel
+		).toMatchObject({ PlayerID: 721, RelationshipType: 3, Favorited: 1 })
+
+		// Favoriting is one-sided: 721 does not see themselves as having favorited 720.
+		expect(await relationships('721')).toEqual([
+			{ PlayerID: 720, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
+
+		// Unfavorite clears the flag but keeps the friendship.
+		expect(
+			(await (await mutate('/api/relationships/v1/unfavorite', '720', 721)).json()) as Rel
+		).toMatchObject({ PlayerID: 721, RelationshipType: 3, Favorited: 0 })
+		expect(await relationships('720')).toEqual([
+			{ PlayerID: 721, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
+	})
+
+	test('favoriting a player you have no relationship with is allowed', async () => {
+		// Mirrors ignore/mute: a bare None row is created with the caller's side flagged.
+		expect(
+			(await (await mutate('/api/relationships/v1/favorite', '730', 731)).json()) as Rel
+		).toMatchObject({ PlayerID: 731, RelationshipType: 0, Favorited: 1 })
+		// A None row is not reported as a relationship by v2/get.
+		expect(await relationships('730')).toEqual([])
+	})
+
+	test('a self-targeted favorite is rejected', async () => {
+		expect((await mutate('/api/relationships/v1/favorite', '740', 740)).status).toBe(400)
 	})
 })
