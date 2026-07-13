@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
+import { useWorkersLogger, WorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
@@ -9,6 +9,19 @@ import defaultAvatar from '../static/default-avatar.json'
 import myProgress from '../static/my-progress.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
+import {
+	clearObjectiveGroup,
+	getObjectiveGroups,
+	getObjectives,
+	updateObjective,
+} from './objectives-db'
+import {
+	consumeRewardSelection,
+	createRewardSelection,
+	getRewardSelection,
+	rollRewardDrops,
+	tokenRewardDrop,
+} from './rewards-db'
 
 import type { Context } from 'hono'
 import type { Avatar } from './avatar-db'
@@ -33,6 +46,37 @@ async function authedId(c: Context<App>): Promise<number | null> {
 /** Results.Unauthorized() equivalent — 401 with empty body. */
 function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
+}
+
+const logger = new WorkersLogger()
+
+/** The single hub Durable Object every worker talks to. */
+const HUB_INSTANCE = 'global'
+
+/**
+ * Push a notification to a player over the websocket hub. Rewards are *delivered*
+ * this way — the HTTP response carries none of it — but a hub that's down shouldn't
+ * fail the request that already committed, so a delivery failure is logged, not thrown.
+ */
+async function pushToPlayer(
+	c: Context<App>,
+	playerId: number,
+	notificationType: string,
+	data: Record<string, unknown>
+): Promise<void> {
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			playerId,
+			notificationType,
+			data
+		)
+	} catch (err) {
+		logger.error('failed to push notification', {
+			playerId,
+			notificationType,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
 }
 
 /**
@@ -101,10 +145,65 @@ const app = new Hono<App>()
 		return c.json({ Results: [], TotalResults: 0 })
 	})
 
-	// The player's objectives progress. Serves a static JSON file verbatim with
-	// no auth — same default for everyone until there's a DB binding to track
-	// per-player progress.
-	.get('/api/objectives/v1/myprogress', (c) => c.json(myProgress))
+	// The player's objectives progress. Their own recorded objectives once they've made
+	// any (the client reports them through `updateobjective`); the bundled default set
+	// otherwise, including for a signed-out caller — the client needs a well-formed
+	// checklist to render either way.
+	.get('/api/objectives/v1/myprogress', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.json(myProgress)
+
+		const [objectives, groups] = await Promise.all([
+			getObjectives(c.env.DB, id),
+			getObjectiveGroups(c.env.DB, id),
+		])
+		if (objectives.length === 0 && groups.length === 0) return c.json(myProgress)
+		return c.json({
+			Objectives: objectives,
+			// Fall back to the default groups until the player has cleared one of their own.
+			ObjectiveGroups: groups.length === 0 ? myProgress.ObjectiveGroups : groups,
+		})
+	})
+
+	// The client clearing an objective group — it's done with that set (its dailies
+	// rolled over, say). Auth-gated; the JSON body carries `Group`. Marks the group
+	// completed, stamps the clear time, and returns the group as the client reads it.
+	.post('/api/objectives/v1/cleargroup', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
+		const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+		const group = typeof body.Group === 'number' ? body.Group : 0
+
+		return c.json(await clearObjectiveGroup(c.env.DB, id, group))
+	})
+
+	// The client reporting progress on an objective as it plays. Auth-gated; the body is
+	// JSON (Group/Index identify the objective within the player's set). Answers a bare
+	// 200 — the client doesn't read anything back.
+	.post('/api/objectives/v1/updateobjective', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
+		const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+		if (body === null) return c.body(null, 400)
+
+		const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
+		const bool = (v: unknown): boolean => v === true
+
+		await updateObjective(c.env.DB, id, {
+			Group: num(body.Group),
+			Index: num(body.Index),
+			Progress: num(body.Progress),
+			VisualProgress: num(body.VisualProgress),
+			IsCompleted: bool(body.IsCompleted),
+			IsRewarded: bool(body.IsRewarded),
+		})
+		// The reference awards progression XP the first time an objective completes; we
+		// have no XP store yet, so completion is only recorded (HasClaimedReward latches
+		// so the award can't be double-paid once there is one).
+		return c.body(null, 200)
+	})
 
 	// The player's avatar, stored as a JSON blob on their account row. Falls back
 	// to the default outfit when they haven't saved one — the client's parser NREs
@@ -224,6 +323,112 @@ const app = new Hono<App>()
 
 	// Pending game rewards. Returns "[]".
 	.get('/api/gamerewards/v1/pending', (c) => c.json([]))
+
+	// Ask for a reward (a challenge completed, a level gained, …). The HTTP response
+	// carries *nothing* — the three choices are pushed to the player over the
+	// notifications hub as `RewardSelectionReceived`, and they pick one with
+	// `v1/select`. Auth-gated; answers the `{ error, success, value }` envelope.
+	.post('/api/gamerewards/v1/request', async (c) => {
+		const accountId = await authedId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const field = (...names: string[]): string => {
+			const key = Object.keys(body).find((k) =>
+				names.some((n) => n.toLowerCase() === k.toLowerCase())
+			)
+			const v = key === undefined ? undefined : body[key]
+			return typeof v === 'string' ? v : ''
+		}
+		const message = field('Message')
+		const giftContext = Number.parseInt(field('giftContext', 'GiftContext'), 10) || 0
+		const rewardType = Number.parseInt(field('rewardType', 'RewardType'), 10) || 0
+
+		// No reward-drop catalog yet, so all three choices are token drops — the
+		// reference's own fallback when it runs out of drops for a context.
+		const drops = rollRewardDrops(giftContext)
+		const selection = await createRewardSelection(c.env.DB, accountId, {
+			message,
+			giftContext,
+			rewardType,
+			dropIds: drops.map((d) => d.GiftDropId),
+		})
+
+		await pushToPlayer(c, accountId, 'RewardSelectionReceived', {
+			RewardSelectionId: selection.RewardSelectionId,
+			Message: message,
+			GiftContext: giftContext,
+			RewardType: rewardType,
+			GiftDrop1: drops[0],
+			GiftDrop2: drops[1],
+			GiftDrop3: drops[2],
+			CreatedAt: selection.CreatedAt,
+			PlayerId: 0,
+		})
+
+		return c.json({ error: '', success: true, value: null })
+	})
+
+	// Claim one of the three rewards a selection offered. The selection must be the
+	// caller's, unconsumed, and actually contain the claimed drop — otherwise 403, so a
+	// player can't mint a reward they were never offered or redeem one twice. Returns
+	// the claimed drop, and pushes the resulting gift over the hub.
+	.post('/api/gamerewards/v1/select', async (c) => {
+		const accountId = await authedId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const int = (name: string): number => {
+			const key = Object.keys(body).find((k) => k.toLowerCase() === name.toLowerCase())
+			const v = key === undefined ? undefined : body[key]
+			return typeof v === 'string' ? Number.parseInt(v, 10) || 0 : 0
+		}
+		const rewardSelectionId = int('rewardSelectionId')
+		const giftDropId = int('giftDropId')
+		if (giftDropId === 0) return c.json({ error: 'giftDropId is required' }, 400)
+
+		const selection =
+			rewardSelectionId <= 0 ? null : await getRewardSelection(c.env.DB, rewardSelectionId)
+		if (
+			selection === null ||
+			selection.AccountId !== accountId ||
+			selection.Consumed ||
+			!selection.GiftDropIds.includes(giftDropId)
+		) {
+			return c.body(null, 403)
+		}
+		// Consume conditionally: two racing claims mean the second one loses.
+		if (!(await consumeRewardSelection(c.env.DB, selection.RewardSelectionId))) {
+			return c.body(null, 403)
+		}
+
+		// Every drop is a token drop for now, and a token drop's id is the negative of
+		// its amount — so the claim rebuilds without a catalog lookup.
+		const drop = tokenRewardDrop(-giftDropId, selection.GiftContext)
+
+		await pushToPlayer(c, accountId, 'GiftPackageRewardSelectionReceived', {
+			Id: selection.RewardSelectionId,
+			FromGiftDropId: drop.GiftDropId,
+			FromPlayerId: 1,
+			ConsumableItemDesc: drop.ConsumableItemDesc,
+			AvatarItemDesc: drop.AvatarItemDesc,
+			EquipmentPrefabName: drop.EquipmentPrefabName,
+			EquipmentModificationGuid: drop.EquipmentModificationGuid,
+			CurrencyType: drop.CurrencyType,
+			Currency: drop.Currency,
+			Xp: 0,
+			Level: 0,
+			Platform: -1,
+			PlatformsToSpawnOn: -1,
+			BalanceType: -2,
+			GiftContext: selection.GiftContext,
+			GiftRarity: drop.Rarity,
+			Message: selection.Message,
+			AvatarItemType: drop.AvatarItemType,
+		})
+
+		return c.json(drop)
+	})
 
 	// The player's room keys. Returns "[]".
 	.get('/api/roomkeys/v1/mine', (c) => c.json([]))

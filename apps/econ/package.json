@@ -10,6 +10,7 @@
 		"check:types": "run-tsc",
 		"check:workers-types": "run-wrangler-types --check",
 		"deploy": "run-wrangler-deploy",
+		"migrate": "run-wrangler-migrate",
 		"dev": "run-wrangler-dev",
 		"fix:workers-types": "run-wrangler-types",
 		"test": "run-vitest"

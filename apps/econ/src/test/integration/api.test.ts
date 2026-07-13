@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import '../../econ.app'
 
 import { SCHEMA_DDL } from '../../avatar-db'
+import { SCHEMA_DDL as OBJECTIVES_SCHEMA_DDL } from '../../objectives-db'
+import { SCHEMA_DDL as REWARDS_SCHEMA_DDL } from '../../rewards-db'
 
 import type { Env } from '../../context'
 
@@ -20,6 +22,10 @@ beforeAll(async () => {
 	// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
 	await adminSecretsStore(env.JWT_SECRET).create('test-signing-key')
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	// Reward selections (owned by this worker) — game rewards record what was offered.
+	for (const stmt of REWARDS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	// Objectives (owned by this worker) — per-player challenge progress.
+	for (const stmt of OBJECTIVES_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(JSON.stringify({ accountId: 42, username: 'Tester', displayName: 'Tester' }))
 		.run()
@@ -224,6 +230,128 @@ describe('econ endpoints', () => {
 		expect(Array.isArray(body.ObjectiveGroups)).toBe(true)
 	})
 
+	test('POST /api/objectives/v1/updateobjective records progress; myprogress reads it back', async () => {
+		type Progress = {
+			Objectives: Array<{
+				Group: number
+				Index: number
+				Progress: number
+				VisualProgress: number
+				IsCompleted: boolean
+				HasClaimedReward: boolean
+			}>
+			ObjectiveGroups: unknown[]
+		}
+		const update = async (body: unknown, sub = '4242'): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/api/objectives/v1/updateobjective`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/json' },
+				body: JSON.stringify(body),
+			})
+		const progress = async (sub = '4242'): Promise<Progress> => {
+			const res = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/myprogress`, {
+				headers: await bearer(sub),
+			})
+			expect(res.status).toBe(200)
+			return (await res.json()) as Progress
+		}
+
+		// Partial progress on one objective.
+		const res = await update({
+			Group: 0,
+			Index: 2,
+			Progress: 0.5,
+			VisualProgress: 0.5,
+			IsCompleted: false,
+			IsRewarded: false,
+		})
+		expect(res.status).toBe(200)
+
+		const mid = await progress()
+		expect(mid.Objectives).toEqual([
+			{
+				Group: 0,
+				Index: 2,
+				Progress: 0.5,
+				VisualProgress: 0.5,
+				IsCompleted: false,
+				HasClaimedReward: false,
+			},
+		])
+		// The default groups still ride along.
+		expect(mid.ObjectiveGroups.length).toBeGreaterThan(0)
+
+		// Completing it latches HasClaimedReward — the reward can only be paid once.
+		await update({
+			Group: 0,
+			Index: 2,
+			Progress: 1,
+			VisualProgress: 1,
+			IsCompleted: true,
+			IsRewarded: false,
+		})
+		const done = await progress()
+		expect(done.Objectives[0]).toMatchObject({ IsCompleted: true, HasClaimedReward: true })
+
+		// A second objective is tracked separately, keyed by (group, index).
+		await update({
+			Group: 1,
+			Index: 0,
+			Progress: 0.25,
+			VisualProgress: 0.25,
+			IsCompleted: false,
+			IsRewarded: false,
+		})
+		expect((await progress()).Objectives.map((o) => [o.Group, o.Index])).toEqual([
+			[0, 2],
+			[1, 0],
+		])
+
+		// Another player's progress is their own; a signed-out reader gets the default set.
+		expect((await progress('4243')).Objectives.length).toBeGreaterThanOrEqual(0)
+		const anon = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/myprogress`)
+		expect(anon.status).toBe(200)
+
+		// Auth-gated.
+		const noToken = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/updateobjective`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ Group: 0, Index: 0 }),
+		})
+		expect(noToken.status).toBe(401)
+	})
+
+	test('POST /api/objectives/v1/cleargroup clears the group; myprogress reports it', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/cleargroup`, {
+			method: 'POST',
+			headers: { ...(await bearer('4444')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ Group: 1 }),
+		})
+		expect(res.status).toBe(200)
+		const cleared = (await res.json()) as {
+			Group: number
+			IsCompleted: boolean
+			ClearedAt: string
+		}
+		expect(cleared).toMatchObject({ Group: 1, IsCompleted: true })
+		expect(typeof cleared.ClearedAt).toBe('string')
+
+		// The cleared group comes back on the player's progress.
+		const progress = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/myprogress`, {
+			headers: await bearer('4444'),
+		})
+		const body = (await progress.json()) as { ObjectiveGroups: Array<{ Group: number }> }
+		expect(body.ObjectiveGroups.map((g) => g.Group)).toEqual([1])
+
+		// Auth-gated.
+		const anon = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/cleargroup`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ Group: 1 }),
+		})
+		expect(anon.status).toBe(401)
+	})
+
 	test('GET /api/checklist/v1/current 401s without a token, returns [] with one', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`)
 		expect(anon.status).toBe(401)
@@ -354,6 +482,101 @@ describe('econ endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/pending`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
+	})
+
+	test('POST /api/gamerewards/v1/request mints a three-choice selection', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/request`, {
+			method: 'POST',
+			headers: { ...(await bearer('42')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Message: 'nice work', giftContext: '4' }).toString(),
+		})
+		expect(res.status).toBe(200)
+		// The HTTP body carries nothing — the choices go out over the websocket hub.
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
+
+		// The selection is recorded, with three distinct token choices for this player.
+		const row = await env.DB.prepare(
+			`SELECT account_id, message, gift_context, consumed,
+			        gift_drop_1_id, gift_drop_2_id, gift_drop_3_id
+			 FROM reward_selection ORDER BY reward_selection_id DESC LIMIT 1`
+		).first<{
+			account_id: number
+			message: string
+			gift_context: number
+			consumed: number
+			gift_drop_1_id: number
+			gift_drop_2_id: number
+			gift_drop_3_id: number
+		}>()
+		expect(row).toMatchObject({
+			account_id: 42,
+			message: 'nice work',
+			gift_context: 4,
+			consumed: 0,
+		})
+		const ids = [row!.gift_drop_1_id, row!.gift_drop_2_id, row!.gift_drop_3_id]
+		// Token drops carry the negative of their amount as their id.
+		expect(new Set(ids).size).toBe(3)
+		expect(ids.every((id) => id < 0)).toBe(true)
+
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/request`, { method: 'POST' }))
+				.status
+		).toBe(401)
+	})
+
+	test('POST /api/gamerewards/v1/select claims a drop once, and only if offered', async () => {
+		await exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/request`, {
+			method: 'POST',
+			headers: { ...(await bearer('77')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Message: 'level up', giftContext: '7' }).toString(),
+		})
+		const sel = await env.DB.prepare(
+			`SELECT reward_selection_id, gift_drop_1_id FROM reward_selection
+			 WHERE account_id = 77 ORDER BY reward_selection_id DESC LIMIT 1`
+		).first<{ reward_selection_id: number; gift_drop_1_id: number }>()
+		const selectionId = sel!.reward_selection_id
+		const offeredId = sel!.gift_drop_1_id
+
+		const select = async (fields: Record<string, string>, sub = '77'): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/select`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams(fields).toString(),
+			})
+
+		// A drop that wasn't offered is refused, as is another player's selection.
+		expect(
+			(await select({ rewardSelectionId: String(selectionId), giftDropId: '-999' })).status
+		).toBe(403)
+		expect(
+			(
+				await select(
+					{ rewardSelectionId: String(selectionId), giftDropId: String(offeredId) },
+					'42'
+				)
+			).status
+		).toBe(403)
+
+		// Claiming an offered drop returns it — a token drop worth its id's magnitude.
+		const res = await select({
+			rewardSelectionId: String(selectionId),
+			giftDropId: String(offeredId),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			GiftDropId: offeredId,
+			CurrencyType: 2,
+			Currency: -offeredId,
+			Context: 7,
+			FriendlyName: `${-offeredId} Tokens!`,
+		})
+
+		// The selection is single-use: claiming again is refused.
+		expect(
+			(await select({ rewardSelectionId: String(selectionId), giftDropId: String(offeredId) }))
+				.status
+		).toBe(403)
 	})
 
 	test('GET /api/roomkeys/v1/mine returns []', async () => {

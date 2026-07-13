@@ -11,16 +11,32 @@
 		"binding": "ASSETS",
 		"directory": "./static/storefronts"
 	},
-	// Shared `recflare` D1 (accounts table) — read/write the player's avatar column.
-	// The accounts schema/migrations are owned by the `auth` worker. The "local"
-	// placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
+	// Shared `recflare` D1: the accounts table (avatar column, owned by `auth`) plus the
+	// `reward_selection` table this worker owns (schema/migration here; its own
+	// migrations_table keeps history separate from the other workers' on the shared
+	// database). The "local" placeholder is replaced with the real id from RECFLARE_D1
+	// at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "recflare",
-			"database_id": "local"
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_econ"
 		}
 	],
+	// The notifications hub (a Durable Object in the `notify` worker). Game rewards are
+	// delivered over the websocket, not in the HTTP response: `gamerewards/v1/request`
+	// answers an empty envelope and pushes the three choices as a notification.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
 	"logpush": false,
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
 	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
