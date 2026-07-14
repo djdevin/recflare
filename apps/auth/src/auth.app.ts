@@ -2,14 +2,16 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	countAccountsByPlatformId,
+	countAccountsBySignupIp,
 	createAccount,
 	getAccount,
 	getAccountByUsername,
 	getAccountsByPlatformId,
 	getPasswordHash,
 	RoomInstanceType,
-	setDeviceInfo,
 	setLastLoginTime,
+	setLoginContext,
 	setPasswordHash,
 	setPresence,
 } from '@repo/domain'
@@ -41,6 +43,23 @@ const PLATFORM_TYPES: Record<number, string> = {
 	7: 'Standalone',
 	8: 'Pico',
 }
+
+/**
+ * Signup caps, enforced on create_account only (never on login — an existing account
+ * always stays reachable, however many accounts its owner has since accumulated).
+ *
+ * Two independent arms, because they fail in opposite ways:
+ *  - Per verified platform id (a Steam-proven SteamID64). The sharp one: it can't be
+ *    spoofed and can't be reset by changing networks. Only binds on a platform
+ *    create_account — the password/anonymous path has no platform identity to count,
+ *    so the IP arm is the only thing standing between it and bulk signup.
+ *  - Per signup IP. Coarse: households, NAT and shared campus/mobile networks put many
+ *    legitimate players behind one address, so this WILL be the arm that produces false
+ *    positives. It counts `signupIp` (immutable), so an abuser can't reset their own
+ *    count by hopping networks.
+ */
+const MAX_ACCOUNTS_PER_PLATFORM_ID = 3
+const MAX_ACCOUNTS_PER_IP = 3
 
 /** New players start in the Orientation room (RoomId 13) — the new-user flow. */
 const ORIENTATION_ROOM_ID = 13
@@ -227,6 +246,12 @@ const app = new Hono<App>()
 			typeof body.device_class === 'string' ? Number.parseInt(body.device_class, 10) : NaN
 		const deviceClass = Number.isNaN(deviceClassInt) ? 0 : deviceClassInt
 
+		// The client's real IP, per Cloudflare (the client can't spoof CF-Connecting-IP —
+		// the edge sets it — unlike X-Forwarded-For, which is why we don't read that).
+		// Recorded as the immutable `signupIp` at creation and as `lastLoginIp` on every
+		// login; both feed the per-IP signup cap. Absent (empty) outside the CF edge.
+		const clientIp = c.req.header('cf-connecting-ip') ?? ''
+
 		// A platform-authenticated login proves who you are with the platform itself,
 		// and we can ONLY verify Steam (platform 0) — via its Steam-signed platform_auth
 		// ticket. So those logins must be Steam:
@@ -275,6 +300,37 @@ const app = new Hono<App>()
 		//    via create_account or /account/me/changepassword.
 		let accountId: string
 		if (grantType === 'create_account') {
+			// Signup caps. Checked before minting anything, so a rejected signup leaves no
+			// account behind. Each arm is skipped when its identity is unknown (no verified
+			// platform id / no client IP) — an unattributable signup can't be counted against
+			// anyone, and lumping them together would lock out real players.
+			if (
+				verifiedSteamId !== null &&
+				(await countAccountsByPlatformId(c.env.DB, verifiedSteamId)) >= MAX_ACCOUNTS_PER_PLATFORM_ID
+			) {
+				logger.info('signup rejected: platform account limit', { platformId: verifiedSteamId })
+				return c.json(
+					{
+						error: 'invalid_grant',
+						error_description: 'account limit reached for this platform account',
+					},
+					400
+				)
+			}
+			if (
+				clientIp !== '' &&
+				(await countAccountsBySignupIp(c.env.DB, clientIp)) >= MAX_ACCOUNTS_PER_IP
+			) {
+				logger.info('signup rejected: per-IP account limit', { ip: clientIp })
+				return c.json(
+					{
+						error: 'invalid_grant',
+						error_description: 'too many accounts created from this network',
+					},
+					400
+				)
+			}
+
 			// Bind the platform identity ONLY when a Steam ticket proved it. That bound
 			// `platformId` (the SteamID64) is what a later cached login is checked against,
 			// so only this Steam user can log back into the account. A password/anonymous
@@ -286,6 +342,8 @@ const app = new Hono<App>()
 				lastLoginTime: new Date().toISOString(),
 				deviceId: deviceId || undefined,
 				deviceClass: deviceId ? deviceClass : undefined,
+				signupIp: clientIp || undefined,
+				lastLoginIp: clientIp || undefined,
 			})
 			accountId = String(account.accountId)
 			// Establish the login password when one is posted (raw password never stored).
@@ -332,7 +390,7 @@ const app = new Hono<App>()
 			}
 			accountId = String(account.accountId)
 			await setLastLoginTime(c.env.DB, account.accountId, new Date().toISOString())
-			await setDeviceInfo(c.env.DB, account.accountId, deviceId, deviceClass)
+			await setLoginContext(c.env.DB, account.accountId, { deviceId, deviceClass, ip: clientIp })
 		} else {
 			// Resolve the account from a posted numeric `account_id` or, as RecRoom's
 			// password grant sends, a `username` (case-insensitive; trailing whitespace
@@ -364,7 +422,7 @@ const app = new Hono<App>()
 			}
 			accountId = String(resolvedId)
 			await setLastLoginTime(c.env.DB, resolvedId, new Date().toISOString())
-			await setDeviceInfo(c.env.DB, resolvedId, deviceId, deviceClass)
+			await setLoginContext(c.env.DB, resolvedId, { deviceId, deviceClass, ip: clientIp })
 		}
 
 		const accessToken = await generateToken(

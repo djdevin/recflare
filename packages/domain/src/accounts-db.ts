@@ -52,12 +52,21 @@ export interface Account {
 	/**
 	 * The client's `device_id` from its most recent login (a stable per-install hash
 	 * the client sends on every /connect/token). Not a credential — the client picks
-	 * it and nothing verifies it — so never authorize on it alone. Kept (and indexed)
-	 * so accounts sharing a device can be found later, e.g. for account linkup.
+	 * it and nothing verifies it — so never authorize on it alone. Kept so accounts
+	 * sharing a device can be found later, e.g. for account linkup.
 	 */
 	deviceId?: string
 	/** DeviceClass int (2 = PC/standalone) that `deviceId` was last seen on. */
 	deviceClass?: number
+	/**
+	 * The client IP the account was CREATED from (Cloudflare's CF-Connecting-IP).
+	 * Immutable once set — it's what a "how many accounts came from this IP" signup
+	 * cap counts, so refreshing it on login would let an abuser hop IPs to reset
+	 * their own count. Empty when the header is absent (e.g. in tests).
+	 */
+	signupIp?: string
+	/** The client IP of the most recent successful login; refreshed on every login. */
+	lastLoginIp?: string
 	/** Set via POST /account/me/email; absent until the player provides one. */
 	email?: string
 	/** Set via POST /account/me/phone; absent until the player provides one. */
@@ -243,23 +252,79 @@ export async function setLastLoginTime(db: D1Database, id: number, time: string)
 }
 
 /**
- * Record the device the account most recently logged in from. Called on every
- * successful login (not just account creation) so the stored device tracks the
- * player as they move between devices.
+ * Record where the account most recently logged in from — its device and client IP.
+ * Called on every successful login (not just account creation) so both track the
+ * player as they move between devices and networks. Each field is written only when
+ * present, so a login that reports no device id doesn't blank the stored one.
+ *
+ * `signupIp` is deliberately NOT touched here: it records the account's origin and
+ * must stay immutable for signup caps to mean anything.
  */
-export async function setDeviceInfo(
+export async function setLoginContext(
 	db: D1Database,
 	id: number,
-	deviceId: string,
-	deviceClass: number
+	ctx: { deviceId?: string; deviceClass?: number; ip?: string }
 ): Promise<void> {
-	if (deviceId === '') return
+	const sets: string[] = []
+	const binds: Array<string | number> = []
+	if (ctx.deviceId) {
+		sets.push(`'$.deviceId', ?${binds.length + 2}`)
+		binds.push(ctx.deviceId)
+		if (ctx.deviceClass !== undefined) {
+			// CAST to INTEGER: D1 binds a JS number as a SQLite REAL, and json_set would then
+			// write `"deviceClass":2.0` into the blob rather than `2`.
+			sets.push(`'$.deviceClass', CAST(?${binds.length + 2} AS INTEGER)`)
+			binds.push(ctx.deviceClass)
+		}
+	}
+	if (ctx.ip) {
+		sets.push(`'$.lastLoginIp', ?${binds.length + 2}`)
+		binds.push(ctx.ip)
+	}
+	if (sets.length === 0) return
 	await db
 		.prepare(
-			"UPDATE account SET data = json_set(data, '$.deviceId', ?2, '$.deviceClass', ?3) WHERE account_id = ?1"
+			`UPDATE account SET data = json_set(data, ${sets.join(', ')}) WHERE account_id = ?1`
 		)
-		.bind(id, deviceId, deviceClass)
+		.bind(id, ...binds)
 		.run()
+}
+
+/**
+ * How many accounts were created from a given client IP — the count a signup cap
+ * ("no more than N accounts per IP") is enforced against. Counts `signupIp`, which
+ * never changes after creation, NOT `lastLoginIp`.
+ *
+ * An empty ip counts 0: when Cloudflare gives us no client IP we can't attribute the
+ * signup to anyone, and a cap that lumped every unattributed account together would
+ * lock out real players.
+ *
+ * NB: an IP is a coarse identity. Households, NAT, and shared campus/mobile networks
+ * put many legitimate players behind one address, so any cap here should be generous
+ * and pair with the (much sharper) per-platform-id cap.
+ */
+export async function countAccountsBySignupIp(db: D1Database, ip: string): Promise<number> {
+	if (ip === '') return 0
+	const row = await db
+		.prepare("SELECT COUNT(*) AS n FROM account WHERE json_extract(data, '$.signupIp') = ?1")
+		.bind(ip)
+		.first<{ n: number }>()
+	return row?.n ?? 0
+}
+
+/**
+ * How many accounts are linked to a platform-native id (e.g. one SteamID64) — the
+ * count a per-platform signup cap is enforced against. Backed by the indexed
+ * `platform_id` generated column. An empty id counts 0 (accounts with no platform
+ * identity aren't attributable to a platform user).
+ */
+export async function countAccountsByPlatformId(db: D1Database, platformId: string): Promise<number> {
+	if (platformId === '') return 0
+	const row = await db
+		.prepare('SELECT COUNT(*) AS n FROM account WHERE platform_id = ?1')
+		.bind(platformId)
+		.first<{ n: number }>()
+	return row?.n ?? 0
 }
 
 /** Look up multiple accounts by AccountId (order not guaranteed). */

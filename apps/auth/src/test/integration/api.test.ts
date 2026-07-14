@@ -69,24 +69,29 @@ function decodePayload(token: string): Record<string, unknown> {
 	) as Record<string, unknown>
 }
 
-async function accessTokenFor(body: string): Promise<string> {
-	const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-		body,
-	})
-	return ((await res.json()) as { access_token: string }).access_token
+async function accessTokenFor(body: string, ip?: string): Promise<string> {
+	return (await postToken(body, ip)).json.access_token as string
 }
 
-async function tokenFor(body: string): Promise<Record<string, unknown>> {
-	return decodePayload(await accessTokenFor(body))
+async function tokenFor(body: string, ip?: string): Promise<Record<string, unknown>> {
+	return decodePayload(await accessTokenFor(body, ip))
 }
 
-/** POST a form-urlencoded body to /connect/token, returning status + parsed JSON. */
-async function postToken(body: string): Promise<{ status: number; json: Record<string, unknown> }> {
+/**
+ * POST a form-urlencoded body to /connect/token, returning status + parsed JSON.
+ * `ip` sets CF-Connecting-IP (what Cloudflare's edge sets in production); omit it and
+ * the request looks IP-less, which is how the other tests dodge the per-IP signup cap.
+ */
+async function postToken(
+	body: string,
+	ip?: string
+): Promise<{ status: number; json: Record<string, unknown> }> {
 	const res = await exports.default.fetch(`${ORIGIN}/connect/token`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+			...(ip ? { 'CF-Connecting-IP': ip } : {}),
+		},
 		body,
 	})
 	return { status: res.status, json: (await res.json()) as Record<string, unknown> }
@@ -362,6 +367,20 @@ describe('auth worker routes', () => {
 		expect(shared.map((a) => a.accountId)).toContain(sub)
 	})
 
+	test('POST /connect/token stores deviceClass as an integer, not a REAL', async () => {
+		// D1 binds a JS number as a SQLite REAL, so a naive json_set writes `"deviceClass":2.0`
+		// into the blob. JSON.parse tolerates that, but the raw JSON is what other readers
+		// (and any strict int parser) see, so assert on the stored TEXT, not the parsed value.
+		await postToken(
+			`grant_type=password&username=Player77&password=${LOGIN_PASSWORD}&device_id=dev-int&device_class=2`
+		)
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = ?1')
+			.bind(77)
+			.first<{ data: string }>()
+		expect(row!.data).toContain('"deviceClass":2')
+		expect(row!.data).not.toContain('2.0')
+	})
+
 	test('POST /connect/token refreshes the stored device on a credential login', async () => {
 		// Account 42 was seeded with no device; a later login records the one it came from.
 		const res = await postToken(
@@ -374,6 +393,44 @@ describe('auth worker routes', () => {
 		const account = JSON.parse(row!.data) as { deviceId: string; deviceClass: number }
 		expect(account.deviceId).toBe('dev-42-new')
 		expect(account.deviceClass).toBe(3)
+	})
+
+	test('POST /connect/token create_account records the client IP', async () => {
+		const payload = await tokenFor('grant_type=create_account&platform_id=steam-ip1', '203.0.113.7')
+		const sub = Number.parseInt(payload.sub as string, 10)
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = ?1')
+			.bind(sub)
+			.first<{ data: string }>()
+		const account = JSON.parse(row!.data) as { signupIp: string; lastLoginIp: string }
+		expect(account.signupIp).toBe('203.0.113.7')
+		expect(account.lastLoginIp).toBe('203.0.113.7')
+	})
+
+	test('POST /connect/token caps the accounts created from one IP', async () => {
+		const ip = '198.51.100.22'
+		for (let i = 0; i < 3; i++) {
+			const ok = await postToken(`grant_type=create_account&platform_id=steam-cap${i}`, ip)
+			expect(ok.status).toBe(200)
+		}
+		// The 4th signup from that IP is refused — the cap is 3.
+		const capped = await postToken('grant_type=create_account&platform_id=steam-cap3', ip)
+		expect(capped.status).toBe(400)
+		expect(capped.json.error).toBe('invalid_grant')
+		expect(capped.json.error_description).toMatch(/network/)
+
+		// A different IP is unaffected, and the capped IP can still LOG IN to what it has.
+		const other = await postToken('grant_type=create_account&platform_id=steam-cap4', '198.51.100.23')
+		expect(other.status).toBe(200)
+	})
+
+	test('POST /connect/token does not cap logins, only signups', async () => {
+		// Account 42's owner may be over the signup cap; that must never lock them out of
+		// an account they already have.
+		const res = await postToken(
+			`grant_type=password&username=Player42&password=${LOGIN_PASSWORD}`,
+			'198.51.100.22'
+		)
+		expect(res.status).toBe(200)
 	})
 
 	test('POST /connect/token create_account seeds the new player into Orientation', async () => {

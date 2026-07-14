@@ -169,7 +169,11 @@ async function syncMemberCount(db: D1Database, clubId: number): Promise<number> 
 		.first<{ n: number }>()
 	const count = row?.n ?? 0
 	await db
-		.prepare("UPDATE club SET data = json_set(data, '$.MemberCount', ?2) WHERE club_id = ?1")
+		// CAST to INTEGER: D1 binds a JS number as a SQLite REAL, which json_set would write
+		// into the blob as `"MemberCount":3.0` — and this blob is served to the client.
+		.prepare(
+			"UPDATE club SET data = json_set(data, '$.MemberCount', CAST(?2 AS INTEGER)) WHERE club_id = ?1"
+		)
 		.bind(clubId, count)
 		.run()
 	return count
@@ -506,7 +510,11 @@ export async function setHomeClub(
 	clubId: number
 ): Promise<void> {
 	await db
-		.prepare("UPDATE account SET data = json_set(data, '$.homeClubId', ?2) WHERE account_id = ?1")
+		// CAST to INTEGER — see syncMemberCount: a bound JS number lands as a REAL, so this
+		// would otherwise store `"homeClubId":7.0`.
+		.prepare(
+			"UPDATE account SET data = json_set(data, '$.homeClubId', CAST(?2 AS INTEGER)) WHERE account_id = ?1"
+		)
 		.bind(accountId, clubId)
 		.run()
 }
