@@ -27,6 +27,6 @@ export const moderationRoutes = new Hono<App>({ strict: false })
 	// The client reporting its device id (form-encoded `oldDeviceId`, `newDeviceId`,
 	// `platform`), rotating from the id it thinks we hold to the current one. Carries no
 	// bearer token and fires before account creation, so there is no caller to attribute
-	// the id to and nothing to store it against — we accept it and drop it. The client
-	// ignores the response body; the real service answers with an empty array.
-	.post('/api/PlayerReporting/v1/deviceId', (c) => c.json([]))
+	// the id to and nothing to store it against — we accept it and drop it. The real
+	// service answers with a `{ success, error }` envelope.
+	.post('/api/PlayerReporting/v1/deviceId', (c) => c.json({ success: true, error: '' }))
