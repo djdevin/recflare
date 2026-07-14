@@ -135,9 +135,11 @@ Nothing manual to do here. The object is created manually.
 just dev
 ```
 
-**Deploy all workers:**
+**Deploy  or upgrade all workers:**
 
 This will deploy all workers to respective endpoints (*.example.com)
+
+It will additionally run any necessary DB migrations.
 
 Deploying requires `wrangler` to be authenticated against your Cloudflare
 account (`wrangler login`, or `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
@@ -145,12 +147,15 @@ in the environment).
 
 It requires the storage to be set up above, otherwise, deployments may fail.
 
-You can always re-run it as often as you wish.
+You can always re-run it as often as you wish. DB migrations will only run once.
 
 ```bash
-just deploy # for all services
-just deploy -F rooms # for a single microservice
+just install # Makes sure dependencies are up to date
+just migrate # Runs DB migrations
+just deploy # Deploy code
 ```
+
+Optionally if you know there was only a change to a single service, you can use `just [migrate|deploy] -F econ` for example to only deploy the `econ` microservice.
 
 ## Repository Structure
 
