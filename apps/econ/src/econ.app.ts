@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { intVar, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import defaultAvatarItems from '../static/default-avatar-items.json'
@@ -9,7 +9,7 @@ import defaultAvatar from '../static/default-avatar.json'
 import myProgress from '../static/my-progress.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
-import { ALL_PLATFORMS, getBalance, isSpendable } from './balance-db'
+import { ALL_PLATFORMS, DEFAULT_STARTING_TOKENS, getBalance, isSpendable } from './balance-db'
 import { getOutfits, setOutfit } from './outfit-db'
 
 import type { Context } from 'hono'
@@ -220,7 +220,14 @@ const app = new Hono<App>()
 		if (id === null) return unauthorized(c)
 		const currencyType = Number.parseInt(c.req.param('currencyType'), 10)
 		if (Number.isNaN(currencyType)) return c.body(null, 400)
-		const amount = isSpendable(currencyType) ? await getBalance(c.env.DB, id, currencyType) : 0
+		const amount = isSpendable(currencyType)
+			? await getBalance(
+					c.env.DB,
+					id,
+					currencyType,
+					intVar(c.env.STARTING_TOKENS, DEFAULT_STARTING_TOKENS)
+				)
+			: 0
 		return c.json([{ CurrencyType: currencyType, Platform: ALL_PLATFORMS, Balance: amount }])
 	})
 

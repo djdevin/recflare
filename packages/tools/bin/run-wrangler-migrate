@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+. "$(git rev-parse --show-toplevel)/packages/tools/src/sh/env.sh"
+
 # Apply this worker's D1 migrations. Run from a worker directory (e.g. via
 # `bun turbo -F rooms migrate`). Defaults to --remote; pass --local to target the
 # dev SQLite db. Extra args pass through to `wrangler d1 migrations apply`.
@@ -41,16 +43,8 @@ if [ "$LOCAL" -eq 1 ]; then
 	exec wrangler d1 migrations apply "$DB_NAME" "$@"
 fi
 
-# Load RECFLARE_D1 from the gitignored root .env if not already set (mirrors
-# run-wrangler-deploy's handling of RECFLARE_DOMAIN). An already-set value wins.
-if [ -z "${RECFLARE_D1:-}" ]; then
-	ENV_FILE="$(git rev-parse --show-toplevel)/.env"
-	if [ -f "$ENV_FILE" ]; then
-		set -a
-		. "$ENV_FILE"
-		set +a
-	fi
-fi
+# RECFLARE_D1 comes from the gitignored root .env, or from CI secrets, which win over it.
+recflare_load_env
 
 DB_ID=${RECFLARE_D1:-}
 if [ -z "$DB_ID" ]; then

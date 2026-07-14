@@ -1,28 +1,22 @@
 #!/bin/sh
 set -eu
 
+. "$(git rev-parse --show-toplevel)/packages/tools/src/sh/env.sh"
+
 # Extract name and version from package.json using jq
 NAME=$(jq -r '.name' package.json)
 VERSION=$(get-version)
 
+# Everything an operator supplies — domain, resource ids, tuning knobs — comes from the
+# single gitignored .env at the repo root (in CI, from exported secrets, which win over the
+# file). See .env.example.
+recflare_load_env
+
 # Resolve the base domain (and this worker's subdomain), then deploy onto the
 # custom domain via `--domain`. This keeps the real domain out of versioned files
 # — committed wrangler.jsonc has no routes, and the base domain is passed as the
-# DOMAIN var at runtime.
-#
-# The domain comes from the RECFLARE_DOMAIN env var. For local dev that's set in a
-# gitignored .env at the repo root; in CI it's an exported secret. An already-set
-# RECFLARE_DOMAIN wins and skips the file. Per-app subdomain overrides come from
-# RECFLARE_SUBDOMAINS (a JSON object, e.g. {"playersettings":"settings"}).
-if [ -z "${RECFLARE_DOMAIN:-}" ]; then
-	ENV_FILE="$(git rev-parse --show-toplevel)/.env"
-	if [ -f "$ENV_FILE" ]; then
-		set -a
-		. "$ENV_FILE"
-		set +a
-	fi
-fi
-
+# DOMAIN var at runtime. Per-app subdomain overrides come from RECFLARE_SUBDOMAINS
+# (a JSON object, e.g. {"playersettings":"settings"}).
 if [ -z "${RECFLARE_DOMAIN:-}" ]; then
 	echo "error: RECFLARE_DOMAIN is not set — export it or add it to .env (see .env.example)" >&2
 	exit 1
@@ -129,6 +123,12 @@ if [ "$CONFIG" = "wrangler.jsonc" ] && { [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" 
 	fi
 fi
 
+# The operator's tuning knobs, injected the same way as the resource ids above: each lives
+# in the .env as RECFLARE_<VAR> and rides along as a `--var`. See recflare_vars in
+# packages/tools/src/sh/env.sh. run-wrangler-dev passes the same flags, so one .env tunes
+# both a deploy and a local dev server.
+EXTRA_VARS=$(recflare_vars)
+
 # Vite-built configs set no_bundle (vite already bundled and minified), which is
 # incompatible with --minify. Only pass --minify when wrangler does the bundling.
 MINIFY="--minify"
@@ -136,11 +136,14 @@ MINIFY="--minify"
 
 # Deploy with wrangler using the extracted values as binding variables
 echo "Deploying worker $NAME version $VERSION to $HOST"
+# $EXTRA_VARS is intentionally unquoted — it's a flag list to word-split, and every
+# value in it is an integer, so there's nothing to split on inside a value.
 wrangler deploy \
 	--config "$CONFIG" \
 	--var NAME:"$NAME" \
 	--var SENTRY_RELEASE:"$VERSION" \
 	--var DOMAIN:"$DOMAIN" \
+	$EXTRA_VARS \
 	--domain "$HOST" \
 	$MINIFY \
 	"$@"

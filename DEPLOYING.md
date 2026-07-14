@@ -5,8 +5,8 @@ These are the instructions for deploying the RecFlare infrastructure to Cloudfla
 ## Why Cloudflare?
 
 - **Makes it easy to mirror RecNet**
-	Rec Room's backend is (was) a set of independent microservices, not one big monolith.
-	Modeling each service as its own isolated Worker keeps RecFlare's structure close to
+  Rec Room's backend is (was) a set of independent microservices, not one big monolith.
+  Modeling each service as its own isolated Worker keeps RecFlare's structure close to
   the real thing — services scale,
   fail, and deploy independently — instead of collapsing everything into a single
   giant server.
@@ -21,10 +21,10 @@ These are the instructions for deploying the RecFlare infrastructure to Cloudfla
   stateless (effectively read-only). They are also scalable by default so we don't need to worry
   about adding more disk space or upgrading services. If we start outgrowing the limits of these,
   well, we'll cross that bridge when we get to it.
-  	- D1 (a SQLite-compatible distributed database)
-  	- R2 (service like S3 for mass file hosting)
-  	- KV (service to distributed offer key/value stores)
-  	- Durable Objects (for a notifications hub)
+  - D1 (a SQLite-compatible distributed database)
+  - R2 (service like S3 for mass file hosting)
+  - KV (service to distributed offer key/value stores)
+  - Durable Objects (for a notifications hub)
 
 ## Do I have to use Cloudflare?
 
@@ -156,6 +156,48 @@ just deploy # Deploy code
 ```
 
 Optionally if you know there was only a change to a single service, you can use `just [migrate|deploy] -F econ` for example to only deploy the `econ` microservice.
+
+## Tuning your server
+
+A few gameplay/policy values are knobs rather than hardcoded constants, and they live in
+the same `.env` you already created. `.env.example` carries each one commented out, set to
+its built-in default: copy the lines you want to change into your `.env`, uncomment them,
+edit the value, then re-deploy the worker that reads them.
+
+| `.env` variable                         | Read by | Default | What it does                                                   |
+| --------------------------------------- | ------- | ------- | -------------------------------------------------------------- |
+| `RECFLARE_MAX_ACCOUNTS_PER_PLATFORM_ID` | `auth`  | `3`     | Accounts one Steam-verified identity may create. `0` disables. |
+| `RECFLARE_MAX_ACCOUNTS_PER_IP`          | `auth`  | `3`     | Accounts one signup IP may create. `0` disables.               |
+| `RECFLARE_STARTING_TOKENS`              | `econ`  | `10000` | RecCenterTokens a new player is granted.                       |
+
+Then deploy just the worker that reads it:
+
+```bash
+just deploy -F auth
+```
+
+A line you leave out of `.env` keeps its default, so only copy over what you actually want
+to change — and deleting a line you'd set restores the default on the next deploy. The same
+`.env` feeds `just dev`, so a knob is configured once and behaves the same locally as it
+does deployed.
+
+Adding a knob of your own takes no changes to the deploy tooling. Every `RECFLARE_*` in
+`.env` is handed to the workers as a variable under its unprefixed name — `RECFLARE_STARTING_TOKENS`
+arrives as `STARTING_TOKENS` — so a new one only needs declaring in that worker's
+`src/context.ts` and reading in its code. Every worker receives every knob and ignores the
+ones it doesn't read, which is also how two services can share a value. (The domain and the
+resource ids above are the exception: those configure the deploy itself and are never
+passed to a worker.)
+
+Both account caps are enforced on signup only, never on login — an existing account always
+stays reachable no matter how many its owner has accumulated. The per-IP cap is the coarse
+one: households, NAT and shared campus/mobile networks put many legitimate players behind a
+single address, so raise it (or set it to `0`) if real players report being locked out.
+
+> **Don't set these as Worker variables in the Cloudflare dashboard.** A deploy replaces a
+> worker's variables wholesale, so a dashboard-set value is wiped by your next
+> `just deploy`. `.env` is the durable place. Real secrets don't belong there either — they
+> go in the Cloudflare Secrets Store, like the shared `JWT_SECRET` above.
 
 ## Repository Structure
 

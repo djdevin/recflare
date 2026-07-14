@@ -36,6 +36,11 @@
 			"head_sampling_rate": 1 // 100%
 		}
 	},
+	// The signup caps (MAX_ACCOUNTS_PER_PLATFORM_ID, MAX_ACCOUNTS_PER_IP) are deliberately
+	// NOT set here. They're injected at deploy time from the gitignored .env
+	// (RECFLARE_MAX_ACCOUNTS_*, see .env.example), so tuning them never means editing a
+	// versioned file. Unset — the default — falls back to the DEFAULT_MAX_ACCOUNTS_*
+	// constants in src/auth.app.ts.
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown" // overridden during deployment

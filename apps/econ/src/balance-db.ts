@@ -68,16 +68,26 @@ const SPENDABLE: readonly number[] = [
 export const isSpendable = (currencyType: number): boolean => SPENDABLE.includes(currencyType)
 
 /**
- * What a player starts with, granted lazily the first time their balances are read
+ * The signup grant, in RecCenterTokens, when the `STARTING_TOKENS` var is unset.
+ * An operator overrides it in wrangler.jsonc `vars`; 0 is a valid setting and means
+ * players start broke.
+ */
+export const DEFAULT_STARTING_TOKENS = 10_000
+
+/**
+ * What a player starts with, granted lazily the first time their balances are touched
  * (see `ensureStartingBalances`). Currencies absent here start at 0.
  *
- * This is the whole signup grant — change the number here and it applies to every
- * player who hasn't been granted yet. It is NOT re-granted: a player who spends down
- * to 0 keeps a 0 row, and the grant is skipped because the row exists.
+ * This is the whole signup grant. It is NOT re-granted: a player who spends down to 0
+ * keeps a 0 row, and the grant is skipped because the row exists. That also means
+ * raising `STARTING_TOKENS` later only affects players who haven't been granted yet —
+ * existing players keep the amount they were granted under the old setting.
  */
-export const STARTING_BALANCES: ReadonlyArray<{ currencyType: number; amount: number }> = [
-	{ currencyType: CurrencyType.RecCenterTokens, amount: 10_000 },
-]
+export function startingBalances(
+	startingTokens: number
+): ReadonlyArray<{ currencyType: number; amount: number }> {
+	return [{ currencyType: CurrencyType.RecCenterTokens, amount: startingTokens }]
+}
 
 /**
  * `Platform` in the client's balance DTO. -2 is "all platforms" — we don't track
@@ -108,19 +118,32 @@ export interface Balance {
  *
  * Called on read rather than at account creation so accounts that predate this table
  * (every existing player) get their grant too.
+ *
+ * `startingTokens` is passed in rather than read from a module constant because it's
+ * operator configuration (`STARTING_TOKENS`), and every path that can trigger the grant
+ * has to agree on it — a caller that skipped it would quietly grant the built-in default
+ * to whichever player happened to touch that path first.
  */
-export async function ensureStartingBalances(db: D1Database, accountId: number): Promise<void> {
+export async function ensureStartingBalances(
+	db: D1Database,
+	accountId: number,
+	startingTokens: number
+): Promise<void> {
 	const stmt = db.prepare(
 		'INSERT OR IGNORE INTO balance (account_id, currency_type, amount) VALUES (?1, ?2, ?3)'
 	)
 	await db.batch(
-		STARTING_BALANCES.map((b) => stmt.bind(accountId, b.currencyType, b.amount))
+		startingBalances(startingTokens).map((b) => stmt.bind(accountId, b.currencyType, b.amount))
 	)
 }
 
 /** Every balance an account holds (after its starting grant is applied). */
-export async function getBalances(db: D1Database, accountId: number): Promise<Balance[]> {
-	await ensureStartingBalances(db, accountId)
+export async function getBalances(
+	db: D1Database,
+	accountId: number,
+	startingTokens: number
+): Promise<Balance[]> {
+	await ensureStartingBalances(db, accountId, startingTokens)
 	const { results } = await db
 		.prepare(
 			'SELECT currency_type, amount FROM balance WHERE account_id = ?1 ORDER BY currency_type'
@@ -134,9 +157,10 @@ export async function getBalances(db: D1Database, accountId: number): Promise<Ba
 export async function getBalance(
 	db: D1Database,
 	accountId: number,
-	currencyType: number
+	currencyType: number,
+	startingTokens: number
 ): Promise<number> {
-	await ensureStartingBalances(db, accountId)
+	await ensureStartingBalances(db, accountId, startingTokens)
 	const row = await db
 		.prepare('SELECT amount FROM balance WHERE account_id = ?1 AND currency_type = ?2')
 		.bind(accountId, currencyType)
@@ -155,7 +179,8 @@ export async function creditCurrency(
 	db: D1Database,
 	accountId: number,
 	currencyType: number,
-	amount: number
+	amount: number,
+	startingTokens: number
 ): Promise<number> {
 	if (!Number.isInteger(amount) || amount <= 0) {
 		throw new Error(`creditCurrency: amount must be a positive integer, got ${amount}`)
@@ -167,7 +192,7 @@ export async function creditCurrency(
 		)
 		.bind(accountId, currencyType, amount)
 		.run()
-	return getBalance(db, accountId, currencyType)
+	return getBalance(db, accountId, currencyType, startingTokens)
 }
 
 /**
@@ -182,12 +207,13 @@ export async function spendCurrency(
 	db: D1Database,
 	accountId: number,
 	currencyType: number,
-	amount: number
+	amount: number,
+	startingTokens: number
 ): Promise<boolean> {
 	if (!Number.isInteger(amount) || amount <= 0) {
 		throw new Error(`spendCurrency: amount must be a positive integer, got ${amount}`)
 	}
-	await ensureStartingBalances(db, accountId)
+	await ensureStartingBalances(db, accountId, startingTokens)
 	const { meta } = await db
 		.prepare(
 			`UPDATE balance SET amount = amount - ?3

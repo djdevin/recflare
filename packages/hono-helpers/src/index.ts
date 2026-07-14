@@ -1,4 +1,5 @@
 export type { HonoApp, SharedHonoEnv, SharedHonoVariables, SharedAppContext } from './types'
+export * from './helpers/env'
 export { logger } from './helpers/logger'
 export { getRequestLogData, type LogDataRequest } from './helpers/request'
 export * from './helpers/errors'

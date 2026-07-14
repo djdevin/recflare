@@ -1,7 +1,18 @@
 #!/bin/sh
 set -eu
 
+. "$(git rev-parse --show-toplevel)/packages/tools/src/sh/env.sh"
+
 NAME=$(jq -r '.name' package.json)
+
+# Tuning knobs come from the same gitignored root .env a deploy reads (RECFLARE_<VAR>, see
+# .env.example), so a knob is configured in exactly one place whether you're running locally
+# or shipping. Unset knobs fall back to the worker's own default constants, same as a deploy.
+#
+# Passed as `--var` rather than left to wrangler's own .env loading: wrangler only reads a
+# .env sitting next to the worker's wrangler.jsonc, which would mean a second file per app.
+recflare_load_env
+EXTRA_VARS=$(recflare_vars)
 
 # Give each worker a stable, unique dev port so `turbo dev` can run them all in
 # parallel without colliding on wrangler's default 8787 (and its 9229 inspector
@@ -16,8 +27,10 @@ OFFSET=$(
 PORT=$((8787 + OFFSET - 1))
 INSPECTOR_PORT=$((9229 + OFFSET - 1))
 
+# $EXTRA_VARS is intentionally unquoted — it's a flag list to word-split on.
 exec wrangler dev \
 	--var NAME:"$NAME" \
+	$EXTRA_VARS \
 	--port "$PORT" \
 	--inspector-port "$INSPECTOR_PORT" \
 	"$@"

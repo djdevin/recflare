@@ -10,6 +10,15 @@ export type Env = SharedHonoEnv & {
 	DB: D1Database
 	/** Static storefront catalogs (`static/storefronts/sf*.json`), fetched by path. */
 	ASSETS: Fetcher
+	/**
+	 * The RecCenterTokens a new player is granted (see balance-db.ts). Optional — unset
+	 * falls back to DEFAULT_STARTING_TOKENS, and 0 means players start broke.
+	 *
+	 * Typed `string | number` because a var declared in wrangler.jsonc `vars` arrives as a
+	 * number while the same var set from the dashboard or `--var` arrives as a string —
+	 * read it through `intVar`, never as a bare number.
+	 */
+	STARTING_TOKENS?: string | number
 }
 
 /** Variables can be extended */

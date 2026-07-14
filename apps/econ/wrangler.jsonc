@@ -44,6 +44,10 @@
 			"head_sampling_rate": 1 // 100%
 		}
 	},
+	// The signup token grant (STARTING_TOKENS) is deliberately NOT set here. It's injected
+	// at deploy time from the gitignored .env (RECFLARE_STARTING_TOKENS, see .env.example),
+	// so tuning it never means editing a versioned file. Unset — the default — falls back
+	// to DEFAULT_STARTING_TOKENS in src/balance-db.ts.
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown" // overridden during deployment

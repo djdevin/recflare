@@ -12,6 +12,13 @@ export type Env = SharedHonoEnv & {
 	// signed here verify in all of them. Provisioned via `wrangler secrets-store`;
 	// the store id is spliced into wrangler.jsonc at deploy time (RECFLARE_SECRETS_STORE).
 	JWT_SECRET: SecretsStoreSecret
+	// Signup caps, both optional (see auth.app.ts for what each arm counts and why).
+	// Unset falls back to the DEFAULT_MAX_ACCOUNTS_* constants there; 0 disables that arm.
+	// Typed `string | number` because a var declared in wrangler.jsonc `vars` arrives as a
+	// number while the same var set from the dashboard or `--var` arrives as a string —
+	// read them through `intVar`, never as a bare number.
+	MAX_ACCOUNTS_PER_PLATFORM_ID?: string | number
+	MAX_ACCOUNTS_PER_IP?: string | number
 }
 
 /** Variables can be extended */

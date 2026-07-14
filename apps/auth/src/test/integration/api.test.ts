@@ -419,8 +419,34 @@ describe('auth worker routes', () => {
 		expect(capped.json.error_description).toMatch(/network/)
 
 		// A different IP is unaffected, and the capped IP can still LOG IN to what it has.
-		const other = await postToken('grant_type=create_account&platform_id=steam-cap4', '198.51.100.23')
+		const other = await postToken(
+			'grant_type=create_account&platform_id=steam-cap4',
+			'198.51.100.23'
+		)
 		expect(other.status).toBe(200)
+	})
+
+	test('the signup caps come from vars, and 0 disables an arm', async () => {
+		// The cap an operator actually runs is the `MAX_ACCOUNTS_PER_IP` var; the constant in
+		// auth.app.ts is only the fallback. `env` is shared by every test in this file, so the
+		// override is restored in `finally` rather than leaking a cap of 0 into the tests above.
+		const original = env.MAX_ACCOUNTS_PER_IP
+		try {
+			env.MAX_ACCOUNTS_PER_IP = 1
+			const ip = '198.51.100.30'
+			const first = await postToken('grant_type=create_account&platform_id=steam-var0', ip)
+			expect(first.status).toBe(200)
+			const capped = await postToken('grant_type=create_account&platform_id=steam-var1', ip)
+			expect(capped.status).toBe(400)
+			expect(capped.json.error_description).toMatch(/network/)
+
+			// 0 disables the arm entirely: the IP that was just capped can sign up again.
+			env.MAX_ACCOUNTS_PER_IP = 0
+			const uncapped = await postToken('grant_type=create_account&platform_id=steam-var2', ip)
+			expect(uncapped.status).toBe(200)
+		} finally {
+			env.MAX_ACCOUNTS_PER_IP = original
+		}
 	})
 
 	test('POST /connect/token does not cap logins, only signups', async () => {

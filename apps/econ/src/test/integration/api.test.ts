@@ -8,6 +8,7 @@ import { SCHEMA_DDL } from '../../avatar-db'
 import {
 	BALANCE_SCHEMA_DDL,
 	CurrencyType,
+	DEFAULT_STARTING_TOKENS,
 	getBalance,
 	spendCurrency,
 } from '../../balance-db'
@@ -423,7 +424,9 @@ describe('econ endpoints', () => {
 
 	test('GET /api/storefronts/v4/balance/2 reflects what the player has spent', async () => {
 		// Spend from account 7 (a fresh account: the read below grants it first).
-		expect(await spendCurrency(env.DB, 7, CurrencyType.RecCenterTokens, 2500)).toBe(true)
+		expect(
+			await spendCurrency(env.DB, 7, CurrencyType.RecCenterTokens, 2500, DEFAULT_STARTING_TOKENS)
+		).toBe(true)
 		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
 			headers: await bearer('7'),
 		})
@@ -431,15 +434,47 @@ describe('econ endpoints', () => {
 	})
 
 	test('a spend the player cannot afford changes nothing', async () => {
-		const before = await getBalance(env.DB, 8, CurrencyType.RecCenterTokens)
-		expect(await spendCurrency(env.DB, 8, CurrencyType.RecCenterTokens, before + 1)).toBe(false)
-		expect(await getBalance(env.DB, 8, CurrencyType.RecCenterTokens)).toBe(before)
+		const before = await getBalance(
+			env.DB,
+			8,
+			CurrencyType.RecCenterTokens,
+			DEFAULT_STARTING_TOKENS
+		)
+		expect(
+			await spendCurrency(
+				env.DB,
+				8,
+				CurrencyType.RecCenterTokens,
+				before + 1,
+				DEFAULT_STARTING_TOKENS
+			)
+		).toBe(false)
+		expect(await getBalance(env.DB, 8, CurrencyType.RecCenterTokens, DEFAULT_STARTING_TOKENS)).toBe(
+			before
+		)
+	})
+
+	test('the starting grant comes from the STARTING_TOKENS var', async () => {
+		// The grant an operator actually runs is the var; DEFAULT_STARTING_TOKENS is only the
+		// fallback. `env` is shared by every test in this file, so restore it in `finally`.
+		const original = env.STARTING_TOKENS
+		try {
+			env.STARTING_TOKENS = 250
+			const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
+				headers: await bearer('11'),
+			})
+			expect(await res.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 250 }])
+		} finally {
+			env.STARTING_TOKENS = original
+		}
 	})
 
 	test('the starting grant is not re-granted after spending down to zero', async () => {
 		// The grant is INSERT OR IGNORE against the row, not a top-up: a player who spends
 		// everything stays at 0 rather than being refilled by their next balance read.
-		expect(await spendCurrency(env.DB, 9, CurrencyType.RecCenterTokens, 10_000)).toBe(true)
+		expect(
+			await spendCurrency(env.DB, 9, CurrencyType.RecCenterTokens, 10_000, DEFAULT_STARTING_TOKENS)
+		).toBe(true)
 		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
 			headers: await bearer('9'),
 		})

@@ -15,7 +15,7 @@ import {
 	setPasswordHash,
 	setPresence,
 } from '@repo/domain'
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from '@repo/jwt'
 
 import { hashPassword, verifyPassword } from './password'
@@ -57,9 +57,15 @@ const PLATFORM_TYPES: Record<number, string> = {
  *    legitimate players behind one address, so this WILL be the arm that produces false
  *    positives. It counts `signupIp` (immutable), so an abuser can't reset their own
  *    count by hopping networks.
+ *
+ * These are the defaults. An operator overrides either arm with the matching worker var
+ * (`MAX_ACCOUNTS_PER_PLATFORM_ID` / `MAX_ACCOUNTS_PER_IP` in wrangler.jsonc `vars`), and
+ * setting one to 0 disables that arm entirely — which a small private server that trusts
+ * everyone it invites will want, and which the IP arm in particular is worth reaching for
+ * if a shared network is being locked out.
  */
-const MAX_ACCOUNTS_PER_PLATFORM_ID = 3
-const MAX_ACCOUNTS_PER_IP = 3
+const DEFAULT_MAX_ACCOUNTS_PER_PLATFORM_ID = 3
+const DEFAULT_MAX_ACCOUNTS_PER_IP = 3
 
 /** New players start in the Orientation room (RoomId 13) — the new-user flow. */
 const ORIENTATION_ROOM_ID = 13
@@ -301,12 +307,19 @@ const app = new Hono<App>()
 		let accountId: string
 		if (grantType === 'create_account') {
 			// Signup caps. Checked before minting anything, so a rejected signup leaves no
-			// account behind. Each arm is skipped when its identity is unknown (no verified
-			// platform id / no client IP) — an unattributable signup can't be counted against
-			// anyone, and lumping them together would lock out real players.
+			// account behind. Each arm is skipped when it's disabled (var <= 0) or when its
+			// identity is unknown (no verified platform id / no client IP) — an unattributable
+			// signup can't be counted against anyone, and lumping them together would lock out
+			// real players. The disabled check comes first so a disabled arm costs no D1 read.
+			const maxPerPlatformId = intVar(
+				c.env.MAX_ACCOUNTS_PER_PLATFORM_ID,
+				DEFAULT_MAX_ACCOUNTS_PER_PLATFORM_ID
+			)
+			const maxPerIp = intVar(c.env.MAX_ACCOUNTS_PER_IP, DEFAULT_MAX_ACCOUNTS_PER_IP)
 			if (
+				maxPerPlatformId > 0 &&
 				verifiedSteamId !== null &&
-				(await countAccountsByPlatformId(c.env.DB, verifiedSteamId)) >= MAX_ACCOUNTS_PER_PLATFORM_ID
+				(await countAccountsByPlatformId(c.env.DB, verifiedSteamId)) >= maxPerPlatformId
 			) {
 				logger.info('signup rejected: platform account limit', { platformId: verifiedSteamId })
 				return c.json(
@@ -318,8 +331,9 @@ const app = new Hono<App>()
 				)
 			}
 			if (
+				maxPerIp > 0 &&
 				clientIp !== '' &&
-				(await countAccountsBySignupIp(c.env.DB, clientIp)) >= MAX_ACCOUNTS_PER_IP
+				(await countAccountsBySignupIp(c.env.DB, clientIp)) >= maxPerIp
 			) {
 				logger.info('signup rejected: per-IP account limit', { ip: clientIp })
 				return c.json(
