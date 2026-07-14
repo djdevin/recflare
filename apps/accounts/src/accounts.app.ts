@@ -283,22 +283,30 @@ const app = new Hono<App>()
 	})
 
 	// Set the player's identityFlags bitmask (persisted; surfaced by /account/me).
+	// `identityFlags` is part of the public account DTO, so the update has to be pushed
+	// — see the note on personalpronouns below.
 	.put('/account/me/identityflags', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const identityFlags = Number.parseInt((await formField(c, 'identityFlags')).trim(), 10)
 		if (Number.isNaN(identityFlags)) return c.body(null, 400)
-		await updateAccount(c.env.DB, id, { identityFlags })
+		const account = await updateAccount(c.env.DB, id, { identityFlags })
+		await pushAccountUpdate(c, account)
 		return c.json({ success: true })
 	})
 
 	// Set the player's personalPronouns (posted as `pronounFlags`; persisted).
+	// The response body carries no account, so the client only learns the new value from
+	// the `SelfAccountUpdate`/`AccountUpdate` the hub pushes — without it the player's own
+	// UI (and every other client, since personalPronouns is in the public DTO) keeps
+	// showing the old pronouns until something else refetches the account.
 	.put('/account/me/personalpronouns', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const personalPronouns = Number.parseInt((await formField(c, 'pronounFlags')).trim(), 10)
 		if (Number.isNaN(personalPronouns)) return c.body(null, 400)
-		await updateAccount(c.env.DB, id, { personalPronouns })
+		const account = await updateAccount(c.env.DB, id, { personalPronouns })
+		await pushAccountUpdate(c, account)
 		return c.json({ success: true })
 	})
 
