@@ -229,6 +229,28 @@ describe('public endpoints', () => {
 		})
 	})
 
+	test('POST /matchmake/room/:roomId seeds presence with the account device class', async () => {
+		// A screen player (deviceClass 2, recorded by auth at login) matchmaking with no
+		// live presence: without the account fallback they'd enter the room as deviceClass
+		// 0 (VR) until their next heartbeat, and everyone in the room would see that.
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: 55, username: 'Screenie', deviceClass: 2, platform: 0 }))
+			.run()
+		const headers = await bearer('55')
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+			method: 'POST',
+			headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ JoinMode: '2' }).toString(),
+		})
+		expect(res.status).toBe(200)
+
+		const row = await env.DB.prepare('SELECT data FROM presence WHERE account_id = ?1')
+			.bind(55)
+			.first<{ data: string }>()
+		const presence = JSON.parse(row!.data) as { deviceClass: number }
+		expect(presence.deviceClass).toBe(2)
+	})
+
 	test('POST /matchmake/room/:roomId/:subRoomId enters that subroom', async () => {
 		type Instance = {
 			roomId: number

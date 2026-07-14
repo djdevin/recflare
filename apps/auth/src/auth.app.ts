@@ -8,6 +8,7 @@ import {
 	getAccountsByPlatformId,
 	getPasswordHash,
 	RoomInstanceType,
+	setDeviceInfo,
 	setLastLoginTime,
 	setPasswordHash,
 	setPresence,
@@ -58,7 +59,11 @@ const ORIENTATION_INSTANCE_ID = -2
  * shared rooms D1, matching the match worker's `roomInstanceFromRoom` shape) into
  * the shared `presence` table (see @repo/domain) so the heartbeat keeps them there.
  */
-async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: number): Promise<void> {
+async function placeNewPlayerInOrientation(
+	env: App['Bindings'],
+	accountId: number,
+	deviceClass: number
+): Promise<void> {
 	const row = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
 		.bind(ORIENTATION_ROOM_ID)
 		.first<{ data: string }>()
@@ -95,7 +100,7 @@ async function placeNewPlayerInOrientation(env: App['Bindings'], accountId: numb
 		accountId,
 		roomInstance,
 		statusVisibility: 0,
-		deviceClass: 0,
+		deviceClass,
 		vrMovementMode: 1,
 		platform: 0,
 		appVersion: '20230302',
@@ -212,6 +217,16 @@ const app = new Hono<App>()
 		const platformInt = typeof body.platform === 'string' ? Number.parseInt(body.platform, 10) : NaN
 		let platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
 
+		// The device this login came from. The client posts both on every grant; they're
+		// unverified (client-picked) so they're recorded on the account, never trusted as
+		// a credential. Stored on account creation AND refreshed on each successful login,
+		// so the account's device tracks the player across devices — the raw material for
+		// linking accounts that share a device later.
+		const deviceId = typeof body.device_id === 'string' ? body.device_id : ''
+		const deviceClassInt =
+			typeof body.device_class === 'string' ? Number.parseInt(body.device_class, 10) : NaN
+		const deviceClass = Number.isNaN(deviceClassInt) ? 0 : deviceClassInt
+
 		// A platform-authenticated login proves who you are with the platform itself,
 		// and we can ONLY verify Steam (platform 0) — via its Steam-signed platform_auth
 		// ticket. So those logins must be Steam:
@@ -269,6 +284,8 @@ const app = new Hono<App>()
 				platform: verifiedSteamId !== null ? 0 : undefined,
 				platformId: verifiedSteamId ?? undefined,
 				lastLoginTime: new Date().toISOString(),
+				deviceId: deviceId || undefined,
+				deviceClass: deviceId ? deviceClass : undefined,
 			})
 			accountId = String(account.accountId)
 			// Establish the login password when one is posted (raw password never stored).
@@ -277,7 +294,7 @@ const app = new Hono<App>()
 				await setPasswordHash(c.env.DB, account.accountId, await hashPassword(password))
 			}
 			// Place the new player in Orientation (they don't explicitly matchmake into it).
-			await placeNewPlayerInOrientation(c.env, account.accountId)
+			await placeNewPlayerInOrientation(c.env, account.accountId, deviceClass)
 		} else if (grantType === 'refresh_token') {
 			const presented = typeof body.refresh_token === 'string' ? body.refresh_token : ''
 			const refreshed = presented ? await consumeRefreshToken(c.env.DB, presented) : null
@@ -315,6 +332,7 @@ const app = new Hono<App>()
 			}
 			accountId = String(account.accountId)
 			await setLastLoginTime(c.env.DB, account.accountId, new Date().toISOString())
+			await setDeviceInfo(c.env.DB, account.accountId, deviceId, deviceClass)
 		} else {
 			// Resolve the account from a posted numeric `account_id` or, as RecRoom's
 			// password grant sends, a `username` (case-insensitive; trailing whitespace
@@ -346,6 +364,7 @@ const app = new Hono<App>()
 			}
 			accountId = String(resolvedId)
 			await setLastLoginTime(c.env.DB, resolvedId, new Date().toISOString())
+			await setDeviceInfo(c.env.DB, resolvedId, deviceId, deviceClass)
 		}
 
 		const accessToken = await generateToken(

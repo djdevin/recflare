@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../auth.app'
 
-import { PRESENCE_SCHEMA_DDL, SCHEMA_DDL } from '@repo/domain'
+import { getAccountsByDeviceId, PRESENCE_SCHEMA_DDL, SCHEMA_DDL } from '@repo/domain'
 
 import { isLinkedToPlatformIdentity } from '../../auth.app'
 import { hashPassword } from '../../password'
@@ -342,6 +342,38 @@ describe('auth worker routes', () => {
 		expect(row).not.toBeNull()
 		const account = JSON.parse(row!.data) as { username: string }
 		expect(account.username).not.toMatch(/^Player\d+$/)
+	})
+
+	test('POST /connect/token create_account stores the login device on the account', async () => {
+		const deviceId = '69640e6ae1b54ae5b0ca8eeb4a8872ec6cf8fd88'
+		const payload = await tokenFor(
+			`grant_type=create_account&platform_id=steam-dev1&device_id=${deviceId}&device_class=2`
+		)
+		const sub = Number.parseInt(payload.sub as string, 10)
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = ?1')
+			.bind(sub)
+			.first<{ data: string }>()
+		const account = JSON.parse(row!.data) as { deviceId: string; deviceClass: number }
+		expect(account.deviceId).toBe(deviceId)
+		expect(account.deviceClass).toBe(2)
+
+		// Accounts sharing a device can be found later (account linkup).
+		const shared = await getAccountsByDeviceId(env.DB, deviceId)
+		expect(shared.map((a) => a.accountId)).toContain(sub)
+	})
+
+	test('POST /connect/token refreshes the stored device on a credential login', async () => {
+		// Account 42 was seeded with no device; a later login records the one it came from.
+		const res = await postToken(
+			`grant_type=password&username=Player42&password=${LOGIN_PASSWORD}&device_id=dev-42-new&device_class=3`
+		)
+		expect(res.status).toBe(200)
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = ?1')
+			.bind(42)
+			.first<{ data: string }>()
+		const account = JSON.parse(row!.data) as { deviceId: string; deviceClass: number }
+		expect(account.deviceId).toBe('dev-42-new')
+		expect(account.deviceClass).toBe(3)
 	})
 
 	test('POST /connect/token create_account seeds the new player into Orientation', async () => {

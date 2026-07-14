@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import {
 	createRoomInstance,
 	deleteExpiredPresence,
+	getAccount,
 	getExpiredPresenceInstanceIds,
 	getJoinableInstance,
 	getOrCreateDormRoom,
@@ -131,16 +132,27 @@ const GAME_VERSION = '20230302'
  */
 const DEFAULT_GET_PLAYER = [{ ...playerPayload(1), isOnline: true }]
 
-/** Store the room instance the player just matchmade into, preserving status. */
+/**
+ * Store the room instance the player just matchmade into, preserving status.
+ *
+ * With no live presence to carry forward (the player's first matchmake after login,
+ * or one after their presence lapsed) the device fields would otherwise default —
+ * writing a screen player into the instance as deviceClass 0 until their next
+ * heartbeat corrects it. Everyone already in the room sees that stale class in the
+ * meantime, so fall back to what the account reported at login (auth stores
+ * `deviceClass`/`platform` from the token request) instead of to 0. The account read
+ * only happens on that no-presence path; a normal matchmake carries `prev` forward.
+ */
 async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance): Promise<void> {
 	const prev = await getPresence<RoomInstance>(c.env.DB, id)
+	const account = prev ? null : await getAccount(c.env.DB, id)
 	await setPresence(c.env.DB, {
 		accountId: id,
 		roomInstance,
 		statusVisibility: prev?.statusVisibility ?? 0,
-		deviceClass: prev?.deviceClass ?? 0,
+		deviceClass: prev?.deviceClass ?? account?.deviceClass ?? 0,
 		vrMovementMode: prev?.vrMovementMode ?? 1,
-		platform: prev?.platform ?? 0,
+		platform: prev?.platform ?? account?.platform ?? 0,
 		appVersion: prev?.appVersion || GAME_VERSION,
 	})
 	// Keep the destination instance's is_full flag in sync with live presence (the

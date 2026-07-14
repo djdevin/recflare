@@ -49,6 +49,15 @@ export interface Account {
 	platform?: number
 	/** ISO-8601 time of the account's most recent successful login. */
 	lastLoginTime?: string
+	/**
+	 * The client's `device_id` from its most recent login (a stable per-install hash
+	 * the client sends on every /connect/token). Not a credential — the client picks
+	 * it and nothing verifies it — so never authorize on it alone. Kept (and indexed)
+	 * so accounts sharing a device can be found later, e.g. for account linkup.
+	 */
+	deviceId?: string
+	/** DeviceClass int (2 = PC/standalone) that `deviceId` was last seen on. */
+	deviceClass?: number
 	/** Set via POST /account/me/email; absent until the player provides one. */
 	email?: string
 	/** Set via POST /account/me/phone; absent until the player provides one. */
@@ -203,11 +212,53 @@ export async function getAccountsByPlatformId(
 	return parseAll(results)
 }
 
+/**
+ * Accounts last seen on a given device (the client-supplied `device_id` auth records
+ * at login). An empty id yields no matches (avoids matching every account with no
+ * device recorded).
+ *
+ * Reads `deviceId` straight out of the JSON blob, so this is a table scan — no
+ * generated column, no migration. Fine at our account count and for the occasional
+ * linkup lookup this exists for; if it ever gets hot, promote `deviceId` to an
+ * indexed generated column the way `platformId` is (see the 0004 migration).
+ *
+ * The device id is unverified client input, so treat a match as a *hint* (these
+ * accounts share a device) and never as proof of identity.
+ */
+export async function getAccountsByDeviceId(db: D1Database, deviceId: string): Promise<Account[]> {
+	if (deviceId === '') return []
+	const { results } = await db
+		.prepare("SELECT data FROM account WHERE json_extract(data, '$.deviceId') = ?1")
+		.bind(deviceId)
+		.all<AccountRow>()
+	return parseAll(results)
+}
+
 /** Record the account's most recent successful login time (ISO-8601). */
 export async function setLastLoginTime(db: D1Database, id: number, time: string): Promise<void> {
 	await db
 		.prepare("UPDATE account SET data = json_set(data, '$.lastLoginTime', ?2) WHERE account_id = ?1")
 		.bind(id, time)
+		.run()
+}
+
+/**
+ * Record the device the account most recently logged in from. Called on every
+ * successful login (not just account creation) so the stored device tracks the
+ * player as they move between devices.
+ */
+export async function setDeviceInfo(
+	db: D1Database,
+	id: number,
+	deviceId: string,
+	deviceClass: number
+): Promise<void> {
+	if (deviceId === '') return
+	await db
+		.prepare(
+			"UPDATE account SET data = json_set(data, '$.deviceId', ?2, '$.deviceClass', ?3) WHERE account_id = ?1"
+		)
+		.bind(id, deviceId, deviceClass)
 		.run()
 }
 
