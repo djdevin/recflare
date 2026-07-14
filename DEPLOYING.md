@@ -135,9 +135,9 @@ Nothing manual to do here. The object is created manually.
 just dev
 ```
 
-**Deploy  or upgrade all workers:**
+## Deploy or upgrade all workers
 
-This will deploy all workers to respective endpoints (*.example.com)
+This will deploy or upgrade all workers to respective endpoints (*.example.com)
 
 It will additionally run any necessary DB migrations.
 
