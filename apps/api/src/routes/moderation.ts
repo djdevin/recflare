@@ -29,4 +29,9 @@ export const moderationRoutes = new Hono<App>({ strict: false })
 	// bearer token and fires before account creation, so there is no caller to attribute
 	// the id to and nothing to store it against — we accept it and drop it. The real
 	// service answers with a `{ success, error }` envelope.
-	.post('/api/PlayerReporting/v1/deviceId', (c) => c.json({ success: true, error: '' }))
+	// @todo This doesn't do anything, in fact it breaks the client during account creation.
+	// I have not been able to find a response shape that doesn't break, so in
+	// https://github.com/djdevin/recnet-plugin we disable the device ID check to enable
+	// account creation. Nothing in the logs, client just hangs, who knows what it is
+	// waiting for.
+	.post('/api/PlayerReporting/v1/deviceId', (c) => c.json([]));
