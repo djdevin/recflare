@@ -17,4 +17,13 @@ describe('commerce endpoints', () => {
 		expect(res.status).toBe(200)
 		expect(await res.json()).toBe(false)
 	})
+
+	it('GET /api/catalog/v1/all serves the SKU catalog', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/api/catalog/v1/all?onlyAvailableSkus=true`)
+		expect(res.status).toBe(200)
+		const skus = (await res.json()) as Array<{ skuId: number }>
+		expect(Array.isArray(skus)).toBe(true)
+		expect(skus.length).toBeGreaterThan(0)
+		expect(skus[0]).toHaveProperty('skuId')
+	})
 })
