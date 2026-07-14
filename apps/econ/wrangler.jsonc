@@ -11,14 +11,19 @@
 		"binding": "ASSETS",
 		"directory": "./static/storefronts"
 	},
-	// Shared `recflare` D1 (accounts table) — read/write the player's avatar column.
-	// The accounts schema/migrations are owned by the `auth` worker. The "local"
-	// placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
+	// Shared `recflare` D1. Econ reads/writes the player's avatar column on the accounts
+	// table (whose schema/migrations the `auth` worker owns) and owns the `balance` table
+	// itself — hence its own migrations_dir, with a dedicated migrations_table so its
+	// history doesn't clash with the auth/rooms migrations on the same database. Apply
+	// with `wrangler d1 migrations apply recflare --remote`. The "local" placeholder is
+	// replaced with the real id from RECFLARE_D1 at deploy time.
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "recflare",
-			"database_id": "local"
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_econ"
 		}
 	],
 	"logpush": false,

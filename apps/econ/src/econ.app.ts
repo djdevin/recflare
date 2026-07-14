@@ -9,10 +9,13 @@ import defaultAvatar from '../static/default-avatar.json'
 import myProgress from '../static/my-progress.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
+import { ALL_PLATFORMS, getBalance, isSpendable } from './balance-db'
+import { getOutfits, setOutfit } from './outfit-db'
 
 import type { Context } from 'hono'
 import type { Avatar } from './avatar-db'
 import type { App } from './context'
+import type { Outfit } from './outfit-db'
 
 /**
  * Economy Worker. Hosts the avatar/economy endpoints the game client calls on
@@ -49,19 +52,6 @@ function toAvatarV2Dto(avatar: Avatar) {
 		HairColor: avatar.HairColor,
 	}
 }
-
-/** RecNet currency types (the `CurrencyType` enum the client uses). */
-const CurrencyType = {
-	Invalid: 0,
-	LaserTagTickets: 1,
-	RecCenterTokens: 2,
-	LostSkullsGold: 100,
-	DraculaSilver: 101,
-	RecRoyaleSeason1: 200,
-	RoomCurrency: 300,
-	RoomInventoryItem: 301,
-	ProgressionEvent: 400,
-} as const
 
 const app = new Hono<App>()
 	.use(
@@ -144,12 +134,33 @@ const app = new Hono<App>()
 		return c.json([])
 	})
 
-	// The player's saved outfits. [Authorize]; empty without a DB binding.
+	// The player's saved outfits. [Authorize]. Served back as the client posted them
+	// (see /saved/set); a player who has saved none gets [].
 	.get('/api/avatar/v3/saved', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: query SavedOutfits once a DB binding exists.
-		return c.json([])
+		return c.json(await getOutfits(c.env.DB, id))
+	})
+
+	// Save an outfit into one of the player's slots. [Authorize]. The posted `Slot` is
+	// the slot to write, and re-saving a slot overwrites it — that's the avatar screen's
+	// "save over this outfit". The payload is stored verbatim and echoed back: its inner
+	// fields (OutfitSelectionsV2, FaceFeatures, …) are JSON-in-a-string from the client's
+	// own serializer, so re-encoding them risks handing back something it can't parse.
+	//
+	// A missing/non-integer `Slot` is a 400 rather than a default slot — guessing would
+	// silently overwrite an outfit the player didn't mean to touch.
+	.post('/api/avatar/v3/saved/set', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+		if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+			return c.body(null, 400)
+		}
+		if (!Number.isInteger(body.Slot)) return c.body(null, 400)
+		const outfit = body as Outfit
+		await setOutfit(c.env.DB, id, outfit)
+		return c.json(outfit)
 	})
 
 	// Pending avatar gifts for the player. [Authorize]; empty without a DB binding.
@@ -197,16 +208,20 @@ const app = new Hono<App>()
 		return c.json([])
 	})
 
-	// Token balance. [Authorize]. The `2` in the path is the RecCenterTokens
-	// CurrencyType. The balance is a fake test value (a large amount) until a DB
-	// binding tracks real balances; Platform -2 means "all platforms".
-	.get('/api/storefronts/v4/balance/2', async (c) => {
+	// Currency balance. [Authorize]. The trailing int is a CurrencyType — the client
+	// fetches `/balance/2` (RecCenterTokens) on load. Backed by the `balance` table; a
+	// player who has never been granted gets their starting balance on this first read.
+	//
+	// An unknown or non-account-scoped currency (a room currency, ProgressionEvent,
+	// Invalid) returns a 0 balance rather than 404: the client treats a failed balance
+	// fetch as a load error, and "you have none of that" is the honest answer anyway.
+	.get('/api/storefronts/v4/balance/:currencyType', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: query TokenBalances once a DB binding exists.
-		return c.json([
-			{ CurrencyType: CurrencyType.RecCenterTokens, Platform: -2, Balance: 2147483648 },
-		])
+		const currencyType = Number.parseInt(c.req.param('currencyType'), 10)
+		if (Number.isNaN(currencyType)) return c.body(null, 400)
+		const amount = isSpendable(currencyType) ? await getBalance(c.env.DB, id, currencyType) : 0
+		return c.json([{ CurrencyType: currencyType, Platform: ALL_PLATFORMS, Balance: amount }])
 	})
 
 	// Gift-drop storefront. Serves `static/storefronts/sf{id}.json` for the requested
