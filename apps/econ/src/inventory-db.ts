@@ -4,10 +4,12 @@
  * purchase time (`POST /api/storefronts/v2/buyItem`) and read back by
  * `GET /api/avatar/v4/items`, which concatenates it with the default catalog.
  *
- * The item is keyed by its `AvatarItemDesc` (the gift-drop's item guid string), so
- * re-buying the same item upserts rather than piling up duplicate rows — you can own
- * an item once. `data` is the rendered avatar-item DTO, stored opaquely and served
- * back untouched; it matches the shape of the entries in default-avatar-items.json.
+ * The item is keyed by its full `AvatarItemDesc` — the comma-delimited descriptor exactly
+ * as sent, trailing `,,,` and all — so re-buying the same item upserts rather than piling
+ * up duplicate rows. The descriptor is stored verbatim (not normalized): the client expects
+ * the commas back and fails without them. `data` is the rendered avatar-item DTO, stored
+ * opaquely and served back untouched; it matches the shape of the entries in
+ * default-avatar-items.json.
  *
  * This worker (`econ`) owns the table and its migration — see apps/econ/migrations/
  * 0004_inventory.sql. The gift box the purchase also creates lives in a separate table
@@ -41,7 +43,8 @@ export interface AvatarItem extends Record<string, unknown> {
 /**
  * Grant an item into a player's inventory. Upserts on (account_id, avatar_item_desc):
  * owning an item is boolean, so re-buying it refreshes the stored DTO rather than
- * adding a second copy.
+ * adding a second copy. The descriptor is stored verbatim, commas included — the client
+ * expects the full comma-delimited form back.
  */
 export async function grantItem(
 	db: D1Database,

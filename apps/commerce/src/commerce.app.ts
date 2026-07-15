@@ -37,4 +37,8 @@ const app = new Hono<App>()
 	// response.
 	.get('/api/catalog/v1/all', (c) => c.json(catalog))
 
+	// Current purchase campaigns (limited-time offers/promos). None exist, and
+	// an empty list is the client's "no active campaigns" state.
+	.get('/purchasecampaign/allcurrent/v2', (c) => c.json([]))
+
 export default app

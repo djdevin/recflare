@@ -95,11 +95,12 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 		const giftId = typeof body.Id === 'string' ? Number.parseInt(body.Id, 10) || 0 : 0
 		// Opening a box just deletes it — the item was granted into the player's inventory
 		// when they bought it (see the `econ` worker's buyItem), so there's nothing to grant.
-		// Always 200 with an empty body: the client fires this and forgets, so a missing/zero
+		// Answers the `{ error, success, value }` envelope a captured real consume returns
+		// (not an empty body — the client parses it to finish opening the box). A missing/zero
 		// id, no token, or a box that's already gone (or isn't theirs) is a scoped no-op, not
 		// an error. Mirrors the econ worker's consume route (the client may call either host).
 		if (id !== null && giftId !== 0) await consumeGift(c.env.DB, id, giftId)
-		return c.body(null, 200)
+		return c.json({ error: '', success: true, value: null })
 	})
 
 	// Custom avatar item gates — real Rec Room client endpoints with no backing
@@ -111,6 +112,9 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 	)
 	.get('/api/customAvatarItems/v1/isCreationEnabled', (c) => c.json(true))
 	.get('/api/customAvatarItems/v1/isRenderingEnabled', (c) => c.json(true))
+
+	// The featured custom-avatar-item feed. No curated items yet → an empty list.
+	.get('/api/customAvatarItems/v1/featured', (c) => c.json([]))
 
 	// Custom avatar items created by a given account. No storage yet → an empty
 	// paginated result (matches the econ `customAvatarItems/v1/owned` shape).

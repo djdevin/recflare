@@ -26,4 +26,10 @@ describe('commerce endpoints', () => {
 		expect(skus.length).toBeGreaterThan(0)
 		expect(skus[0]).toHaveProperty('skuId')
 	})
+
+	it('GET /purchasecampaign/allcurrent/v2 returns []', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/purchasecampaign/allcurrent/v2`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
 })

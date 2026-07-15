@@ -10,6 +10,8 @@ A Cloudflare Workers application using Hono
   offers), served from the bundled `static/catalog-v1-all.json`. The client's
   `?onlyAvailableSkus=true` is accepted and ignored: the bundled catalog already
   contains only available SKUs.
+- `GET /purchasecampaign/allcurrent/v2` — current purchase campaigns
+  (limited-time offers/promos); `[]` (none active).
 
 ## Development
 

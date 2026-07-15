@@ -300,14 +300,14 @@ describe('public endpoints', () => {
 			PlatformsToSpawnOn: -1,
 			BalanceType: null,
 		})
-		// Consume is fire-and-forget: always 200 with an empty body. The box is gone after.
+		// Consume is fire-and-forget: always 200 with the success envelope. The box is gone after.
 		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
 			method: 'POST',
 			headers: await bearer('42'),
 			body: new URLSearchParams({ Id: String(giftId), UnlockedLevel: '0' }),
 		})
 		expect(res.status).toBe(200)
-		expect(await res.text()).toBe('')
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
 		expect(await getPendingGifts(env.DB, 42)).toHaveLength(0)
 
 		// Consuming it again is a no-op — still 200, nothing changes.
@@ -365,6 +365,12 @@ describe('public endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1/isRenderingEnabled`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toBe(true)
+	})
+
+	test('GET /api/customAvatarItems/v1/featured returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1/featured`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
 	})
 
 	test('GET /api/customAvatarItems/v2/fromCreator/:id returns an empty paginated result', async () => {

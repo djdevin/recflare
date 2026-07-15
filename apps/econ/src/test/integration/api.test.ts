@@ -14,6 +14,7 @@ import {
 	getBalance,
 	spendCurrency,
 } from '../../balance-db'
+import { CONSUMABLE_SCHEMA_DDL } from '../../consumables-db'
 import { INVENTORY_SCHEMA_DDL } from '../../inventory-db'
 import { OUTFIT_SCHEMA_DDL } from '../../outfit-db'
 
@@ -34,6 +35,7 @@ beforeAll(async () => {
 	for (const stmt of BALANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of OUTFIT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of INVENTORY_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of CONSUMABLE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of RECEIVED_GIFT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(JSON.stringify({ accountId: 42, username: 'Tester', displayName: 'Tester' }))
@@ -533,18 +535,20 @@ describe('econ endpoints', () => {
 		const body = (await res.json()) as {
 			Balance: number
 			CurrencyType: number
+			BalanceType: number
 			BalanceUpdates: Array<{
-				Data: Array<{ Id: number; FriendlyName: string; AvatarItemDesc: string }>
+				Data: Array<{ Id: number; AvatarItemDesc: string }>
 			}>
 		}
-		// 10000 - 4500.
-		expect(body.Balance).toBe(5500)
+		// `Balance` is the change applied (the negated price), not the resulting total.
+		expect(body.Balance).toBe(-4500)
 		expect(body.CurrencyType).toBe(2)
+		expect(body.BalanceType).toBe(-2)
 		const gift = body.BalanceUpdates[0].Data[0]
-		expect(gift.FriendlyName).toBe('Class of 2016')
+		expect(gift.AvatarItemDesc).not.toBe('')
 		expect(gift.Id).toBeGreaterThan(0)
 
-		// The balance endpoint reflects the debit.
+		// The balance endpoint reflects the debit (this is the resulting total, 10000 - 4500).
 		const bal = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
 			headers: await bearer('20'),
 		})
@@ -566,6 +570,88 @@ describe('econ endpoints', () => {
 		expect(pending).toHaveLength(1)
 		expect(pending[0].Id).toBe(gift.Id)
 		expect(pending[0].AvatarItemDesc).toBe(gift.AvatarItemDesc)
+	})
+
+	test('POST /api/storefronts/v2/buyItem grants a consumable and stacks on re-buy', async () => {
+		// Item 2266 (Supreme Pizza) in storefront 300 is a consumable — its gift-drop
+		// carries a ConsumableItemDesc, not an AvatarItemDesc.
+		const consumableDesc = 'wUCIKdJSvEmiQHYMyx4X4w'
+		const buy = async () =>
+			exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+				method: 'POST',
+				headers: { ...(await bearer('25')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					StorefrontType: 300,
+					PurchasableItemId: 2266,
+					CurrencyType: 2,
+					RequestedPrice: 95,
+				}),
+			})
+
+		const res = await buy()
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Balance: number
+			BalanceUpdates: Array<{
+				Data: Array<{
+					ConsumableItemDesc: string
+					AvatarItemDesc: string
+					AvatarItemType: number
+					FromPlayerId: number
+				}>
+			}>
+		}
+		// `Balance` is the change applied (the negated price), not the resulting total.
+		expect(body.Balance).toBe(-95)
+		const drop = body.BalanceUpdates[0].Data[0]
+		expect(drop.ConsumableItemDesc).toBe(consumableDesc)
+		expect(drop.AvatarItemDesc).toBe('')
+		// A consumable's AvatarItemType is null in the catalog; the response coalesces it to 0.
+		expect(drop.AvatarItemType).toBe(0)
+		// A self-buy is attributed to the "Coach" system account (id 1).
+		expect(drop.FromPlayerId).toBe(1)
+
+		// It's owned as an unlocked consumable — one instance, count 1.
+		const unlocked = async () => {
+			const r = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+				headers: await bearer('25'),
+			})
+			expect(r.status).toBe(200)
+			return (await r.json()) as Array<{
+				Ids: number[]
+				CreatedAts: string[]
+				ConsumableItemDesc: string
+				Count: number
+				InitialCount: number
+				IsActive: boolean
+				IsTransferable: boolean
+			}>
+		}
+		const first = await unlocked()
+		expect(first).toHaveLength(1)
+		expect(first[0].ConsumableItemDesc).toBe(consumableDesc)
+		expect(first[0].Count).toBe(1)
+		expect(first[0].InitialCount).toBe(1)
+		expect(first[0].Ids).toHaveLength(1)
+		expect(first[0].CreatedAts).toHaveLength(1)
+		expect(first[0].IsActive).toBe(false)
+		expect(first[0].IsTransferable).toBe(false)
+
+		// A consumable is not an avatar item — it does not show up in v4/items.
+		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+			headers: await bearer('25'),
+		})
+		const list = (await items.json()) as Array<{ FriendlyName: string }>
+		expect(list.every((i) => i.FriendlyName !== 'Supreme Pizza')).toBe(true)
+
+		// Buying it again stacks: a second instance, count summed to 2.
+		expect((await buy()).status).toBe(200)
+		const second = await unlocked()
+		expect(second).toHaveLength(1)
+		expect(second[0].Count).toBe(2)
+		expect(second[0].InitialCount).toBe(2)
+		expect(second[0].Ids).toHaveLength(2)
+		expect(second[0].CreatedAts).toHaveLength(2)
 	})
 
 	test('POST /api/storefronts/v2/buyItem 409s when the sent price no longer matches', async () => {
@@ -643,7 +729,7 @@ describe('econ endpoints', () => {
 		}
 		const giftId = bought.BalanceUpdates[0].Data[0].Id
 
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
 			method: 'POST',
 			headers: {
 				...(await bearer('24')),
@@ -652,7 +738,7 @@ describe('econ endpoints', () => {
 			body: new URLSearchParams({ Id: String(giftId), UnlockedLevel: '0' }),
 		})
 		expect(res.status).toBe(200)
-		expect(await res.text()).toBe('')
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
 
 		// The box is gone; the item stays owned (it was granted at purchase, not on open).
 		const gifts = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, {
@@ -666,7 +752,7 @@ describe('econ endpoints', () => {
 		expect(list.some((i) => i.FriendlyName === 'Class of 2016')).toBe(true)
 
 		// Opening it again is a harmless no-op — still 200.
-		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
 			method: 'POST',
 			headers: {
 				...(await bearer('24')),
@@ -685,8 +771,8 @@ describe('econ endpoints', () => {
 		expect(Array.isArray(body.Challenges)).toBe(true)
 	})
 
-	test('GET /api/storefronts/v1/adcarouselitem returns the carousel items', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v1/adcarouselitem`)
+	test('GET /api/storefronts/v1/adcarouselitems returns the carousel items', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v1/adcarouselitems`)
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as Array<{ AdCarouselItemId: number }>
 		expect(Array.isArray(body)).toBe(true)

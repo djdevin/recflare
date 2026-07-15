@@ -18,6 +18,7 @@ import {
 	isSpendable,
 	spendCurrency,
 } from './balance-db'
+import { getConsumables, grantConsumable } from './consumables-db'
 import { getInventory, grantItem } from './inventory-db'
 import { getOutfits, setOutfit } from './outfit-db'
 
@@ -132,11 +133,21 @@ function toAvatarItem(giftDrop: StoreGiftDrop): AvatarItem {
 	}
 }
 
+/** Quantity of a consumable granted per purchase — our storefront catalogs don't specify one. */
+const CONSUMABLE_GRANT_COUNT = 1
+
+/** The "Coach" system account — the sender a self-buy or anonymous gift is attributed to. */
+const COACH_ACCOUNT_ID = 1
+
 /** Build the stored gift-box content (the client's rendered "gift box") from a gift-drop. */
-function toGiftContent(giftDrop: StoreGiftDrop, message: string): GiftContent {
+function toGiftContent(
+	giftDrop: StoreGiftDrop,
+	message: string,
+	consumableCount: number
+): GiftContent {
 	return {
 		ConsumableItemDesc: giftDrop.ConsumableItemDesc,
-		ConsumableCount: 0,
+		ConsumableCount: consumableCount,
 		AvatarItemDesc: giftDrop.AvatarItemDesc,
 		AvatarItemType: giftDrop.AvatarItemType,
 		CurrencyType: giftDrop.CurrencyType,
@@ -153,7 +164,9 @@ function toGiftContent(giftDrop: StoreGiftDrop, message: string): GiftContent {
 	}
 }
 
-const app = new Hono<App>()
+// strict: false so trailing-slash routes (e.g. `/gifts/consume/`, which the client
+// posts with a trailing slash) match either form. Mirrors the `api` worker.
+const app = new Hono<App>({ strict: false })
 	.use(
 		'*',
 		// middleware
@@ -277,20 +290,22 @@ const app = new Hono<App>()
 	// Open (consume) a gift box. [Authorize]. The client posts this on the econ host after
 	// the box animation, form-encoded as `Id=<giftId>&UnlockedLevel=<n>`. Opening just
 	// deletes the box — the item was granted into the inventory at purchase, so there's
-	// nothing to grant here (`UnlockedLevel`, a consumable-level hint, is unused until
-	// consumable gift-drops exist).
+	// nothing to grant here — an avatar-item drop was granted into the inventory table and a
+	// consumable drop into the consumable table, both at purchase. (`UnlockedLevel`, a
+	// consumable-level hint, is unused.)
 	//
-	// Always answers 200 with an empty body — even with no token, a zero id, or a box that
-	// is already gone. The client fires this and forgets; a re-open (or a box that belongs
-	// to someone else) must not read as an error. The delete is scoped to the caller's
-	// account, so an unauthenticated or mismatched call is simply a no-op. Mirrors the same
-	// route on the `api` worker (the client may call either host).
+	// Always answers 200 with the `{ error, success, value }` envelope — even with no token,
+	// a zero id, or a box that is already gone. A captured real consume returns this envelope,
+	// not an empty body: the client parses it to finish opening the box, so a bare 200 reads
+	// as a failure and the consumable never finishes unlocking. The delete is scoped to the
+	// caller's account, so an unauthenticated or mismatched call is simply a no-op. Mirrors
+	// the same route on the `api` worker (the client may call either host).
 	.post('/api/avatar/v2/gifts/consume', async (c) => {
 		const id = await authedId(c)
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 		const giftId = typeof body.Id === 'string' ? Number.parseInt(body.Id, 10) || 0 : 0
 		if (id !== null && giftId !== 0) await consumeGift(c.env.DB, id, giftId)
-		return c.body(null, 200)
+		return c.json({ error: '', success: true, value: null })
 	})
 
 	// A player's avatar by account id, projected to the public render subset (used
@@ -322,12 +337,13 @@ const app = new Hono<App>()
 		return c.body(null, 200)
 	})
 
-	// Unlocked consumables. [Authorize]; empty without a DB binding.
+	// Unlocked consumables. [Authorize]. The consumables the player has bought (from
+	// `buyItem`, stored in the `consumable` table), grouped by item into the client's
+	// unlocked-consumable DTO. A player who has bought none gets an empty list.
 	.get('/api/consumables/v2/getUnlocked', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: query ConsumableItems once a DB binding exists.
-		return c.json([])
+		return c.json(await getConsumables(c.env.DB, id))
 	})
 
 	// Currency balance. [Authorize]. The trailing int is a CurrencyType — the client
@@ -420,8 +436,9 @@ const app = new Hono<App>()
 			typeof body.Gift === 'object' && body.Gift !== null ? body.Gift : null
 		) as GiftRequest | null
 		const receiverId = Number.isInteger(gift?.ToPlayerId) ? (gift?.ToPlayerId as number) : id
-		// A named (non-anonymous) gift shows the sender; a self-purchase has no sender.
-		const fromPlayerId = gift !== null && gift.Anonymous !== true ? id : null
+		// A named (non-anonymous) gift shows the sender; a self-purchase or an anonymous gift
+		// is attributed to the "Coach" system account (id 1), never a null/0 sender.
+		const fromPlayerId = gift !== null && gift.Anonymous !== true ? id : COACH_ACCOUNT_ID
 		const message = typeof gift?.Message === 'string' ? gift.Message : 'A gift for you <3'
 
 		const startingTokens = intVar(c.env.STARTING_TOKENS, DEFAULT_STARTING_TOKENS)
@@ -436,17 +453,34 @@ const app = new Hono<App>()
 		)
 		if (!paid) return c.json({ error: 'Insufficient balance' }, 400)
 
-		// Grant the avatar item to the recipient (only gift-drops that actually carry one).
+		// Grant the item to the recipient. A gift-drop carries an avatar item, a consumable,
+		// or neither (currency/xp drops aren't granted yet); grant whichever it actually has.
 		if (typeof item.GiftDrop.AvatarItemDesc === 'string' && item.GiftDrop.AvatarItemDesc !== '') {
 			await grantItem(c.env.DB, receiverId, toAvatarItem(item.GiftDrop))
+		}
+		const isConsumable =
+			typeof item.GiftDrop.ConsumableItemDesc === 'string' &&
+			item.GiftDrop.ConsumableItemDesc !== ''
+		const consumableCount = isConsumable ? CONSUMABLE_GRANT_COUNT : 0
+		if (isConsumable) {
+			await grantConsumable(
+				c.env.DB,
+				receiverId,
+				item.GiftDrop.ConsumableItemDesc,
+				consumableCount
+			)
 		}
 		const { id: giftId } = await createGift(
 			c.env.DB,
 			receiverId,
-			toGiftContent(item.GiftDrop, message)
+			toGiftContent(item.GiftDrop, message, consumableCount)
 		)
-		const balance = await getBalance(c.env.DB, id, currencyType as number, startingTokens)
 
+		// The response mirrors a captured real buyItem: `Balance` is the change applied (the
+		// negated price), not the resulting balance (the client reads its new total from
+		// `GET /balance/:type`); `BalanceType` is -2 (account-wide, all platforms). The Data
+		// entry is the gift-drop the client received — it carries no FriendlyName or
+		// consumable count (the count is a getUnlocked concept; each box is one instance).
 		return c.json({
 			BalanceUpdates: [
 				{
@@ -457,8 +491,7 @@ const app = new Hono<App>()
 							FromPlayerId: fromPlayerId,
 							ConsumableItemDesc: item.GiftDrop.ConsumableItemDesc,
 							AvatarItemDesc: item.GiftDrop.AvatarItemDesc,
-							FriendlyName: item.GiftDrop.FriendlyName,
-							AvatarItemType: item.GiftDrop.AvatarItemType,
+							AvatarItemType: item.GiftDrop.AvatarItemType ?? 0,
 							EquipmentPrefabName: item.GiftDrop.EquipmentPrefabName,
 							EquipmentModificationGuid: item.GiftDrop.EquipmentModificationGuid,
 							CurrencyType: item.GiftDrop.CurrencyType,
@@ -467,7 +500,7 @@ const app = new Hono<App>()
 							Level: 0,
 							Platform: -1,
 							PlatformsToSpawnOn: -1,
-							BalanceType: 0,
+							BalanceType: ALL_PLATFORMS,
 							GiftContext: Number.isInteger(gift?.GiftContext)
 								? (gift?.GiftContext as number)
 								: item.GiftDrop.Context,
@@ -477,16 +510,15 @@ const app = new Hono<App>()
 					],
 				},
 			],
-			Balance: balance,
+			Balance: -price.Price,
 			CurrencyType: currencyType,
-			BalanceType: -1,
-			Platform: -1,
+			BalanceType: ALL_PLATFORMS,
 		})
 	})
 
 	// Storefront ad-carousel items. Served from the bundled static JSON — one
 	// placeholder banner with no purchasable items until real promo data exists.
-	.get('/api/storefronts/v1/adcarouselitem', (c) => c.json(adCarouselItems))
+	.get('/api/storefronts/v1/adcarouselitems', (c) => c.json(adCarouselItems))
 
 	// Current weekly challenge. Served from the bundled static JSON until
 	// per-rotation challenge data is wired up.
