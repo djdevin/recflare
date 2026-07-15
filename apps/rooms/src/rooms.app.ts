@@ -28,6 +28,7 @@ import {
 	setRoomDescription,
 	setRoomImage,
 	setRoomName,
+	setRoomRole,
 	toggleCheer,
 	toggleFavorite,
 	toggleRoomTag,
@@ -563,6 +564,51 @@ const app = new Hono<App>()
 		// Notify the owner so their client refreshes the room (RoomUpdate carries the
 		// updated room). The reference sends the post-update room, so merge the change.
 		await pushRoomUpdate(c, accountId, { ...room, ImageName: imageName })
+		return roomResult(c, { Success: true })
+	})
+
+	// Set a member's role in a room (`Roles[].Role`). Auth-gated (401) and gated to
+	// the room creator or a co-owner — the same owner/co-owner check the other
+	// room-admin actions use. Body is the `role` form field (an integer role tier).
+	// Updates the target account's existing role entry or adds one, notifies the
+	// affected member so their client refreshes permissions, and returns the
+	// `{ Success, Value, ErrorId, Error }` envelope at HTTP 200.
+	.put('/rooms/:roomId{[0-9]+}/roles/:accountId{[0-9]+}', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const targetAccountId = Number.parseInt(c.req.param('accountId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (!canManageRoom(room, accountId)) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.PermissionDenied',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const role = typeof body.role === 'string' ? Number.parseInt(body.role, 10) : Number.NaN
+		if (Number.isNaN(role)) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.InvalidRole',
+				Error: 'You must provide a valid role!',
+			})
+		}
+
+		const updated = await setRoomRole(c.env.DB, roomId, targetAccountId, role, accountId, room)
+		// Notify the member whose role changed so their client refreshes the room
+		// (and the permissions it grants them).
+		await pushRoomUpdate(c, targetAccountId, updated)
 		return roomResult(c, { Success: true })
 	})
 

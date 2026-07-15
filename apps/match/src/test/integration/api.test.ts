@@ -736,13 +736,11 @@ describe('auth-gated endpoints', () => {
 		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
 	})
 
-	test('player/login, exclusivelogin and logout all preserve presence', async () => {
+	test('player/login and exclusivelogin preserve presence', async () => {
 		const headers = await bearer('9')
 		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
-		// None of these lifecycle calls may wipe presence — the client fires a
-		// spurious logout during the account-creation bootstrap, and exclusivelogin
-		// when going online. Clearing here would bounce the player to the dorm.
-		await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
+		// These acks must not wipe presence — the client fires exclusivelogin when going
+		// online, and clearing here would bounce the player to the dorm.
 		await exports.default.fetch(`${ORIGIN}/player/exclusivelogin`, { method: 'POST', headers })
 		await exports.default.fetch(`${ORIGIN}/player/login`, { method: 'POST', headers })
 		const hb = (await (
@@ -752,6 +750,59 @@ describe('auth-gated endpoints', () => {
 		// Presence is preserved: the heartbeat replays their personal dorm. Account 9
 		// has no seeded username, so the name falls back to `@Player9's Dorm`.
 		expect(hb.roomInstance?.name).toBe("@Player9's Dorm")
+	})
+
+	test('player/logout clears presence and frees the instance the player was in', async () => {
+		// Fill SoloRoom (cap 1) so its instance is full, then log out.
+		const solo = await matchmakeInto('5', '960')
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(true)
+
+		const headers = await bearer('960')
+		await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
+
+		// Presence is gone → the heartbeat reports offline with no room.
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
+		).json()) as { roomInstance: unknown; isOnline: boolean }
+		expect(hb.isOnline).toBe(false)
+		expect(hb.roomInstance).toBeNull()
+		expect(await countPresenceRows(960)).toBe(0)
+		// The instance they left is no longer full.
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
+	})
+
+	test('player/logout preserves a new player still in Orientation (account-creation bootstrap)', async () => {
+		// Mirror the auth worker's Orientation seed: presence pointing at instance -2.
+		// The client's spurious bootstrap logout must NOT wipe it, or the new player is
+		// bounced out of Orientation to the dorm.
+		await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 961,
+					roomInstance: { roomInstanceId: -2, roomId: 13, name: '^Orientation' },
+					statusVisibility: 0,
+					deviceClass: 0,
+					vrMovementMode: 1,
+					platform: 0,
+					appVersion: '20230302',
+					expiresAt: nowSeconds() + 800,
+				})
+			)
+			.run()
+
+		await exports.default.fetch(`${ORIGIN}/player/logout`, {
+			method: 'POST',
+			headers: await bearer('961'),
+		})
+
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+				method: 'POST',
+				headers: await bearer('961'),
+			})
+		).json()) as { roomInstance: { roomInstanceId: number } | null; isOnline: boolean }
+		expect(hb.isOnline).toBe(true)
+		expect(hb.roomInstance?.roomInstanceId).toBe(-2)
 	})
 
 	test('GET /player?id reports stored presence per id', async () => {

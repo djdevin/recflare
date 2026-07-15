@@ -23,10 +23,15 @@ export enum Accessibility {
 }
 
 /**
- * A room-role tier (the `Role` byte on a room's `Roles` entries). Named tiers we
- * reference by value today — the owner (max byte) and co-owner.
+ * A room-role tier (the `Role` byte on a room's `Roles` entries), matching the
+ * client's values. Host and Moderator are limited-permission helper tiers; CoOwner
+ * and Creator are the owner-level tiers that may manage the room (see
+ * {@link canManageRoom}). Creator is the room's owner (its `CreatorAccountId`) —
+ * the max byte.
  */
 export enum Role {
+	Host = 10,
+	Moderator = 20,
 	CoOwner = 30,
-	Owner = 255,
+	Creator = 255,
 }

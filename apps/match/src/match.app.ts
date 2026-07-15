@@ -5,6 +5,7 @@ import {
 	canManageRoom,
 	createRoomInstance,
 	deleteExpiredPresence,
+	deletePresence,
 	getAccount,
 	getExpiredPresenceInstanceIds,
 	getJoinableInstance,
@@ -178,6 +179,15 @@ const DORM_PHOTON_ROOM_ID = '00000000-0000-4000-8000-000000000001'
 
 /** MatchmakingErrorCode.NoSuchRoom — returned when a room isn't in the DB. */
 const NO_SUCH_ROOM = 20
+
+/**
+ * The sentinel room-instance id the `auth` worker seeds a brand-new player's
+ * Orientation presence with (see auth's `placeNewPlayerInOrientation`). The client
+ * fires a spurious `player/logout` right after that seed, so logout must NOT clear
+ * presence while it still points at Orientation — doing so wipes the seed and
+ * bounces the new player to the dorm.
+ */
+const ORIENTATION_INSTANCE_ID = -2
 
 /**
  * The canonical dorm room instance (room 1, instance 1.1). Returned identically
@@ -385,15 +395,36 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// ---- Player presence -----------------------------------------------------
-	// login/exclusivelogin/logout are all no-op acks and MUST NOT touch presence.
-	// The client fires a spurious `player/logout` during the account-creation
-	// bootstrap (right after create_account seeds the new player into Orientation);
-	// deleting presence here wiped that seed and bounced the player to the dorm.
-	// Presence is overwritten by matchmake/goto and expires on its own TTL, so we
-	// don't need to clear it on these lifecycle calls.
+	// login/exclusivelogin are no-op acks and MUST NOT touch presence: the client
+	// fires exclusivelogin when going online, and clearing presence there would bounce
+	// the player to the dorm. Presence is overwritten by matchmake/goto and expires on
+	// its own TTL.
 	.post('/player/login', (c) => c.body(null, 200))
 	.post('/player/exclusivelogin', (c) => c.json({ errorCode: 0 }))
-	.post('/player/logout', (c) => c.body(null, 200))
+
+	// Logout clears the player's presence so they read offline immediately and the
+	// instance they were in frees up (rather than waiting out the presence TTL).
+	//
+	// EXCEPTION: the account-creation bootstrap. The client fires a spurious
+	// `player/logout` right after a new player is seeded into Orientation (the auth
+	// worker writes that presence with instance id -2). Clearing presence there wipes
+	// the seed and bounces the new player to the dorm — so a logout that still points
+	// at Orientation is left as a no-op ack. An unauthenticated logout is also a no-op
+	// (no player to clear).
+	.post('/player/logout', async (c) => {
+		const id = await authedId(c)
+		if (id !== null) {
+			const presence = await getPresence<RoomInstance>(c.env.DB, id)
+			const instanceId = presence?.roomInstance?.roomInstanceId
+			if (presence && instanceId !== ORIENTATION_INSTANCE_ID) {
+				await deletePresence(c.env.DB, id)
+				// The instance they were in lost a player — recompute its fullness so a
+				// full room frees up. No-op for the synthetic dorm/orientation instances.
+				if (instanceId != null) await refreshInstanceFullness(c.env.DB, instanceId)
+			}
+		}
+		return c.body(null, 200)
+	})
 
 	.get('/player', async (c) => {
 		// Returns each requested player's presence. Reads the `id` query param(s);
