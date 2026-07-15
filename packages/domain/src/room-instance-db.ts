@@ -245,21 +245,38 @@ export async function refreshInstanceFullness(
  * A room's subrooms are separate places, so `subRoomId` scopes the search: joining
  * subroom 35 must never drop you into a live instance of subroom 1. Omitting it
  * matches any subroom.
+ *
+ * `excludeInstanceId` drops one instance from the search — the one the player is
+ * already in. Matchmaking must land them in a *different* instance (the client keys
+ * the room transition off a changing `roomInstanceId`), so re-matchmaking into the
+ * only instance of a room they're already in must skip it and fall through to a
+ * fresh instance rather than hand back the same id. A no-op when they're not in this
+ * room; instance ids are globally unique.
  */
 export async function getJoinableInstance(
 	db: D1Database,
 	roomId: number,
-	subRoomId?: number
+	subRoomId?: number,
+	excludeInstanceId?: number
 ): Promise<RoomInstanceDto | null> {
-	const bySubRoom = subRoomId === undefined ? '' : 'AND sub_room_id = ?2'
+	const binds: number[] = [roomId]
+	const filters: string[] = []
+	if (subRoomId !== undefined) {
+		binds.push(subRoomId)
+		filters.push(`AND sub_room_id = ?${binds.length}`)
+	}
+	if (excludeInstanceId !== undefined) {
+		binds.push(excludeInstanceId)
+		filters.push(`AND id != ?${binds.length}`)
+	}
 	const row = await db
 		.prepare(
 			`SELECT data FROM room_instance
 			 WHERE room_id = ?1 AND is_private = 0 AND is_full = 0 AND join_disabled = 0
-			   AND is_in_progress = 0 ${bySubRoom}
+			   AND is_in_progress = 0 ${filters.join(' ')}
 			 ORDER BY id LIMIT 1`
 		)
-		.bind(...(subRoomId === undefined ? [roomId] : [roomId, subRoomId]))
+		.bind(...binds)
 		.first<{ data: string }>()
 	return row ? toDto(parse(row.data)) : null
 }

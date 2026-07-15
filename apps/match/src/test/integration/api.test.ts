@@ -435,29 +435,41 @@ describe('auth-gated endpoints', () => {
 		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
 	})
 
-	test('POST /matchmake/:room reuses a public instance; a private one is fresh', async () => {
-		const matchmake = async (joinMode?: string) =>
+	test('POST /matchmake/:room reuses a public instance across players; a private one is fresh', async () => {
+		const matchmake = async (sub: string, joinMode?: string) =>
 			(await (
 				await exports.default.fetch(`${ORIGIN}/matchmake/2`, {
 					method: 'POST',
 					headers: {
-						...(await bearer('900')),
+						...(await bearer(sub)),
 						'Content-Type': 'application/x-www-form-urlencoded',
 					},
 					body: joinMode ? new URLSearchParams({ JoinMode: joinMode }).toString() : undefined,
 				})
 			).json()) as { roomInstance: { photonRoomId: string; roomInstanceId: number } }
 
-		// Two public matchmakes into the same room share the (reused) instance.
-		const a = await matchmake()
-		const b = await matchmake()
+		// Two *different* players matchmaking into the same room share the reused
+		// instance (population grouping). Distinct accounts here, since re-matchmaking as
+		// the *same* player deliberately moves them to a fresh instance — see below.
+		const a = await matchmake('900')
+		const b = await matchmake('901')
 		expect(a.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
 		expect(b.roomInstance.photonRoomId).toBe(a.roomInstance.photonRoomId)
 		expect(b.roomInstance.roomInstanceId).toBe(a.roomInstance.roomInstanceId)
 
 		// A private matchmake (JoinMode 2) gets its own distinct instance.
-		const priv = await matchmake('2')
+		const priv = await matchmake('902', '2')
 		expect(priv.roomInstance.photonRoomId).not.toBe(a.roomInstance.photonRoomId)
+	})
+
+	test('re-matchmaking into your current room returns a different instance (id must change)', async () => {
+		// The client keys the room transition off a changing roomInstanceId; handing back
+		// the instance the player is already in hangs their join. RecCenter (cap 12) so
+		// the instance isn't full — the naive "reuse the oldest joinable" would otherwise
+		// return the same id the player already has.
+		const first = await matchmakeInto('2', '950')
+		const second = await matchmakeInto('2', '950')
+		expect(second).not.toBe(first)
 	})
 
 	test('POST /matchmake/:room 401s without a token', async () => {

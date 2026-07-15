@@ -301,10 +301,22 @@ async function resolveRoomInstance(
 	if (!room) return null
 
 	const f = instanceFieldsFromRoom(room, subRoomId)
+	// Never place the player back into the instance they're already in: the client
+	// keys the room transition off a changing `roomInstanceId`, so re-matchmaking into
+	// your current instance (e.g. the only public instance of a room you're already in)
+	// returns the same id and hangs the client mid-join. Exclude it from the join
+	// search, which pushes them to another live instance if one exists or forces a
+	// fresh one below. (Only the public path reuses instances, so only it needs the
+	// read; a private matchmake always gets a fresh instance.)
+	const currentInstanceId = isPrivate
+		? undefined
+		: (await getPresence<RoomInstance>(c.env.DB, ownerId))?.roomInstance?.roomInstanceId
 	// Reuse an existing joinable public instance *of the same subroom* — subrooms are
 	// separate places, so joining one must never land you in another. Private
 	// matchmakes always get a fresh instance. Create one when there's nothing to join.
-	let instance = isPrivate ? null : await getJoinableInstance(c.env.DB, f.roomId, f.subRoomId)
+	let instance = isPrivate
+		? null
+		: await getJoinableInstance(c.env.DB, f.roomId, f.subRoomId, currentInstanceId)
 	if (!instance) {
 		instance = await createRoomInstance(c.env.DB, {
 			ownerAccountId: ownerId,
