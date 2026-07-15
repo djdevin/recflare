@@ -794,6 +794,31 @@ describe('rooms endpoints', () => {
 		expect(await screensOf()).toContainEqual({ ImageName: 'second.jpg', Title: '', Subtitle: '' })
 	})
 
+	it('PUT /rooms/:id/accessibility sets the room-level Accessibility (auth-gated, owner/co-owner-only)', async () => {
+		// No token → 401; a valid token with no role → 403.
+		expect((await putForm('/rooms/2/accessibility', { accessibility: '1' })).status).toBe(401)
+		expect((await putForm('/rooms/2/accessibility', { accessibility: '1' }, '999')).status).toBe(403)
+		// Unknown room → failure envelope.
+		expect(
+			await envOf(await putForm('/rooms/99999/accessibility', { accessibility: '1' }, '1'))
+		).toMatchObject({ success: false, error: 'This room does not exist!' })
+		// Non-numeric → failure envelope.
+		expect(
+			await envOf(await putForm('/rooms/2/accessibility', { accessibility: 'x' }, '1'))
+		).toMatchObject({ success: false })
+
+		// Owner sets it (0 = Private); the success envelope carries the updated room.
+		const priv = await envOf(await putForm('/rooms/2/accessibility', { accessibility: '0' }, '1'))
+		expect(priv).toMatchObject({ success: true, error: '' })
+		expect(priv.value?.Accessibility).toBe(0)
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { Accessibility: number }
+		expect(room.Accessibility).toBe(0)
+
+		// The co-owner (account 2) may set it back to public (1).
+		const pub = await envOf(await putForm('/rooms/2/accessibility', { accessibility: '1' }, '2'))
+		expect(pub.value?.Accessibility).toBe(1)
+	})
+
 	it('GET /rooms/:id/subrooms/:sid/data returns the subroom descriptor (404 when unknown)', async () => {
 		// Room 2 has SubRoomId 2 in the seed.
 		const res = await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/data`)

@@ -725,6 +725,33 @@ const app = new Hono<App>()
 		return roomEnvelope(c, updated)
 	})
 
+	// Set a room's top-level `Accessibility` (the visibility the public-room/search
+	// filters key on — see the RoomAccessibility enum). Auth-gated (401) and
+	// owner/co-owner-only (403). Body is the `accessibility` form field (an integer).
+	// Returns the updated room in the `{ success, error, value }` envelope.
+	.put('/rooms/:roomId{[0-9]+}/accessibility', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const accessibility =
+			typeof body.accessibility === 'string' ? Number.parseInt(body.accessibility, 10) : Number.NaN
+		if (Number.isNaN(accessibility)) {
+			return roomEnvelope(c, null, 'You must provide a valid accessibility!')
+		}
+
+		const updated = await updateRoomFields(c.env.DB, roomId, room, { Accessibility: accessibility })
+		await pushRoomUpdate(c, accountId, updated)
+		return roomEnvelope(c, updated)
+	})
+
 	// A subroom's data descriptor (the SubRoom object from the room's SubRooms
 	// array). Public — the client fetches it while loading the room. 404 when the
 	// room or subroom is unknown.
