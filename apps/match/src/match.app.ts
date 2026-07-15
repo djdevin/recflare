@@ -2,8 +2,10 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	canManageRoom,
 	createRoomInstance,
 	deleteExpiredPresence,
+	deletePresence,
 	getAccount,
 	getExpiredPresenceInstanceIds,
 	getJoinableInstance,
@@ -179,6 +181,15 @@ const DORM_PHOTON_ROOM_ID = '00000000-0000-4000-8000-000000000001'
 const NO_SUCH_ROOM = 20
 
 /**
+ * The sentinel room-instance id the `auth` worker seeds a brand-new player's
+ * Orientation presence with (see auth's `placeNewPlayerInOrientation`). The client
+ * fires a spurious `player/logout` right after that seed, so logout must NOT clear
+ * presence while it still points at Orientation — doing so wipes the seed and
+ * bounces the new player to the dorm.
+ */
+const ORIENTATION_INSTANCE_ID = -2
+
+/**
  * The canonical dorm room instance (room 1, instance 1.1). Returned identically
  * by every dorm entry point and the presence heartbeat so the client's local
  * presence never reads as out-of-sync.
@@ -301,10 +312,22 @@ async function resolveRoomInstance(
 	if (!room) return null
 
 	const f = instanceFieldsFromRoom(room, subRoomId)
+	// Never place the player back into the instance they're already in: the client
+	// keys the room transition off a changing `roomInstanceId`, so re-matchmaking into
+	// your current instance (e.g. the only public instance of a room you're already in)
+	// returns the same id and hangs the client mid-join. Exclude it from the join
+	// search, which pushes them to another live instance if one exists or forces a
+	// fresh one below. (Only the public path reuses instances, so only it needs the
+	// read; a private matchmake always gets a fresh instance.)
+	const currentInstanceId = isPrivate
+		? undefined
+		: (await getPresence<RoomInstance>(c.env.DB, ownerId))?.roomInstance?.roomInstanceId
 	// Reuse an existing joinable public instance *of the same subroom* — subrooms are
 	// separate places, so joining one must never land you in another. Private
 	// matchmakes always get a fresh instance. Create one when there's nothing to join.
-	let instance = isPrivate ? null : await getJoinableInstance(c.env.DB, f.roomId, f.subRoomId)
+	let instance = isPrivate
+		? null
+		: await getJoinableInstance(c.env.DB, f.roomId, f.subRoomId, currentInstanceId)
 	if (!instance) {
 		instance = await createRoomInstance(c.env.DB, {
 			ownerAccountId: ownerId,
@@ -372,15 +395,36 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// ---- Player presence -----------------------------------------------------
-	// login/exclusivelogin/logout are all no-op acks and MUST NOT touch presence.
-	// The client fires a spurious `player/logout` during the account-creation
-	// bootstrap (right after create_account seeds the new player into Orientation);
-	// deleting presence here wiped that seed and bounced the player to the dorm.
-	// Presence is overwritten by matchmake/goto and expires on its own TTL, so we
-	// don't need to clear it on these lifecycle calls.
+	// login/exclusivelogin are no-op acks and MUST NOT touch presence: the client
+	// fires exclusivelogin when going online, and clearing presence there would bounce
+	// the player to the dorm. Presence is overwritten by matchmake/goto and expires on
+	// its own TTL.
 	.post('/player/login', (c) => c.body(null, 200))
 	.post('/player/exclusivelogin', (c) => c.json({ errorCode: 0 }))
-	.post('/player/logout', (c) => c.body(null, 200))
+
+	// Logout clears the player's presence so they read offline immediately and the
+	// instance they were in frees up (rather than waiting out the presence TTL).
+	//
+	// EXCEPTION: the account-creation bootstrap. The client fires a spurious
+	// `player/logout` right after a new player is seeded into Orientation (the auth
+	// worker writes that presence with instance id -2). Clearing presence there wipes
+	// the seed and bounces the new player to the dorm — so a logout that still points
+	// at Orientation is left as a no-op ack. An unauthenticated logout is also a no-op
+	// (no player to clear).
+	.post('/player/logout', async (c) => {
+		const id = await authedId(c)
+		if (id !== null) {
+			const presence = await getPresence<RoomInstance>(c.env.DB, id)
+			const instanceId = presence?.roomInstance?.roomInstanceId
+			if (presence && instanceId !== ORIENTATION_INSTANCE_ID) {
+				await deletePresence(c.env.DB, id)
+				// The instance they were in lost a player — recompute its fullness so a
+				// full room frees up. No-op for the synthetic dorm/orientation instances.
+				if (instanceId != null) await refreshInstanceFullness(c.env.DB, instanceId)
+			}
+		}
+		return c.body(null, 200)
+	})
 
 	.get('/player', async (c) => {
 		// Returns each requested player's presence. Reads the `id` query param(s);
@@ -595,9 +639,9 @@ const app = new Hono<App>()
 	})
 
 	// The room's live instances — the owner's view of active sessions of their room.
-	// Auth-gated (401) and owner-only (403): the caller must be the room's creator.
-	// Unknown room → 404. Returns the bare RoomInstance DTO array (empty when the
-	// room has no live instances).
+	// Auth-gated (401) and owner/co-owner-only (403): the caller must be the room's
+	// creator or hold a Creator/CoOwner role on it. Unknown room → 404. Returns the
+	// bare RoomInstance DTO array (empty when the room has no live instances).
 	.get('/room/:roomId{[0-9]+}/instances', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
@@ -605,7 +649,9 @@ const app = new Hono<App>()
 		const roomId = Number.parseInt(c.req.param('roomId'), 10)
 		const room = await getRoomById(c.env.DB, roomId)
 		if (!room) return c.body(null, 404)
-		if (room.CreatorAccountId !== id) return c.body(null, 403)
+		// The room's creator *or* a co-owner (Role 30) may see its live instances —
+		// same owner-or-co-owner gate the rooms worker uses for room-admin actions.
+		if (!canManageRoom(room, id)) return c.body(null, 403)
 
 		return c.json(await getRoomInstancesByRoom(c.env.DB, roomId))
 	})

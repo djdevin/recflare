@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../econ.app'
 
+import { RECEIVED_GIFT_SCHEMA_DDL } from '@repo/domain'
+
 import { SCHEMA_DDL } from '../../avatar-db'
 import {
 	BALANCE_SCHEMA_DDL,
@@ -12,6 +14,8 @@ import {
 	getBalance,
 	spendCurrency,
 } from '../../balance-db'
+import { CONSUMABLE_SCHEMA_DDL } from '../../consumables-db'
+import { INVENTORY_SCHEMA_DDL } from '../../inventory-db'
 import { OUTFIT_SCHEMA_DDL } from '../../outfit-db'
 
 import type { Env } from '../../context'
@@ -30,6 +34,9 @@ beforeAll(async () => {
 	for (const stmt of SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of BALANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of OUTFIT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of INVENTORY_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of CONSUMABLE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of RECEIVED_GIFT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(JSON.stringify({ accountId: 42, username: 'Tester', displayName: 'Tester' }))
 		.run()
@@ -497,12 +504,279 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toBeTruthy()
 	})
 
+	// Item 73 in sf3.json — "Class of 2016", 4500 RecCenterTokens (CurrencyType 2).
+	test('POST /api/storefronts/v2/buyItem 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 73,
+				CurrencyType: 2,
+				RequestedPrice: 4500,
+			}),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /api/storefronts/v2/buyItem debits, grants the item, and hands back a gift box', async () => {
+		// Account 20: fresh, so its first balance touch grants the 10000 default.
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('20')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 73,
+				CurrencyType: 2,
+				RequestedPrice: 4500,
+			}),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Balance: number
+			CurrencyType: number
+			BalanceType: number
+			BalanceUpdates: Array<{
+				Data: Array<{ Id: number; AvatarItemDesc: string }>
+			}>
+		}
+		// `Balance` is the change applied (the negated price), not the resulting total.
+		expect(body.Balance).toBe(-4500)
+		expect(body.CurrencyType).toBe(2)
+		expect(body.BalanceType).toBe(-2)
+		const gift = body.BalanceUpdates[0].Data[0]
+		expect(gift.AvatarItemDesc).not.toBe('')
+		expect(gift.Id).toBeGreaterThan(0)
+
+		// The balance endpoint reflects the debit (this is the resulting total, 10000 - 4500).
+		const bal = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
+			headers: await bearer('20'),
+		})
+		expect(await bal.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 5500 }])
+
+		// The item is now owned — it leads the v4/items list (owned items prepend the catalog).
+		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+			headers: await bearer('20'),
+		})
+		const list = (await items.json()) as Array<{ AvatarItemDesc: string; FriendlyName: string }>
+		expect(list[0].FriendlyName).toBe('Class of 2016')
+		expect(list[0].AvatarItemDesc).toBe(gift.AvatarItemDesc)
+
+		// And a pending gift box is waiting to be opened.
+		const gifts = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, {
+			headers: await bearer('20'),
+		})
+		const pending = (await gifts.json()) as Array<{ Id: number; AvatarItemDesc: string }>
+		expect(pending).toHaveLength(1)
+		expect(pending[0].Id).toBe(gift.Id)
+		expect(pending[0].AvatarItemDesc).toBe(gift.AvatarItemDesc)
+	})
+
+	test('POST /api/storefronts/v2/buyItem grants a consumable and stacks on re-buy', async () => {
+		// Item 2266 (Supreme Pizza) in storefront 300 is a consumable — its gift-drop
+		// carries a ConsumableItemDesc, not an AvatarItemDesc.
+		const consumableDesc = 'wUCIKdJSvEmiQHYMyx4X4w'
+		const buy = async () =>
+			exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+				method: 'POST',
+				headers: { ...(await bearer('25')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					StorefrontType: 300,
+					PurchasableItemId: 2266,
+					CurrencyType: 2,
+					RequestedPrice: 95,
+				}),
+			})
+
+		const res = await buy()
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Balance: number
+			BalanceUpdates: Array<{
+				Data: Array<{
+					ConsumableItemDesc: string
+					AvatarItemDesc: string
+					AvatarItemType: number
+					FromPlayerId: number
+				}>
+			}>
+		}
+		// `Balance` is the change applied (the negated price), not the resulting total.
+		expect(body.Balance).toBe(-95)
+		const drop = body.BalanceUpdates[0].Data[0]
+		expect(drop.ConsumableItemDesc).toBe(consumableDesc)
+		expect(drop.AvatarItemDesc).toBe('')
+		// A consumable's AvatarItemType is null in the catalog; the response coalesces it to 0.
+		expect(drop.AvatarItemType).toBe(0)
+		// A self-buy is attributed to the "Coach" system account (id 1).
+		expect(drop.FromPlayerId).toBe(1)
+
+		// It's owned as an unlocked consumable — one instance, count 1.
+		const unlocked = async () => {
+			const r = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+				headers: await bearer('25'),
+			})
+			expect(r.status).toBe(200)
+			return (await r.json()) as Array<{
+				Ids: number[]
+				CreatedAts: string[]
+				ConsumableItemDesc: string
+				Count: number
+				InitialCount: number
+				IsActive: boolean
+				IsTransferable: boolean
+			}>
+		}
+		const first = await unlocked()
+		expect(first).toHaveLength(1)
+		expect(first[0].ConsumableItemDesc).toBe(consumableDesc)
+		expect(first[0].Count).toBe(1)
+		expect(first[0].InitialCount).toBe(1)
+		expect(first[0].Ids).toHaveLength(1)
+		expect(first[0].CreatedAts).toHaveLength(1)
+		expect(first[0].IsActive).toBe(false)
+		expect(first[0].IsTransferable).toBe(false)
+
+		// A consumable is not an avatar item — it does not show up in v4/items.
+		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+			headers: await bearer('25'),
+		})
+		const list = (await items.json()) as Array<{ FriendlyName: string }>
+		expect(list.every((i) => i.FriendlyName !== 'Supreme Pizza')).toBe(true)
+
+		// Buying it again stacks: a second instance, count summed to 2.
+		expect((await buy()).status).toBe(200)
+		const second = await unlocked()
+		expect(second).toHaveLength(1)
+		expect(second[0].Count).toBe(2)
+		expect(second[0].InitialCount).toBe(2)
+		expect(second[0].Ids).toHaveLength(2)
+		expect(second[0].CreatedAts).toHaveLength(2)
+	})
+
+	test('POST /api/storefronts/v2/buyItem 409s when the sent price no longer matches', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('21')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 73,
+				CurrencyType: 2,
+				RequestedPrice: 1,
+			}),
+		})
+		expect(res.status).toBe(409)
+		// Nothing was charged.
+		const bal = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
+			headers: await bearer('21'),
+		})
+		expect(await bal.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 10000 }])
+	})
+
+	test('POST /api/storefronts/v2/buyItem 404s for an unknown item', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('22')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 9999999,
+				CurrencyType: 2,
+				RequestedPrice: 4500,
+			}),
+		})
+		expect(res.status).toBe(404)
+	})
+
+	test('POST /api/storefronts/v2/buyItem 400s when the player cannot afford it', async () => {
+		// Drain account 23 to 0 first, then try to buy.
+		expect(
+			await spendCurrency(env.DB, 23, CurrencyType.RecCenterTokens, 10_000, DEFAULT_STARTING_TOKENS)
+		).toBe(true)
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('23')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 73,
+				CurrencyType: 2,
+				RequestedPrice: 4500,
+			}),
+		})
+		expect(res.status).toBe(400)
+		// Still owns nothing (only the default catalog in v4/items).
+		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+			headers: await bearer('23'),
+		})
+		const list = (await items.json()) as Array<{ FriendlyName: string }>
+		expect(list.every((i) => i.FriendlyName !== 'Class of 2016')).toBe(true)
+	})
+
+	test('POST /api/avatar/v2/gifts/consume opens the box the way the client sends it', async () => {
+		// Buy an item for account 24, then consume the box the way the client does: on the
+		// econ host, with a form body (`Id=..&UnlockedLevel=..`).
+		const buy = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('24')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 73,
+				CurrencyType: 2,
+				RequestedPrice: 4500,
+			}),
+		})
+		const bought = (await buy.json()) as {
+			BalanceUpdates: Array<{ Data: Array<{ Id: number }> }>
+		}
+		const giftId = bought.BalanceUpdates[0].Data[0].Id
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
+			method: 'POST',
+			headers: {
+				...(await bearer('24')),
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams({ Id: String(giftId), UnlockedLevel: '0' }),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
+
+		// The box is gone; the item stays owned (it was granted at purchase, not on open).
+		const gifts = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, {
+			headers: await bearer('24'),
+		})
+		expect(await gifts.json()).toEqual([])
+		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+			headers: await bearer('24'),
+		})
+		const list = (await items.json()) as Array<{ FriendlyName: string }>
+		expect(list.some((i) => i.FriendlyName === 'Class of 2016')).toBe(true)
+
+		// Opening it again is a harmless no-op — still 200.
+		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
+			method: 'POST',
+			headers: {
+				...(await bearer('24')),
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(again.status).toBe(200)
+	})
+
 	test('GET /api/challenge/v2/getCurrent returns the weekly challenge', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/challenge/v2/getCurrent`)
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as { ChallengeMapId: number; Challenges: unknown[] }
 		expect(body).toHaveProperty('ChallengeMapId')
 		expect(Array.isArray(body.Challenges)).toBe(true)
+	})
+
+	test('GET /api/storefronts/v1/adcarouselitems returns the carousel items', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v1/adcarouselitems`)
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Array<{ AdCarouselItemId: number }>
+		expect(Array.isArray(body)).toBe(true)
+		expect(body[0]).toHaveProperty('AdCarouselItemId')
 	})
 
 	test('GET /api/gamerewards/v1/pending returns []', async () => {

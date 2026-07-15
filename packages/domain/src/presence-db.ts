@@ -167,3 +167,14 @@ export async function deleteExpiredPresence(db: D1Database, now = nowSeconds()):
 	const res = await db.prepare('DELETE FROM presence WHERE expires_at <= ?1').bind(now).run()
 	return res.meta.changes ?? 0
 }
+
+/**
+ * Delete a single player's presence row — the player goes offline immediately
+ * (rather than waiting out the TTL). Used on logout. Returns rows removed (0 when
+ * they had no live presence). The caller is responsible for recomputing the
+ * fullness of the instance they were in.
+ */
+export async function deletePresence(db: D1Database, accountId: number): Promise<number> {
+	const res = await db.prepare('DELETE FROM presence WHERE account_id = ?1').bind(accountId).run()
+	return res.meta.changes ?? 0
+}

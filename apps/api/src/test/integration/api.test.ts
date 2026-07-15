@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../api.app'
 
+import { createGift, getPendingGifts, RECEIVED_GIFT_SCHEMA_DDL } from '@repo/domain'
+
 import { SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
 import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL } from '../../inventions-db'
 import { SCHEMA_DDL as RELATIONSHIPS_SCHEMA_DDL } from '../../relationships-db'
@@ -77,6 +79,10 @@ beforeAll(async () => {
 
 	// Inventions table (owned by the api worker) — invention save/mine use it.
 	for (const stmt of INVENTIONS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+
+	// Received-gift boxes (schema owned by the `econ` worker, on the shared DB) — the
+	// gift consume endpoint deletes from it.
+	for (const stmt of RECEIVED_GIFT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 })
 
 // Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
@@ -275,6 +281,72 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	test('POST /api/avatar/v2/gifts/consume deletes the player’s gift box', async () => {
+		// Seed a box for account 42 directly, then consume it.
+		const { id: giftId } = await createGift(env.DB, 42, {
+			ConsumableItemDesc: '',
+			ConsumableCount: 0,
+			AvatarItemDesc: 'd0a9262f-5504-46a7-bb10-7507503db58e,,,',
+			AvatarItemType: 0,
+			CurrencyType: 0,
+			Currency: 0,
+			Xp: 0,
+			PackageType: 0,
+			Message: 'A gift for you <3',
+			EquipmentPrefabName: '',
+			EquipmentModificationGuid: '',
+			GiftRarity: 50,
+			Platform: -1,
+			PlatformsToSpawnOn: -1,
+			BalanceType: null,
+		})
+		// Consume is fire-and-forget: always 200 with the success envelope. The box is gone after.
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: await bearer('42'),
+			body: new URLSearchParams({ Id: String(giftId), UnlockedLevel: '0' }),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
+		expect(await getPendingGifts(env.DB, 42)).toHaveLength(0)
+
+		// Consuming it again is a no-op — still 200, nothing changes.
+		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: await bearer('42'),
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(again.status).toBe(200)
+	})
+
+	test('POST /api/avatar/v2/gifts/consume leaves another player’s box untouched', async () => {
+		const { id: giftId } = await createGift(env.DB, 99, {
+			ConsumableItemDesc: '',
+			ConsumableCount: 0,
+			AvatarItemDesc: 'a,,,',
+			AvatarItemType: 0,
+			CurrencyType: 0,
+			Currency: 0,
+			Xp: 0,
+			PackageType: 0,
+			Message: '',
+			EquipmentPrefabName: '',
+			EquipmentModificationGuid: '',
+			GiftRarity: 0,
+			Platform: -1,
+			PlatformsToSpawnOn: -1,
+			BalanceType: null,
+		})
+		// Account 42 consuming account 99's box is a scoped no-op (still 200), and 99 keeps it.
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: await bearer('42'),
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(res.status).toBe(200)
+		expect((await getPendingGifts(env.DB, 99)).some((g) => g.Id === giftId)).toBe(true)
+	})
+
 	test('GET /api/customAvatarItems/v1/isCreationAllowedForAccount returns a success envelope', async () => {
 		const res = await exports.default.fetch(
 			`${ORIGIN}/api/customAvatarItems/v1/isCreationAllowedForAccount`
@@ -293,6 +365,12 @@ describe('public endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1/isRenderingEnabled`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toBe(true)
+	})
+
+	test('GET /api/customAvatarItems/v1/featured returns []', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1/featured`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
 	})
 
 	test('GET /api/customAvatarItems/v2/fromCreator/:id returns an empty paginated result', async () => {

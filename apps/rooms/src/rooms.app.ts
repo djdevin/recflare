@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	canManageRoom,
 	cloneRoom,
 	cloneSubRoom,
 	findSubRoom,
@@ -27,6 +28,7 @@ import {
 	setRoomDescription,
 	setRoomImage,
 	setRoomName,
+	setRoomRole,
 	toggleCheer,
 	toggleFavorite,
 	toggleRoomTag,
@@ -132,25 +134,6 @@ async function authedAccountId(c: Context<App>): Promise<number | null> {
 /** 401 for the auth-gated `*by/me` endpoints — no stub-account fallback. */
 function unauthorized(c: Context<App>) {
 	return c.json({ error: 'Unauthorized' }, 401)
-}
-
-/**
- * Room role values the reference treats as edit-capable: Creator (255) and
- * CoOwner. (CoOwner's numeric value is a best guess from the seed data — base
- * rooms give the co-owner account Role 30.)
- */
-const EDIT_ROLES = new Set([255, 30])
-
-/**
- * Whether an account may edit a room's data — its creator, or a holder of a
- * Creator/CoOwner role. Mirrors the reference's SetRoomData permission check.
- */
-function canEditRoomData(room: Record<string, unknown>, accountId: number): boolean {
-	if (room.CreatorAccountId === accountId) return true
-	const roles = Array.isArray(room.Roles) ? (room.Roles as Array<Record<string, unknown>>) : []
-	return roles.some(
-		(r) => r.AccountId === accountId && typeof r.Role === 'number' && EDIT_ROLES.has(r.Role)
-	)
 }
 
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
@@ -584,6 +567,51 @@ const app = new Hono<App>()
 		return roomResult(c, { Success: true })
 	})
 
+	// Set a member's role in a room (`Roles[].Role`). Auth-gated (401) and gated to
+	// the room creator or a co-owner — the same owner/co-owner check the other
+	// room-admin actions use. Body is the `role` form field (an integer role tier).
+	// Updates the target account's existing role entry or adds one, notifies the
+	// affected member so their client refreshes permissions, and returns the
+	// `{ Success, Value, ErrorId, Error }` envelope at HTTP 200.
+	.put('/rooms/:roomId{[0-9]+}/roles/:accountId{[0-9]+}', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const targetAccountId = Number.parseInt(c.req.param('accountId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (!canManageRoom(room, accountId)) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.PermissionDenied',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const role = typeof body.role === 'string' ? Number.parseInt(body.role, 10) : Number.NaN
+		if (Number.isNaN(role)) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.InvalidRole',
+				Error: 'You must provide a valid role!',
+			})
+		}
+
+		const updated = await setRoomRole(c.env.DB, roomId, targetAccountId, role, accountId, room)
+		// Notify the member whose role changed so their client refreshes the room
+		// (and the permissions it grants them).
+		await pushRoomUpdate(c, targetAccountId, updated)
+		return roomResult(c, { Success: true })
+	})
+
 	// A subroom's data descriptor (the SubRoom object from the room's SubRooms
 	// array). Public — the client fetches it while loading the room. 404 when the
 	// room or subroom is unknown.
@@ -615,7 +643,7 @@ const app = new Hono<App>()
 				Error: 'This room does not exist!',
 			})
 		}
-		if (!canEditRoomData(room, accountId)) {
+		if (!canManageRoom(room, accountId)) {
 			return roomResult(c, {
 				Success: false,
 				ErrorId: 'Rooms.PermissionDenied',

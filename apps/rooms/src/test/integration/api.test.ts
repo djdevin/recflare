@@ -572,6 +572,50 @@ describe('rooms endpoints', () => {
 		expect(room.ImageName).toBe(imageName)
 	})
 
+	it('PUT /rooms/:id/roles/:accountId is auth-gated, owner/co-owner-only, and persists', async () => {
+		const rolesOf = async (): Promise<Array<{ AccountId: number; Role: number }>> => {
+			const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+				Roles?: Array<{ AccountId: number; Role: number }>
+			}
+			return room.Roles ?? []
+		}
+
+		// No token → 401 (auth gate).
+		expect((await putForm('/rooms/2/roles/5', { role: '20' })).status).toBe(401)
+		// A valid token but no role on the room (RecCenter is owned by account 1, with
+		// account 2 as co-owner) → Success:false.
+		expect(await bodyOf(await putForm('/rooms/2/roles/5', { role: '20' }, '999'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.PermissionDenied',
+		})
+		// Unknown room → Rooms.DoesntExist envelope.
+		expect(await bodyOf(await putForm('/rooms/99999/roles/5', { role: '20' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.DoesntExist',
+		})
+		// Non-numeric role → Success:false.
+		expect(await bodyOf(await putForm('/rooms/2/roles/5', { role: 'nope' }, '1'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.InvalidRole',
+		})
+
+		// Owner sets account 5's role to 20, adding a new Roles entry that persists.
+		const ok = await putForm('/rooms/2/roles/5', { role: '20' }, '1')
+		expect(ok.status).toBe(200)
+		expect(await bodyOf(ok)).toMatchObject({ Success: true })
+		expect(await rolesOf()).toContainEqual(expect.objectContaining({ AccountId: 5, Role: 20 }))
+
+		// The co-owner (account 2, Role 30) may also change it — updating the existing
+		// entry in place rather than adding a duplicate.
+		const byCoOwner = await putForm('/rooms/2/roles/5', { role: '10' }, '2')
+		expect(byCoOwner.status).toBe(200)
+		const roles = await rolesOf()
+		expect(roles.filter((r) => r.AccountId === 5)).toHaveLength(1)
+		expect(roles).toContainEqual(expect.objectContaining({ AccountId: 5, Role: 10 }))
+		// The seeded co-owner (account 2) is left intact.
+		expect(roles).toContainEqual(expect.objectContaining({ AccountId: 2, Role: 30 }))
+	})
+
 	it('GET /rooms/:id/subrooms/:sid/data returns the subroom descriptor (404 when unknown)', async () => {
 		// Room 2 has SubRoomId 2 in the seed.
 		const res = await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/data`)

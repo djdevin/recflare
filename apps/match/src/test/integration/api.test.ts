@@ -50,6 +50,8 @@ const TEST_ROOMS = [
 		IsDorm: false,
 		Accessibility: 1,
 		CreatorAccountId: 42,
+		// Account 43 is a co-owner (Role 30) — it may view the room's instances too.
+		Roles: [{ AccountId: 43, Role: 30, LastChangedByAccountId: null, InvitedRole: 0 }],
 		SubRooms: [{ SubRoomId: 3, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 8 }],
 	},
 	{
@@ -435,29 +437,41 @@ describe('auth-gated endpoints', () => {
 		expect(body.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
 	})
 
-	test('POST /matchmake/:room reuses a public instance; a private one is fresh', async () => {
-		const matchmake = async (joinMode?: string) =>
+	test('POST /matchmake/:room reuses a public instance across players; a private one is fresh', async () => {
+		const matchmake = async (sub: string, joinMode?: string) =>
 			(await (
 				await exports.default.fetch(`${ORIGIN}/matchmake/2`, {
 					method: 'POST',
 					headers: {
-						...(await bearer('900')),
+						...(await bearer(sub)),
 						'Content-Type': 'application/x-www-form-urlencoded',
 					},
 					body: joinMode ? new URLSearchParams({ JoinMode: joinMode }).toString() : undefined,
 				})
 			).json()) as { roomInstance: { photonRoomId: string; roomInstanceId: number } }
 
-		// Two public matchmakes into the same room share the (reused) instance.
-		const a = await matchmake()
-		const b = await matchmake()
+		// Two *different* players matchmaking into the same room share the reused
+		// instance (population grouping). Distinct accounts here, since re-matchmaking as
+		// the *same* player deliberately moves them to a fresh instance — see below.
+		const a = await matchmake('900')
+		const b = await matchmake('901')
 		expect(a.roomInstance.photonRoomId).toMatch(/^[0-9a-f-]{36}$/)
 		expect(b.roomInstance.photonRoomId).toBe(a.roomInstance.photonRoomId)
 		expect(b.roomInstance.roomInstanceId).toBe(a.roomInstance.roomInstanceId)
 
 		// A private matchmake (JoinMode 2) gets its own distinct instance.
-		const priv = await matchmake('2')
+		const priv = await matchmake('902', '2')
 		expect(priv.roomInstance.photonRoomId).not.toBe(a.roomInstance.photonRoomId)
+	})
+
+	test('re-matchmaking into your current room returns a different instance (id must change)', async () => {
+		// The client keys the room transition off a changing roomInstanceId; handing back
+		// the instance the player is already in hangs their join. RecCenter (cap 12) so
+		// the instance isn't full — the naive "reuse the oldest joinable" would otherwise
+		// return the same id the player already has.
+		const first = await matchmakeInto('2', '950')
+		const second = await matchmakeInto('2', '950')
+		expect(second).not.toBe(first)
 	})
 
 	test('POST /matchmake/:room 401s without a token', async () => {
@@ -722,13 +736,11 @@ describe('auth-gated endpoints', () => {
 		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
 	})
 
-	test('player/login, exclusivelogin and logout all preserve presence', async () => {
+	test('player/login and exclusivelogin preserve presence', async () => {
 		const headers = await bearer('9')
 		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
-		// None of these lifecycle calls may wipe presence — the client fires a
-		// spurious logout during the account-creation bootstrap, and exclusivelogin
-		// when going online. Clearing here would bounce the player to the dorm.
-		await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
+		// These acks must not wipe presence — the client fires exclusivelogin when going
+		// online, and clearing here would bounce the player to the dorm.
 		await exports.default.fetch(`${ORIGIN}/player/exclusivelogin`, { method: 'POST', headers })
 		await exports.default.fetch(`${ORIGIN}/player/login`, { method: 'POST', headers })
 		const hb = (await (
@@ -738,6 +750,59 @@ describe('auth-gated endpoints', () => {
 		// Presence is preserved: the heartbeat replays their personal dorm. Account 9
 		// has no seeded username, so the name falls back to `@Player9's Dorm`.
 		expect(hb.roomInstance?.name).toBe("@Player9's Dorm")
+	})
+
+	test('player/logout clears presence and frees the instance the player was in', async () => {
+		// Fill SoloRoom (cap 1) so its instance is full, then log out.
+		const solo = await matchmakeInto('5', '960')
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(true)
+
+		const headers = await bearer('960')
+		await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST', headers })
+
+		// Presence is gone → the heartbeat reports offline with no room.
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, { method: 'POST', headers })
+		).json()) as { roomInstance: unknown; isOnline: boolean }
+		expect(hb.isOnline).toBe(false)
+		expect(hb.roomInstance).toBeNull()
+		expect(await countPresenceRows(960)).toBe(0)
+		// The instance they left is no longer full.
+		expect((await getRoomInstance(env.DB, solo))?.isFull).toBe(false)
+	})
+
+	test('player/logout preserves a new player still in Orientation (account-creation bootstrap)', async () => {
+		// Mirror the auth worker's Orientation seed: presence pointing at instance -2.
+		// The client's spurious bootstrap logout must NOT wipe it, or the new player is
+		// bounced out of Orientation to the dorm.
+		await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 961,
+					roomInstance: { roomInstanceId: -2, roomId: 13, name: '^Orientation' },
+					statusVisibility: 0,
+					deviceClass: 0,
+					vrMovementMode: 1,
+					platform: 0,
+					appVersion: '20230302',
+					expiresAt: nowSeconds() + 800,
+				})
+			)
+			.run()
+
+		await exports.default.fetch(`${ORIGIN}/player/logout`, {
+			method: 'POST',
+			headers: await bearer('961'),
+		})
+
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+				method: 'POST',
+				headers: await bearer('961'),
+			})
+		).json()) as { roomInstance: { roomInstanceId: number } | null; isOnline: boolean }
+		expect(hb.isOnline).toBe(true)
+		expect(hb.roomInstance?.roomInstanceId).toBe(-2)
 	})
 
 	test('GET /player?id reports stored presence per id', async () => {
@@ -751,11 +816,12 @@ describe('auth-gated endpoints', () => {
 		expect(players[0]).toMatchObject({ playerId: 55, isOnline: true })
 	})
 
-	test('GET /room/:id/instances is auth-gated, owner-only, and lists the room’s instances', async () => {
+	test('GET /room/:id/instances is auth-gated, owner/co-owner-only, and lists the room’s instances', async () => {
 		// No token → 401.
 		expect((await exports.default.fetch(`${ORIGIN}/room/3/instances`)).status).toBe(401)
 
-		// Not the owner (room 3 is owned by account 42) → 403.
+		// A valid token but no role on the room (room 3 is owned by account 42, with
+		// account 43 as co-owner) → 403.
 		expect(
 			(
 				await exports.default.fetch(`${ORIGIN}/room/3/instances`, {
@@ -785,5 +851,12 @@ describe('auth-gated endpoints', () => {
 		const instances = (await res.json()) as Array<{ roomId: number; roomInstanceId: number }>
 		expect(instances.length).toBeGreaterThanOrEqual(1)
 		expect(instances.every((i) => i.roomId === 3)).toBe(true)
+
+		// The co-owner (account 43, Role 30) may view the instances too.
+		const coOwner = await exports.default.fetch(`${ORIGIN}/room/3/instances`, {
+			headers: await bearer('43'),
+		})
+		expect(coOwner.status).toBe(200)
+		expect((await coOwner.json()) as unknown[]).toHaveLength(instances.length)
 	})
 })

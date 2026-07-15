@@ -56,6 +56,26 @@ interface RoomRole {
 }
 
 /**
+ * Room roles that confer owner-level management of a room: Creator (255) and
+ * CoOwner (30). The reference gates its room-admin actions on this set. (Host and
+ * Moderator are lower tiers and are deliberately excluded.)
+ */
+const MANAGE_ROLES: ReadonlySet<number> = new Set([Role.Creator, Role.CoOwner])
+
+/**
+ * Whether an account may manage a room — its creator, or the holder of a
+ * Creator/CoOwner role on the room's `Roles`. This is the owner-or-co-owner gate
+ * the reference applies to room-admin actions (editing room data, viewing a room's
+ * live instances). Shared so the `rooms` and `match` workers apply the same check
+ * rather than each re-deriving the role set.
+ */
+export function canManageRoom(room: Room, accountId: number): boolean {
+	if (room.CreatorAccountId === accountId) return true
+	const roles = Array.isArray(room.Roles) ? (room.Roles as RoomRole[]) : []
+	return roles.some((r) => r.AccountId === accountId && MANAGE_ROLES.has(r.Role))
+}
+
+/**
  * Clone an existing room into a new one owned by `accountId`. Copies the source
  * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
  * name, and the new owner; the `base` template tag is dropped so user clones
@@ -86,7 +106,7 @@ export async function cloneRoom(
 	// any co-owners, e.g. the seeded base-room roles for accounts 1/2) must NOT
 	// carry over, or the clone would still list the template's owner as owner.
 	const roles: RoomRole[] = [
-		{ AccountId: accountId, Role: Role.Owner, LastChangedByAccountId: null, InvitedRole: 0 },
+		{ AccountId: accountId, Role: Role.Creator, LastChangedByAccountId: null, InvitedRole: 0 },
 	]
 
 	const cloned: Room = {
@@ -130,6 +150,41 @@ export async function setRoomImage(db: D1Database, roomId: number, imageName: st
 		.prepare("UPDATE room SET data = json_set(data, '$.ImageName', ?2) WHERE room_id = ?1")
 		.bind(roomId, imageName)
 		.run()
+}
+
+/**
+ * Set a target account's room `Role` — updating their existing `Roles` entry or
+ * appending a new one — and stamp `LastChangedByAccountId` with the editor. The
+ * caller supplies the already-loaded room (after its owner/co-owner check) to avoid
+ * a re-read; the whole room JSON is rewritten. Returns the updated room.
+ */
+export async function setRoomRole(
+	db: D1Database,
+	roomId: number,
+	targetAccountId: number,
+	role: number,
+	changedByAccountId: number,
+	room: Room
+): Promise<Room> {
+	const roles = Array.isArray(room.Roles) ? (room.Roles as RoomRole[]) : []
+	const existing = roles.find((r) => r.AccountId === targetAccountId)
+	if (existing) {
+		existing.Role = role
+		existing.LastChangedByAccountId = changedByAccountId
+	} else {
+		roles.push({
+			AccountId: targetAccountId,
+			Role: role,
+			LastChangedByAccountId: changedByAccountId,
+			InvitedRole: 0,
+		})
+	}
+	const updated: Room = { ...room, Roles: roles }
+	await db
+		.prepare('UPDATE room SET data = ?2 WHERE room_id = ?1')
+		.bind(roomId, JSON.stringify(updated))
+		.run()
+	return updated
 }
 
 /**
@@ -810,7 +865,7 @@ export async function getOrCreateDormRoom(db: D1Database, accountId: number): Pr
 		Name: `@${username}'s Dorm`,
 		CreatorAccountId: accountId,
 		IsDorm: true,
-		Roles: [{ AccountId: accountId, Role: Role.Owner, LastChangedByAccountId: null, InvitedRole: 0 }],
+		Roles: [{ AccountId: accountId, Role: Role.Creator, LastChangedByAccountId: null, InvitedRole: 0 }],
 		SubRooms: [{ ...templateSub, CreatorAccountId: accountId }],
 		CreatedAt: new Date().toISOString(),
 	}

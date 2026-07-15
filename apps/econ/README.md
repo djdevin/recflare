@@ -11,9 +11,9 @@ endpoints the game client calls on the `econ` service (distinct from the main
 - `GET /api/avatar/v1/defaultbaseavataritems` — default base avatar items. Reads
   the same source file as `defaultunlocked`, so it returns the identical
   catalog.
-- `GET /api/avatar/v4/items` — `[Authorize]`. The player's avatar items: owned
-  items concatenated with the default catalog. No DB binding yet, so owned is
-  empty and this returns just the catalog.
+- `GET /api/avatar/v4/items` — `[Authorize]`. The player's avatar items: the
+  items they've bought (from `buyItem`, in the `inventory` table) prepended to
+  the default catalog. A player who has bought nothing gets just the catalog.
 - `GET /api/avatar/v2` — `[Authorize]`. The player's avatar. No DB binding yet,
   so it returns the default `{ OutfitSelections, FaceFeatures, SkinColor,
 HairColor }` seeded for a new player.
@@ -25,13 +25,36 @@ HairColor }` seeded for a new player.
   static JSON file verbatim); returns the bundled
   `static/my-progress.json` default for all players until a DB binding exists.
 - `GET /api/avatar/v3/saved` — `[Authorize]`. Saved outfits; `[]` without a DB.
-- `GET /api/avatar/v2/gifts` — `[Authorize]`. Pending gifts; `[]` without a DB.
+- `GET /api/avatar/v2/gifts` — `[Authorize]`. The player's unopened gift boxes
+  (from their purchases), out of the shared `received_gift` table; `[]` when
+  they have none.
+- `POST /api/avatar/v2/gifts/consume` — open a box (form body `Id=<n>&UnlockedLevel=<n>`,
+  posted with a trailing slash). Deletes the box scoped to the caller; the item was
+  already granted at purchase, so this is cosmetic. Always answers the success envelope
+  `{ error: "", success: true, value: null }` (a captured real consume returns this, not
+  an empty body — the client parses it to finish opening the box), even for a
+  missing/already-opened box, so a fire-and-forget re-open never errors. Also served by
+  the `api` worker (the client may call either host).
+- `POST /api/storefronts/v2/buyItem` — `[Authorize]`. Buy a storefront item.
+  Looks the item up in `static/storefronts/sf{StorefrontType}.json`, confirms the
+  client's `RequestedPrice` still matches, debits the buyer atomically, grants the
+  item, and returns a gift box. An avatar-item drop goes into the `inventory` table
+  (own-once); a consumable drop goes into the `consumable` table (each buy stacks a
+  new instance). The response's `Balance` is the change applied (the negated price),
+  not the resulting total — the client reads its new total from `GET /balance/:type`.
+  `409` on a stale price, `404` on an unknown item, `400` on insufficient balance.
 - `GET /api/equipment/v2/getUnlocked` — unlocked equipment; `[]` (no auth).
 - `POST /api/settings/v2/set` — `[Authorize]`. Persist settings; 200 ack only.
-- `GET /api/consumables/v2/getUnlocked` — `[Authorize]`. `[]` without a DB.
+- `GET /api/consumables/v2/getUnlocked` — `[Authorize]`. The consumables the
+  player has bought (from `buyItem`, in the `consumable` table), grouped by item
+  into the unlocked-consumable DTO (`Ids`/`CreatedAts` per instance, `Count` their
+  sum); `[]` when they've bought none.
 - `GET /api/storefronts/v4/balance/2` — `[Authorize]`. Token balance; `[]`.
 - `GET /api/storefronts/v3/giftdropstore/3` — gift-drop storefront, served from
   the bundled `static/storefronts-v3-giftdropstore-3.json`.
+- `GET /api/storefronts/v1/adcarouselitems` — storefront ad-carousel items,
+  served from the bundled `static/ad-carousel-items.json` (one placeholder
+  banner until real promo data exists).
 - `GET /api/challenge/v2/getCurrent` — current weekly challenge, served from the
   bundled `static/weekly-challenge.json`.
 - `GET /api/gamerewards/v1/pending` — pending rewards; `[]`.
@@ -46,5 +69,9 @@ duplicated here because the client calls them on the `econ` host.
 
 ## TODO before production
 
-- Wire a DB binding and prepend each player's owned `AvatarItems` to
-  `/api/avatar/v4/items`.
+- Gifting to another player (`buyItem` with a `Gift` block) grants the item and
+  box to the recipient, but there's no notification. `buyItem` grants avatar-item
+  and consumable drops; currency/xp drops aren't granted yet.
+- Consumables are granted and listed but never spent — nothing consumes them, so
+  `Count` only ever grows (each purchase grants `1`; catalogs don't specify a
+  per-item quantity).

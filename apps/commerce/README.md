@@ -2,6 +2,17 @@
 
 A Cloudflare Workers application using Hono
 
+## Endpoints
+
+- `GET /purchase/v1/hasspentmoney` — whether the player has ever spent money;
+  `false`.
+- `GET /api/catalog/v1/all` — the purchasable SKU catalog (token packs, special
+  offers), served from the bundled `static/catalog-v1-all.json`. The client's
+  `?onlyAvailableSkus=true` is accepted and ignored: the bundled catalog already
+  contains only available SKUs.
+- `GET /purchasecampaign/allcurrent/v2` — current purchase campaigns
+  (limited-time offers/promos); `[]` (none active).
+
 ## Development
 
 ### Run in dev mode
