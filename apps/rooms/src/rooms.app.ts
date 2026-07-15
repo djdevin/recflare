@@ -29,6 +29,7 @@ import {
 	setRoomImage,
 	setRoomName,
 	setRoomRole,
+	updateRoomFields,
 	toggleCheer,
 	toggleFavorite,
 	toggleRoomTag,
@@ -138,6 +139,20 @@ function unauthorized(c: Context<App>) {
 
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
 const HUB_INSTANCE = 'global'
+
+/**
+ * The room `Supports*` flags the `/restrictions` endpoint can toggle, keyed by the
+ * lowercased form field the client posts. Only fields present in the body are changed.
+ */
+const RESTRICTION_FIELDS: Record<string, string> = {
+	supportsscreens: 'SupportsScreens',
+	supportswalkvr: 'SupportsWalkVR',
+	supportsteleportvr: 'SupportsTeleportVR',
+	supportsvrlow: 'SupportsVRLow',
+	supportsquest2: 'SupportsQuest2',
+	supportsmobile: 'SupportsMobile',
+	supportsjuniors: 'SupportsJuniors',
+}
 
 /**
  * Push a RoomUpdate notification to a player after their room changes, mirroring
@@ -568,11 +583,11 @@ const app = new Hono<App>()
 	})
 
 	// Set a member's role in a room (`Roles[].Role`). Auth-gated (401) and gated to
-	// the room creator or a co-owner — the same owner/co-owner check the other
-	// room-admin actions use. Body is the `role` form field (an integer role tier).
-	// Updates the target account's existing role entry or adds one, notifies the
-	// affected member so their client refreshes permissions, and returns the
-	// `{ Success, Value, ErrorId, Error }` envelope at HTTP 200.
+	// the room creator or a co-owner (403 otherwise) — the same owner/co-owner check
+	// the other room-admin actions use. Body is the `role` form field (an integer role
+	// tier). Updates the target account's existing role entry or adds one, notifies the
+	// affected member so their client refreshes permissions, and returns the updated
+	// room in the lowercase `{ success, error, value }` envelope.
 	.put('/rooms/:roomId{[0-9]+}/roles/:accountId{[0-9]+}', async (c) => {
 		const accountId = await authedAccountId(c)
 		if (accountId === null) return unauthorized(c)
@@ -580,36 +595,134 @@ const app = new Hono<App>()
 		const roomId = Number.parseInt(c.req.param('roomId'), 10)
 		const targetAccountId = Number.parseInt(c.req.param('accountId'), 10)
 		const room = await getRoomById(c.env.DB, roomId)
-		if (!room) {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.DoesntExist',
-				Error: 'This room does not exist!',
-			})
-		}
-		if (!canManageRoom(room, accountId)) {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.PermissionDenied',
-				Error: 'You are not the owner of this room!',
-			})
-		}
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
 
 		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
 		const role = typeof body.role === 'string' ? Number.parseInt(body.role, 10) : Number.NaN
-		if (Number.isNaN(role)) {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.InvalidRole',
-				Error: 'You must provide a valid role!',
-			})
-		}
+		if (Number.isNaN(role)) return roomEnvelope(c, null, 'You must provide a valid role!')
 
 		const updated = await setRoomRole(c.env.DB, roomId, targetAccountId, role, accountId, room)
 		// Notify the member whose role changed so their client refreshes the room
 		// (and the permissions it grants them).
 		await pushRoomUpdate(c, targetAccountId, updated)
-		return roomResult(c, { Success: true })
+		return roomEnvelope(c, updated)
+	})
+
+	// Set a room's content warning: the `WarningMask` bit flags plus an optional
+	// free-text `CustomWarning`. Auth-gated (401) and owner/co-owner-only (403). Body is
+	// the `warningMask` form field (an integer) and an optional `customWarning` string
+	// (set when present — an empty value clears it). Returns the updated room in the
+	// `{ success, error, value }` envelope.
+	.put('/rooms/:roomId{[0-9]+}/warning', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const warningMask =
+			typeof body.warningMask === 'string' ? Number.parseInt(body.warningMask, 10) : Number.NaN
+		if (Number.isNaN(warningMask)) return roomEnvelope(c, null, 'You must provide a valid warning mask!')
+
+		const patch: Record<string, unknown> = { WarningMask: warningMask }
+		// Only touch CustomWarning when the field is present (an empty string clears it).
+		if (typeof body.customWarning === 'string') patch.CustomWarning = body.customWarning
+
+		const updated = await updateRoomFields(c.env.DB, roomId, room, patch)
+		// Notify the owner so their client refreshes the room with the updated warning.
+		await pushRoomUpdate(c, accountId, updated)
+		return roomEnvelope(c, updated)
+	})
+
+	// Toggle whether a room may be cloned (`CloningAllowed`). Auth-gated (401) and
+	// owner/co-owner-only (403). Body is the `cloningAllowed` form field (`True`/`False`).
+	// Returns the updated room in the `{ success, error, value }` envelope.
+	.put('/rooms/:roomId{[0-9]+}/cloning', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		if (typeof body.cloningAllowed !== 'string') {
+			return roomEnvelope(c, null, 'You must provide cloningAllowed.')
+		}
+		const cloningAllowed = body.cloningAllowed.toLowerCase() === 'true'
+
+		const updated = await updateRoomFields(c.env.DB, roomId, room, { CloningAllowed: cloningAllowed })
+		await pushRoomUpdate(c, accountId, updated)
+		return roomEnvelope(c, updated)
+	})
+
+	// Set a room's platform/movement support flags (its `Supports*` restrictions).
+	// Auth-gated (401) and owner/co-owner-only (403). Body is a form of
+	// `supports*=True|False` fields (see RESTRICTION_FIELDS); only the fields present
+	// are changed. Returns the updated room in the `{ success, error, value }` envelope.
+	.put('/rooms/:roomId{[0-9]+}/restrictions', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const patch: Record<string, boolean> = {}
+		for (const [key, value] of Object.entries(body)) {
+			const field = RESTRICTION_FIELDS[key.toLowerCase()]
+			if (field !== undefined && typeof value === 'string') {
+				patch[field] = value.toLowerCase() === 'true'
+			}
+		}
+
+		const updated = await updateRoomFields(c.env.DB, roomId, room, patch)
+		await pushRoomUpdate(c, accountId, updated)
+		return roomEnvelope(c, updated)
+	})
+
+	// Add a load screen to a room (`LoadScreens[]` — the images shown while the room
+	// loads). Auth-gated (401) and owner/co-owner-only (403). Body is the `imageName`
+	// form field plus optional `title`/`subtitle`. Appends one
+	// `{ ImageName, Title, Subtitle }` to the existing list and returns the updated
+	// room in the `{ success, error, value }` envelope.
+	.put('/rooms/:roomId{[0-9]+}/loadscreen', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const imageName = typeof body.imageName === 'string' ? body.imageName.trim() : ''
+		if (imageName === '') return roomEnvelope(c, null, 'You must provide an image!')
+		const title = typeof body.title === 'string' ? body.title : ''
+		const subtitle = typeof body.subtitle === 'string' ? body.subtitle : ''
+
+		const existing = Array.isArray(room.LoadScreens) ? (room.LoadScreens as unknown[]) : []
+		const loadScreens = [...existing, { ImageName: imageName, Title: title, Subtitle: subtitle }]
+		const updated = await updateRoomFields(c.env.DB, roomId, room, { LoadScreens: loadScreens })
+		await pushRoomUpdate(c, accountId, updated)
+		return roomEnvelope(c, updated)
 	})
 
 	// A subroom's data descriptor (the SubRoom object from the room's SubRooms
@@ -643,13 +756,9 @@ const app = new Hono<App>()
 				Error: 'This room does not exist!',
 			})
 		}
-		if (!canManageRoom(room, accountId)) {
-			return roomResult(c, {
-				Success: false,
-				ErrorId: 'Rooms.PermissionDenied',
-				Error: 'You are not the owner of this room!',
-			})
-		}
+		// A valid token but not the room's owner/co-owner → 403 (the auth gate above
+		// already returned 401 for a missing/invalid token).
+		if (!canManageRoom(room, accountId)) return c.body(null, 403)
 
 		const body = (await c.req.json().catch(() => ({}))) as {
 			RoomData?: { Filename?: string }

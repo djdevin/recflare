@@ -6,7 +6,7 @@ import '../../api.app'
 
 import { createGift, getPendingGifts, RECEIVED_GIFT_SCHEMA_DDL } from '@repo/domain'
 
-import { SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
+import { createImage, SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
 import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL } from '../../inventions-db'
 import { SCHEMA_DDL as RELATIONSHIPS_SCHEMA_DDL } from '../../relationships-db'
 
@@ -1203,26 +1203,92 @@ describe('images', () => {
 		})
 	})
 
-	test('POST /api/images/v1/cheer is auth-gated and stubs success', async () => {
-		const body = JSON.stringify({ SavedImageId: 2, Cheer: true })
+	test('POST /api/images/v1/cheer persists, syncs CheerCount, and the bulk lookup reflects it', async () => {
+		// Seed an image to cheer.
+		const img = await createImage(env.DB, { imageName: 'cheerme.jpg', playerId: 700 })
+		const cheerBody = JSON.stringify({ SavedImageId: img.Id, Cheer: true })
+
 		// No token → 401.
 		expect(
 			(
 				await exports.default.fetch(`${ORIGIN}/api/images/v1/cheer`, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body,
+					body: cheerBody,
 				})
 			).status
 		).toBe(401)
-		// With a token → accepted.
-		const res = await exports.default.fetch(`${ORIGIN}/api/images/v1/cheer`, {
+
+		const cheer = async (cheerVal: boolean, sub = '42') =>
+			exports.default.fetch(`${ORIGIN}/api/images/v1/cheer`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ SavedImageId: img.Id, Cheer: cheerVal }),
+			})
+		const cheerCount = async (): Promise<number> => {
+			const row = await env.DB.prepare('SELECT data FROM image WHERE id = ?1')
+				.bind(img.Id)
+				.first<{ data: string }>()
+			return (JSON.parse(row!.data) as { CheerCount: number }).CheerCount
+		}
+
+		// Account 42 cheers → CheerCount syncs to 1 (a real integer, not 1.0).
+		expect((await cheer(true)).status).toBe(200)
+		const rawAfter = await env.DB.prepare('SELECT data FROM image WHERE id = ?1')
+			.bind(img.Id)
+			.first<{ data: string }>()
+		expect(rawAfter!.data).toContain('"CheerCount":1')
+		expect(rawAfter!.data).not.toContain('"CheerCount":1.0')
+		expect(await cheerCount()).toBe(1)
+
+		// Re-cheering is idempotent on the count.
+		await cheer(true)
+		expect(await cheerCount()).toBe(1)
+
+		// Un-cheer → count back to 0.
+		await cheer(false)
+		expect(await cheerCount()).toBe(0)
+	})
+
+	test('GET /api/images/v5/cheered/bulk reports per-id cheer state for the caller (auth-gated)', async () => {
+		const img = await createImage(env.DB, { imageName: 'bulkcheer.jpg', playerId: 701 })
+		const other = 999999
+
+		// No token → 401.
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/api/images/v5/cheered/bulk?id=${img.Id}`)).status
+		).toBe(401)
+
+		const bulk = async (sub: string) =>
+			(await (
+				await exports.default.fetch(
+					`${ORIGIN}/api/images/v5/cheered/bulk?id=${img.Id}&id=${other}`,
+					{ headers: await bearer(sub) }
+				)
+			).json()) as Array<{ SavedImageId: number; IsCheered: boolean }>
+
+		// Before cheering: one entry per requested id, in order, all false.
+		expect(await bulk('42')).toEqual([
+			{ SavedImageId: img.Id, IsCheered: false },
+			{ SavedImageId: other, IsCheered: false },
+		])
+
+		// Account 42 cheers the image.
+		await exports.default.fetch(`${ORIGIN}/api/images/v1/cheer`, {
 			method: 'POST',
-			headers: { ...(await bearer()), 'Content-Type': 'application/json' },
-			body,
+			headers: { ...(await bearer('42')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ SavedImageId: img.Id, Cheer: true }),
 		})
-		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ success: true })
+
+		// The cheerer sees it cheered; a different player does not.
+		expect((await bulk('42')).find((x) => x.SavedImageId === img.Id)?.IsCheered).toBe(true)
+		expect((await bulk('43')).find((x) => x.SavedImageId === img.Id)?.IsCheered).toBe(false)
+
+		// No ids → empty array.
+		const empty = await exports.default.fetch(`${ORIGIN}/api/images/v5/cheered/bulk`, {
+			headers: await bearer('42'),
+		})
+		expect(await empty.json()).toEqual([])
 	})
 
 	test('GET /api/images/v6 400s without a name and 404s for an unknown one', async () => {

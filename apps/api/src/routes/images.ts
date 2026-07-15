@@ -2,11 +2,13 @@ import { Hono } from 'hono'
 
 import {
 	createImage,
+	getCheeredImageIds,
 	getImageByName,
 	getImagesByPlayer,
 	getImagesByRoom,
 	getPlayerFeed,
 	getSlideshowImages,
+	setImageCheer,
 } from '../images-db'
 import { authedId, unauthorized } from '../http'
 
@@ -169,12 +171,33 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		return image ? c.json(image) : c.notFound()
 	})
 
-	// Cheer / un-cheer a saved image ({ SavedImageId, Cheer }). Auth-gated. Stubbed
-	// for now — accepted but not persisted; cheer storage is still TBD.
+	// Cheer / un-cheer a saved image ({ SavedImageId, Cheer }). Auth-gated. Persists the
+	// caller's cheer to `image_interaction` and resyncs the image's CheerCount.
 	.post('/api/images/v1/cheer', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
-		// TODO: record the cheer against the image once cheer storage is designed.
-		await c.req.json().catch(() => null)
+		const body = (await c.req.json().catch(() => null)) as {
+			SavedImageId?: number
+			Cheer?: boolean
+		} | null
+		if (body && typeof body.SavedImageId === 'number') {
+			await setImageCheer(c.env.DB, id, body.SavedImageId, body.Cheer === true)
+		}
 		return c.json({ success: true })
+	})
+
+	// Whether the caller has cheered each of the given saved-image ids (`?id=55&id=54`,
+	// and each `id` may itself be a comma-separated list). Auth-gated. Returns one
+	// `{ SavedImageId, IsCheered }` per requested id, in order.
+	.get('/api/images/v5/cheered/bulk', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const ids =
+			c.req
+				.queries('id')
+				?.flatMap((raw) => raw.split(','))
+				.map((raw) => Number.parseInt(raw.trim(), 10))
+				.filter((imageId) => !Number.isNaN(imageId)) ?? []
+		const cheered = await getCheeredImageIds(c.env.DB, id, ids)
+		return c.json(ids.map((imageId) => ({ SavedImageId: imageId, IsCheered: cheered.has(imageId) })))
 	})

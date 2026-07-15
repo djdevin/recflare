@@ -413,6 +413,7 @@ describe('rooms endpoints', () => {
 					Name: string
 					CreatorAccountId: number
 					Tags?: Array<{ Tag: string }>
+					IsRRO: boolean
 					Roles: Array<{ AccountId: number; Role: number; InvitedRole: number }>
 				} | null
 			}
@@ -428,6 +429,8 @@ describe('rooms endpoints', () => {
 		// The clone starts fresh with no tags — none of the source's tags (including
 		// the `base` template tag) carry over.
 		expect(ok.value!.Tags).toEqual([])
+		// IsRRO is cleared so the client doesn't render a virtual "RRO" tag on the clone.
+		expect(ok.value!.IsRRO).toBe(false)
 		// Ownership is reset to the cloner: sole owner (Role 255), and none of the
 		// source base room's roles (accounts 1/2) carry over.
 		expect(ok.value!.Roles).toEqual([
@@ -507,7 +510,8 @@ describe('rooms endpoints', () => {
 			body: new URLSearchParams(fields).toString(),
 		})
 
-	// Room-mutation envelope helper.
+	// Room-mutation envelope helper (PascalCase `{ Success, Value, ErrorId, Error }` —
+	// used by name/image/description).
 	type RoomResult = {
 		Success: boolean
 		Value: unknown
@@ -515,6 +519,11 @@ describe('rooms endpoints', () => {
 		Error: string | null
 	}
 	const bodyOf = async (res: Response) => (await res.json()) as RoomResult
+
+	// Lowercase `{ success, error, value }` envelope — used by tags/clone and the
+	// roles/warning/cloning/restrictions room-settings mutations (value = updated room).
+	type RoomEnv = { success: boolean; error: string; value: Record<string, unknown> | null }
+	const envOf = async (res: Response) => (await res.json()) as RoomEnv
 
 	it('PUT /rooms/:id/description is auth-gated, owner-only, and persists', async () => {
 		// No token → 401 (auth gate).
@@ -584,26 +593,27 @@ describe('rooms endpoints', () => {
 		// No token → 401 (auth gate).
 		expect((await putForm('/rooms/2/roles/5', { role: '20' })).status).toBe(401)
 		// A valid token but no role on the room (RecCenter is owned by account 1, with
-		// account 2 as co-owner) → Success:false.
-		expect(await bodyOf(await putForm('/rooms/2/roles/5', { role: '20' }, '999'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.PermissionDenied',
+		// account 2 as co-owner) → 403.
+		expect((await putForm('/rooms/2/roles/5', { role: '20' }, '999')).status).toBe(403)
+		// Unknown room → failure envelope.
+		expect(await envOf(await putForm('/rooms/99999/roles/5', { role: '20' }, '1'))).toMatchObject({
+			success: false,
+			error: 'This room does not exist!',
 		})
-		// Unknown room → Rooms.DoesntExist envelope.
-		expect(await bodyOf(await putForm('/rooms/99999/roles/5', { role: '20' }, '1'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.DoesntExist',
-		})
-		// Non-numeric role → Success:false.
-		expect(await bodyOf(await putForm('/rooms/2/roles/5', { role: 'nope' }, '1'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.InvalidRole',
+		// Non-numeric role → failure envelope.
+		expect(await envOf(await putForm('/rooms/2/roles/5', { role: 'nope' }, '1'))).toMatchObject({
+			success: false,
 		})
 
-		// Owner sets account 5's role to 20, adding a new Roles entry that persists.
+		// Owner sets account 5's role to 20, adding a new Roles entry that persists. The
+		// success envelope carries the updated room as `value`.
 		const ok = await putForm('/rooms/2/roles/5', { role: '20' }, '1')
 		expect(ok.status).toBe(200)
-		expect(await bodyOf(ok)).toMatchObject({ Success: true })
+		const okBody = await envOf(ok)
+		expect(okBody).toMatchObject({ success: true, error: '' })
+		expect((okBody.value?.Roles as Array<{ AccountId: number; Role: number }>)).toContainEqual(
+			expect.objectContaining({ AccountId: 5, Role: 20 })
+		)
 		expect(await rolesOf()).toContainEqual(expect.objectContaining({ AccountId: 5, Role: 20 }))
 
 		// The co-owner (account 2, Role 30) may also change it — updating the existing
@@ -615,6 +625,173 @@ describe('rooms endpoints', () => {
 		expect(roles).toContainEqual(expect.objectContaining({ AccountId: 5, Role: 10 }))
 		// The seeded co-owner (account 2) is left intact.
 		expect(roles).toContainEqual(expect.objectContaining({ AccountId: 2, Role: 30 }))
+	})
+
+	it('PUT /rooms/:id/warning is auth-gated, owner/co-owner-only, and persists', async () => {
+		// No token → 401 (auth gate).
+		expect((await putForm('/rooms/2/warning', { warningMask: '2' })).status).toBe(401)
+		// A valid token but no role on the room → 403.
+		expect((await putForm('/rooms/2/warning', { warningMask: '2' }, '999')).status).toBe(403)
+		// Unknown room → failure envelope.
+		expect(
+			await envOf(await putForm('/rooms/99999/warning', { warningMask: '2' }, '1'))
+		).toMatchObject({ success: false, error: 'This room does not exist!' })
+		// Non-numeric mask → failure envelope.
+		expect(await envOf(await putForm('/rooms/2/warning', { warningMask: 'x' }, '1'))).toMatchObject(
+			{ success: false }
+		)
+
+		// Owner sets it, and it persists as an integer (not 2.0). The success envelope
+		// carries the updated room as `value`.
+		const ok = await putForm('/rooms/2/warning', { warningMask: '2' }, '1')
+		expect(ok.status).toBe(200)
+		const okBody = await envOf(ok)
+		expect(okBody).toMatchObject({ success: true, error: '' })
+		expect(okBody.value?.WarningMask).toBe(2)
+		const raw = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
+			.bind(2)
+			.first<{ data: string }>()
+		expect(raw!.data).toContain('"WarningMask":2')
+		expect(raw!.data).not.toContain('"WarningMask":2.0')
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { WarningMask: number }
+		expect(room.WarningMask).toBe(2)
+
+		// The mask can carry an optional free-text CustomWarning alongside it.
+		const custom = await envOf(
+			await putForm('/rooms/2/warning', { warningMask: '63', customWarning: 'slfkjsdf' }, '1')
+		)
+		expect(custom).toMatchObject({ success: true })
+		expect(custom.value).toMatchObject({ WarningMask: 63, CustomWarning: 'slfkjsdf' })
+		const withCustom = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+			WarningMask: number
+			CustomWarning: string
+		}
+		expect(withCustom).toMatchObject({ WarningMask: 63, CustomWarning: 'slfkjsdf' })
+
+		// Omitting customWarning leaves the existing text untouched (partial update).
+		await putForm('/rooms/2/warning', { warningMask: '7' }, '1')
+		const kept = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { CustomWarning: string }
+		expect(kept.CustomWarning).toBe('slfkjsdf')
+
+		// The co-owner (account 2, Role 30) may also set it.
+		expect((await putForm('/rooms/2/warning', { warningMask: '4' }, '2')).status).toBe(200)
+	})
+
+	it('PUT /rooms/:id/cloning is auth-gated, owner/co-owner-only, and persists a JSON boolean', async () => {
+		// No token → 401.
+		expect((await putForm('/rooms/2/cloning', { cloningAllowed: 'False' })).status).toBe(401)
+		// A valid token but no role on the room → 403.
+		expect(
+			(await putForm('/rooms/2/cloning', { cloningAllowed: 'False' }, '999')).status
+		).toBe(403)
+		// Unknown room → failure envelope.
+		expect(
+			await envOf(await putForm('/rooms/99999/cloning', { cloningAllowed: 'False' }, '1'))
+		).toMatchObject({ success: false, error: 'This room does not exist!' })
+
+		// Owner disables cloning; it persists as a real JSON boolean (not 0/1). The
+		// success envelope carries the updated room as `value`.
+		const disabled = await envOf(await putForm('/rooms/2/cloning', { cloningAllowed: 'False' }, '1'))
+		expect(disabled).toMatchObject({ success: true, error: '' })
+		expect(disabled.value?.CloningAllowed).toBe(false)
+		const raw = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
+			.bind(2)
+			.first<{ data: string }>()
+		expect(raw!.data).toContain('"CloningAllowed":false')
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { CloningAllowed: boolean }
+		expect(room.CloningAllowed).toBe(false)
+
+		// The co-owner (account 2) may re-enable it.
+		await putForm('/rooms/2/cloning', { cloningAllowed: 'True' }, '2')
+		const reenabled = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+			CloningAllowed: boolean
+		}
+		expect(reenabled.CloningAllowed).toBe(true)
+	})
+
+	it('PUT /rooms/:id/restrictions sets the Supports* flags present in the body', async () => {
+		// No token → 401; a valid token with no role → 403.
+		expect((await putForm('/rooms/2/restrictions', { supportsScreens: 'True' })).status).toBe(401)
+		expect(
+			(await putForm('/rooms/2/restrictions', { supportsScreens: 'True' }, '999')).status
+		).toBe(403)
+
+		// The exact client body: a mix of True/False across a subset of the flags.
+		const res = await SELF.fetch(`${ORIGIN}/rooms/2/restrictions`, {
+			method: 'PUT',
+			headers: { ...(await bearer('1')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'supportsScreens=True&supportsWalkVR=True&supportsTeleportVR=False&supportsJuniors=True',
+		})
+		expect(res.status).toBe(200)
+		// The success envelope carries the updated room as `value`.
+		const env2 = await envOf(res)
+		expect(env2).toMatchObject({ success: true, error: '' })
+		expect(env2.value).toMatchObject({
+			SupportsScreens: true,
+			SupportsWalkVR: true,
+			SupportsTeleportVR: false,
+			SupportsJuniors: true,
+		})
+
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+			SupportsScreens: boolean
+			SupportsWalkVR: boolean
+			SupportsTeleportVR: boolean
+			SupportsJuniors: boolean
+			SupportsMobile: boolean
+		}
+		expect(room.SupportsScreens).toBe(true)
+		expect(room.SupportsWalkVR).toBe(true)
+		expect(room.SupportsTeleportVR).toBe(false)
+		expect(room.SupportsJuniors).toBe(true)
+		// A flag not in the body is left unchanged (still a boolean, not dropped).
+		expect(typeof room.SupportsMobile).toBe('boolean')
+	})
+
+	it('PUT /rooms/:id/loadscreen appends a load screen (auth-gated, owner/co-owner-only)', async () => {
+		const screensOf = async (): Promise<Array<Record<string, unknown>>> => {
+			const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+				LoadScreens?: Array<Record<string, unknown>>
+			}
+			return room.LoadScreens ?? []
+		}
+
+		// No token → 401; a valid token with no role → 403.
+		expect((await putForm('/rooms/2/loadscreen', { imageName: 'a.jpg' })).status).toBe(401)
+		expect((await putForm('/rooms/2/loadscreen', { imageName: 'a.jpg' }, '999')).status).toBe(403)
+		// Unknown room → failure envelope.
+		expect(
+			await envOf(await putForm('/rooms/99999/loadscreen', { imageName: 'a.jpg' }, '1'))
+		).toMatchObject({ success: false, error: 'This room does not exist!' })
+		// Missing image → failure envelope.
+		expect(await envOf(await putForm('/rooms/2/loadscreen', { title: 'x' }, '1'))).toMatchObject({
+			success: false,
+		})
+
+		const before = (await screensOf()).length
+
+		// Owner adds one (imageName + title + subtitle) — appended, and the success
+		// envelope carries the updated room.
+		const added = await envOf(
+			await putForm(
+				'/rooms/2/loadscreen',
+				{ imageName: 'sharecamera/2026-07-15/abc.jpg', title: 'asdf', subtitle: 'sdf' },
+				'1'
+			)
+		)
+		expect(added).toMatchObject({ success: true })
+		expect(added.value?.LoadScreens as unknown[]).toContainEqual({
+			ImageName: 'sharecamera/2026-07-15/abc.jpg',
+			Title: 'asdf',
+			Subtitle: 'sdf',
+		})
+		expect(await screensOf()).toHaveLength(before + 1)
+
+		// A second call appends rather than replacing; title/subtitle default to empty.
+		const co = await envOf(await putForm('/rooms/2/loadscreen', { imageName: 'second.jpg' }, '2'))
+		expect(co).toMatchObject({ success: true })
+		expect(await screensOf()).toHaveLength(before + 2)
+		expect(await screensOf()).toContainEqual({ ImageName: 'second.jpg', Title: '', Subtitle: '' })
 	})
 
 	it('GET /rooms/:id/subrooms/:sid/data returns the subroom descriptor (404 when unknown)', async () => {
@@ -661,12 +838,9 @@ describe('rooms endpoints', () => {
 				body: JSON.stringify(save),
 			})
 
+		// A valid token but no role on the room → 403.
+		expect((await authed(2, 2, '999')).status).toBe(403)
 		// The response uses the PascalCase `{ Success, Value, ErrorId, Error }` envelope.
-		// Wrong owner (no role) → PermissionDenied.
-		expect(await bodyOf(await authed(2, 2, '999'))).toMatchObject({
-			Success: false,
-			ErrorId: 'Rooms.PermissionDenied',
-		})
 		// Unknown room → DoesntExist.
 		expect(await bodyOf(await authed(99999, 2, '1'))).toMatchObject({
 			Success: false,

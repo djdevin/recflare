@@ -80,7 +80,8 @@ export function canManageRoom(room: Room, accountId: number): boolean {
  * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
  * name, and the new owner. The clone starts with an empty tag set — the source's
  * tags (including the `base` template tag) do not carry over, so the owner tags the
- * clone from scratch. Returns the new room, or null when the source isn't in D1 or
+ * clone from scratch — and `IsRRO` is cleared so the client doesn't render a virtual
+ * "RRO" tag on it. Returns the new room, or null when the source isn't in D1 or
  * disallows cloning.
  */
 export async function cloneRoom(
@@ -112,6 +113,9 @@ export async function cloneRoom(
 		IsDorm: false,
 		// Start fresh: drop every tag the source carried (including `base`).
 		Tags: [],
+		// A user clone is not a Rec Room Original — clear the inherited flag, or the
+		// client renders a virtual "RRO" tag on the clone.
+		IsRRO: false,
 		Roles: roles,
 		CreatedAt: new Date().toISOString(),
 	}
@@ -146,6 +150,27 @@ export async function setRoomImage(db: D1Database, roomId: number, imageName: st
 		.prepare("UPDATE room SET data = json_set(data, '$.ImageName', ?2) WHERE room_id = ?1")
 		.bind(roomId, imageName)
 		.run()
+}
+
+/**
+ * Merge a set of top-level fields into a room's JSON blob and write it back. Used by
+ * the room-settings mutations whose values include booleans (cloning, platform
+ * restrictions) — rewriting the whole blob preserves proper JSON booleans, whereas a
+ * `json_set` bind would store `true`/`false` as `1`/`0`. The caller supplies the
+ * already-loaded, permission-checked room. Returns the updated room.
+ */
+export async function updateRoomFields(
+	db: D1Database,
+	roomId: number,
+	room: Room,
+	patch: Record<string, unknown>
+): Promise<Room> {
+	const updated: Room = { ...room, ...patch }
+	await db
+		.prepare('UPDATE room SET data = ?2 WHERE room_id = ?1')
+		.bind(roomId, JSON.stringify(updated))
+		.run()
+	return updated
 }
 
 /**

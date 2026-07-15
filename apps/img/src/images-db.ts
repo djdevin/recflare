@@ -23,6 +23,18 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE INDEX IF NOT EXISTS idx_image_image_name ON image (image_name)`,
 	`CREATE INDEX IF NOT EXISTS idx_image_player_id ON image (player_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_image_room_id ON image (room_id)`,
+	// A player's interaction with a saved image — one row per (player, image). Only
+	// `cheered` for now; named generically so other per-user interactions (e.g.
+	// favorited) can be added as columns. The `api` worker writes it (cheer endpoints)
+	// and keeps the image's denormalized `CheerCount` in sync from it.
+	`CREATE TABLE IF NOT EXISTS image_interaction (
+		player_id INTEGER NOT NULL,
+		saved_image_id INTEGER NOT NULL,
+		cheered INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT,
+		PRIMARY KEY (player_id, saved_image_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_image_interaction_image ON image_interaction (saved_image_id)`,
 ]
 
 /** A stored image record (the client-facing SavedImage shape). */

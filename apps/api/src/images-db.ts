@@ -21,6 +21,19 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE INDEX IF NOT EXISTS idx_image_image_name ON image (image_name)`,
 	`CREATE INDEX IF NOT EXISTS idx_image_player_id ON image (player_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_image_room_id ON image (room_id)`,
+	// A player's interaction with a saved image — one row per (player, image). Only
+	// `cheered` for now; named generically so other per-user interactions (e.g.
+	// favorited) can be added as columns. This worker writes it (cheer endpoints) and
+	// keeps the image's denormalized `CheerCount` in sync from it. Schema owned by the
+	// `img` worker (migrations/0002_image_interaction.sql) — keep in sync.
+	`CREATE TABLE IF NOT EXISTS image_interaction (
+		player_id INTEGER NOT NULL,
+		saved_image_id INTEGER NOT NULL,
+		cheered INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT,
+		PRIMARY KEY (player_id, saved_image_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_image_interaction_image ON image_interaction (saved_image_id)`,
 ]
 
 /** A stored image record (the client-facing SavedImage shape). */
@@ -79,6 +92,68 @@ export async function createImage(db: D1Database, input: NewImage): Promise<Save
 	}
 	await db.prepare('INSERT INTO image (data) VALUES (?1)').bind(JSON.stringify(image)).run()
 	return image
+}
+
+/**
+ * Recompute an image's `CheerCount` from the `image_interaction` rows and write it
+ * back into the blob (nothing reads a generated column for it, but the client-facing
+ * blob must stay accurate). CAST to INTEGER: D1 binds a JS number as a SQLite REAL,
+ * which json_set would otherwise store as `"CheerCount":3.0`. Returns the fresh count.
+ */
+async function syncImageCheerCount(db: D1Database, savedImageId: number): Promise<number> {
+	const row = await db
+		.prepare('SELECT COUNT(*) AS n FROM image_interaction WHERE saved_image_id = ?1 AND cheered = 1')
+		.bind(savedImageId)
+		.first<{ n: number }>()
+	const count = row?.n ?? 0
+	await db
+		.prepare("UPDATE image SET data = json_set(data, '$.CheerCount', CAST(?2 AS INTEGER)) WHERE id = ?1")
+		.bind(savedImageId, count)
+		.run()
+	return count
+}
+
+/**
+ * Set (or clear) a player's cheer on a saved image — upserts the one row per
+ * (player, image) — then resyncs the image's `CheerCount`. Idempotent: re-cheering
+ * an already-cheered image is a no-op on the count.
+ */
+export async function setImageCheer(
+	db: D1Database,
+	playerId: number,
+	savedImageId: number,
+	cheer: boolean
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO image_interaction (player_id, saved_image_id, cheered, created_at)
+			 VALUES (?1, ?2, ?3, ?4)
+			 ON CONFLICT(player_id, saved_image_id) DO UPDATE SET cheered = ?3`
+		)
+		.bind(playerId, savedImageId, cheer ? 1 : 0, new Date().toISOString())
+		.run()
+	await syncImageCheerCount(db, savedImageId)
+}
+
+/**
+ * Which of the given saved-image ids the player has cheered — the set of cheered
+ * ids (a subset of `ids`). Backs the bulk `cheered` lookup. Empty input → empty set.
+ */
+export async function getCheeredImageIds(
+	db: D1Database,
+	playerId: number,
+	ids: number[]
+): Promise<Set<number>> {
+	if (ids.length === 0) return new Set()
+	const inList = ids.map((_, i) => `?${i + 2}`).join(',')
+	const { results } = await db
+		.prepare(
+			`SELECT saved_image_id AS id FROM image_interaction
+			 WHERE player_id = ?1 AND cheered = 1 AND saved_image_id IN (${inList})`
+		)
+		.bind(playerId, ...ids)
+		.all<{ id: number }>()
+	return new Set(results.map((r) => r.id))
 }
 
 /** Look up an image record by its ImageName (the R2 key / filename), or null. */
