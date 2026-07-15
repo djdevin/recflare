@@ -425,8 +425,9 @@ describe('rooms endpoints', () => {
 		expect(ok.value!.Name).toBe('MyMakerClone')
 		expect(ok.value!.CreatorAccountId).toBe(801)
 		expect(ok.value!.RoomId).toBeGreaterThan(51)
-		// The `base` template tag is dropped so clones aren't listed as base rooms.
-		expect((ok.value!.Tags ?? []).some((t) => t.Tag === 'base')).toBe(false)
+		// The clone starts fresh with no tags — none of the source's tags (including
+		// the `base` template tag) carry over.
+		expect(ok.value!.Tags).toEqual([])
 		// Ownership is reset to the cloner: sole owner (Role 255), and none of the
 		// source base room's roles (accounts 1/2) carry over.
 		expect(ok.value!.Roles).toEqual([
