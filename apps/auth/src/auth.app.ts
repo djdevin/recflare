@@ -439,12 +439,20 @@ const app = new Hono<App>()
 			await setLoginContext(c.env.DB, resolvedId, { deviceId, deviceClass, ip: clientIp })
 		}
 
-		const accessToken = await generateToken(
-			accountId,
-			platformId,
-			platform,
-			await c.env.JWT_SECRET.get()
-		)
+		// Never sign with an empty key. An empty JWT_SECRET (misconfigured/missing
+		// binding) would still yield a well-formed token — but one signed with an empty
+		// key, which every worker validates against, so anyone could forge it. Refuse to
+		// issue a token at all rather than complete the login with a forgeable credential.
+		const jwtSecret = await c.env.JWT_SECRET.get()
+		if (jwtSecret === '') {
+			logger.error('refusing to issue token: JWT_SECRET is empty')
+			return c.json(
+				{ error: 'server_error', error_description: 'token signing is not configured' },
+				500
+			)
+		}
+
+		const accessToken = await generateToken(accountId, platformId, platform, jwtSecret)
 		// Issue a fresh, persisted refresh token (single-use; the client redeems it via
 		// grant_type=refresh_token). A refresh grant thus rotates its token.
 		const refreshToken = await issueRefreshToken(c.env.DB, {
