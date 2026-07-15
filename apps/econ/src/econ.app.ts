@@ -1,9 +1,13 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { consumeGift, createGift, getPendingGifts } from '@repo/domain'
-import { intVar, withNotFound, withOnError } from '@repo/hono-helpers'
+import { consumeGift, createGift, getGift, getPendingGifts } from '@repo/domain'
+import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
+
+// The notification-type ids the hub carries (owned by the `notify` worker). Imported
+// as a value — the enum has no runtime dependencies.
+import { NotificationType } from '../../notify/src/notification-types'
 
 import adCarouselItems from '../static/ad-carousel-items.json'
 import defaultAvatarItems from '../static/default-avatar-items.json'
@@ -18,13 +22,14 @@ import {
 	isSpendable,
 	spendCurrency,
 } from './balance-db'
-import { getConsumables, grantConsumable } from './consumables-db'
+import { consumeConsumable, countConsumable, getConsumables, grantConsumable } from './consumables-db'
 import { getInventory, grantItem } from './inventory-db'
 import { getOutfits, setOutfit } from './outfit-db'
 
 import type { Context } from 'hono'
-import type { GiftContent } from '@repo/domain'
+import type { GiftContent, StoredGift } from '@repo/domain'
 import type { Avatar } from './avatar-db'
+import type { ConsumeResult } from './consumables-db'
 import type { App } from './context'
 import type { AvatarItem } from './inventory-db'
 import type { Outfit } from './outfit-db'
@@ -48,6 +53,80 @@ async function authedId(c: Context<App>): Promise<number | null> {
 /** Results.Unauthorized() equivalent — 401 with empty body. */
 function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
+}
+
+/** The notifications hub is a single global DO instance (see the `notify` worker). */
+const HUB_INSTANCE = 'global'
+
+/**
+ * Push a ConsumableMappingRemoved notification to a player after they consume a
+ * consumable, mirroring the reference's
+ * `HubSendToPlayer(accountID, NotifFrame(ConsumableMappingRemoved, {...}))` — the
+ * client uses it to update/remove the item from inventory. Best-effort: a hub failure
+ * is logged and swallowed, since the consume has already committed.
+ */
+async function pushConsumableRemoved(
+	c: Context<App>,
+	accountId: number,
+	consumed: ConsumeResult
+): Promise<void> {
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			accountId,
+			NotificationType.ConsumableMappingRemoved,
+			{
+				Id: consumed.id,
+				ConsumableItemDesc: consumed.consumableItemDesc,
+				CreatedAt: consumed.createdAt,
+				Count: consumed.remaining,
+				InitialCount: consumed.previousCount,
+				IsActive: false,
+				ActiveDurationMinutes: 0,
+				IsTransferable: false,
+			}
+		)
+	} catch (err) {
+		logger.error('failed to push ConsumableMappingRemoved notification', {
+			accountId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
+ * Push a ConsumableMappingAdded notification to a player after they open a gift box
+ * that carried a consumable, mirroring the reference's
+ * `HubSendToPlayer(accountID, NotifFrame(ConsumableMappingAdded, {...}))` — the client
+ * uses it to show the newly-unlocked consumable. The mapping id and pre-existing count
+ * were stamped onto the box at purchase (see toGiftContent). Best-effort like the
+ * removed push.
+ */
+async function pushConsumableAdded(
+	c: Context<App>,
+	accountId: number,
+	gift: StoredGift
+): Promise<void> {
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			accountId,
+			NotificationType.ConsumableMappingAdded,
+			{
+				Id: gift.ConsumableMappingId ?? 0,
+				ConsumableItemDesc: gift.ConsumableItemDesc,
+				CreatedAt: new Date().toISOString(),
+				Count: gift.ConsumableCount,
+				InitialCount: gift.ConsumablePreExistingCount ?? 0,
+				IsActive: false,
+				ActiveDurationMinutes: 0,
+				IsTransferable: false,
+			}
+		)
+	} catch (err) {
+		logger.error('failed to push ConsumableMappingAdded notification', {
+			accountId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
 }
 
 /**
@@ -143,11 +222,15 @@ const COACH_ACCOUNT_ID = 1
 function toGiftContent(
 	giftDrop: StoreGiftDrop,
 	message: string,
-	consumableCount: number
+	consumableCount: number,
+	consumableMappingId = 0,
+	consumablePreExistingCount = 0
 ): GiftContent {
 	return {
 		ConsumableItemDesc: giftDrop.ConsumableItemDesc,
 		ConsumableCount: consumableCount,
+		ConsumableMappingId: consumableMappingId,
+		ConsumablePreExistingCount: consumablePreExistingCount,
 		AvatarItemDesc: giftDrop.AvatarItemDesc,
 		AvatarItemType: giftDrop.AvatarItemType,
 		CurrencyType: giftDrop.CurrencyType,
@@ -304,7 +387,22 @@ const app = new Hono<App>({ strict: false })
 		const id = await authedId(c)
 		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 		const giftId = typeof body.Id === 'string' ? Number.parseInt(body.Id, 10) || 0 : 0
-		if (id !== null && giftId !== 0) await consumeGift(c.env.DB, id, giftId)
+		if (id !== null && giftId !== 0) {
+			// Scoped delete: only the box's owner deletes it. A returned box means it was
+			// theirs and is now consumed.
+			const gift = await consumeGift(c.env.DB, id, giftId)
+			if (gift !== null) {
+				// If the box carried a consumable, tell the client it now has it (so it shows
+				// up in inventory without a refetch). Avatar-item boxes carry no ConsumableItemDesc.
+				if (gift.ConsumableItemDesc !== '') await pushConsumableAdded(c, id, gift)
+			} else {
+				// Nothing was consumed: either the box is already gone (a harmless no-op —
+				// re-opening your own consumed box still succeeds) or it belongs to another
+				// player, which is forbidden.
+				const other = await getGift(c.env.DB, giftId)
+				if (other !== null && other.accountId !== id) return c.body(null, 403)
+			}
+		}
 		return c.json({ error: '', success: true, value: null })
 	})
 
@@ -344,6 +442,26 @@ const app = new Hono<App>({ strict: false })
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		return c.json(await getConsumables(c.env.DB, id))
+	})
+
+	// Consume a quantity of an owned consumable instance. [Authorize]. Body is JSON
+	// `{ Id, DeltaCount }` where `Id` is the consumable row id. Reduces that instance's
+	// count by DeltaCount, deleting the row once it hits zero. Scoped to the caller so
+	// they can only consume their own. Envelope mirrors the gift-consume ack.
+	.post('/api/consumables/v1/consume', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+		const body = await c.req
+			.json<{ Id?: unknown; DeltaCount?: unknown }>()
+			.catch(() => ({}) as { Id?: unknown; DeltaCount?: unknown })
+		const consumableId = typeof body.Id === 'number' ? body.Id : Number.NaN
+		const delta = typeof body.DeltaCount === 'number' ? body.DeltaCount : 1
+		if (!Number.isNaN(consumableId) && delta > 0) {
+			const consumed = await consumeConsumable(c.env.DB, id, consumableId, delta)
+			// Notify the player so their client removes/updates the item in inventory.
+			if (consumed !== null) await pushConsumableRemoved(c, id, consumed)
+		}
+		return c.json({ error: '', success: true, value: null })
 	})
 
 	// Currency balance. [Authorize]. The trailing int is a CurrencyType — the client
@@ -462,8 +580,17 @@ const app = new Hono<App>({ strict: false })
 			typeof item.GiftDrop.ConsumableItemDesc === 'string' &&
 			item.GiftDrop.ConsumableItemDesc !== ''
 		const consumableCount = isConsumable ? CONSUMABLE_GRANT_COUNT : 0
+		// Capture the granted consumable's row id and the player's pre-existing count so
+		// the gift box can carry them — gift-consume fires ConsumableMappingAdded from these.
+		let consumableMappingId = 0
+		let consumablePreExisting = 0
 		if (isConsumable) {
-			await grantConsumable(
+			consumablePreExisting = await countConsumable(
+				c.env.DB,
+				receiverId,
+				item.GiftDrop.ConsumableItemDesc
+			)
+			consumableMappingId = await grantConsumable(
 				c.env.DB,
 				receiverId,
 				item.GiftDrop.ConsumableItemDesc,
@@ -473,7 +600,7 @@ const app = new Hono<App>({ strict: false })
 		const { id: giftId } = await createGift(
 			c.env.DB,
 			receiverId,
-			toGiftContent(item.GiftDrop, message, consumableCount)
+			toGiftContent(item.GiftDrop, message, consumableCount, consumableMappingId, consumablePreExisting)
 		)
 
 		// The response mirrors a captured real buyItem: `Balance` is the change applied (the

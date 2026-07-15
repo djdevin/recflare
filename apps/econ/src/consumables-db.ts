@@ -44,20 +44,89 @@ export interface UnlockedConsumable {
 	IsTransferable: boolean
 }
 
-/** Grant `count` of a consumable to a player as a new owned instance (they stack). */
+/**
+ * Grant `count` of a consumable to a player as a new owned instance (they stack).
+ * Returns the new row's id — the consumable mapping id the client keys on.
+ */
 export async function grantConsumable(
 	db: D1Database,
 	accountId: number,
 	consumableItemDesc: string,
 	count: number
-): Promise<void> {
-	await db
+): Promise<number> {
+	const row = await db
 		.prepare(
 			`INSERT INTO consumable (account_id, consumable_item_desc, count, created_at)
-			 VALUES (?1, ?2, ?3, ?4)`
+			 VALUES (?1, ?2, ?3, ?4) RETURNING id`
 		)
 		.bind(accountId, consumableItemDesc, count, new Date().toISOString())
-		.run()
+		.first<{ id: number }>()
+	return row?.id ?? 0
+}
+
+/** A player's total owned count of a consumable, summed across its stacked instances. */
+export async function countConsumable(
+	db: D1Database,
+	accountId: number,
+	consumableItemDesc: string
+): Promise<number> {
+	const row = await db
+		.prepare(
+			'SELECT COALESCE(SUM(count), 0) AS total FROM consumable WHERE account_id = ?1 AND consumable_item_desc = ?2'
+		)
+		.bind(accountId, consumableItemDesc)
+		.first<{ total: number }>()
+	return row?.total ?? 0
+}
+
+/** The outcome of consuming an instance — its identity plus the resulting count. */
+export interface ConsumeResult {
+	id: number
+	consumableItemDesc: string
+	createdAt: string
+	/** The instance's count before this consumption. */
+	previousCount: number
+	/** The count left after consuming (0 when the row was deleted). */
+	remaining: number
+}
+
+/**
+ * Consume `deltaCount` from one owned consumable instance, by row `id` and scoped to
+ * its owner (so a player can only consume their own). Reduces that instance's `count`;
+ * once it would reach zero (or below) the row is deleted entirely. Returns the
+ * instance's details plus the resulting count, or null when the row didn't exist /
+ * isn't the caller's.
+ */
+export async function consumeConsumable(
+	db: D1Database,
+	accountId: number,
+	id: number,
+	deltaCount: number
+): Promise<ConsumeResult | null> {
+	const row = await db
+		.prepare(
+			'SELECT consumable_item_desc, count, created_at FROM consumable WHERE id = ?1 AND account_id = ?2'
+		)
+		.bind(id, accountId)
+		.first<{ consumable_item_desc: string; count: number; created_at: string }>()
+	if (row === null) return null
+
+	const remaining = row.count - deltaCount
+	if (remaining > 0) {
+		await db.prepare('UPDATE consumable SET count = ?2 WHERE id = ?1').bind(id, remaining).run()
+	} else {
+		await db
+			.prepare('DELETE FROM consumable WHERE id = ?1 AND account_id = ?2')
+			.bind(id, accountId)
+			.run()
+	}
+	return {
+		id,
+		consumableItemDesc: row.consumable_item_desc,
+		createdAt: row.created_at,
+		previousCount: row.count,
+		remaining: Math.max(remaining, 0),
+	}
 }
 
 interface ConsumableRow {

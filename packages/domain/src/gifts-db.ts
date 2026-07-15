@@ -36,6 +36,12 @@ export const RECEIVED_GIFT_SCHEMA_DDL: string[] = [
 export interface GiftContent extends Record<string, unknown> {
 	ConsumableItemDesc: string
 	ConsumableCount: number
+	// When the gift carries a consumable, the id of the `consumable` row granted at
+	// purchase and the player's total of that consumable *before* this grant. They let
+	// gift-consume fire an accurate ConsumableMappingAdded notification without having
+	// to re-correlate the box to its row. Absent on non-consumable gifts.
+	ConsumableMappingId?: number
+	ConsumablePreExistingCount?: number
 	AvatarItemDesc: string
 	AvatarItemType: number | null
 	CurrencyType: number
@@ -83,6 +89,26 @@ export async function createGift(
 	return { id: row?.id ?? 0, createdAt }
 }
 
+/**
+ * Read a gift box by id regardless of owner, returning the box plus its owner account
+ * id (or null when no such box exists). Lets a consumer tell "already gone" (a
+ * harmless no-op) apart from "belongs to another player" (which must be forbidden).
+ */
+export async function getGift(
+	db: D1Database,
+	giftId: number
+): Promise<{ accountId: number; gift: StoredGift } | null> {
+	const row = await db
+		.prepare('SELECT id, account_id, data, created_at FROM received_gift WHERE id = ?1')
+		.bind(giftId)
+		.first<{ id: number; account_id: number; data: string; created_at: string }>()
+	if (row === null) return null
+	return {
+		accountId: row.account_id,
+		gift: { ...(JSON.parse(row.data) as GiftContent), Id: row.id, CreatedAt: row.created_at },
+	}
+}
+
 /** A player's pending gift boxes, oldest first, with `Id`/`CreatedAt` merged in. */
 export async function getPendingGifts(db: D1Database, accountId: number): Promise<StoredGift[]> {
 	const { results } = await db
@@ -97,18 +123,22 @@ export async function getPendingGifts(db: D1Database, accountId: number): Promis
 }
 
 /**
- * Delete (consume) a player's gift box by id. Returns false — changing nothing —
- * when the box doesn't exist or isn't theirs. The item was already granted at
- * purchase, so this only dismisses the box.
+ * Delete (consume) a player's gift box by id, returning the box's content (so the
+ * caller can act on what it held, e.g. notify the client of a new consumable), or
+ * null — changing nothing — when the box doesn't exist or isn't theirs. The item was
+ * already granted at purchase, so this only dismisses the box.
  */
 export async function consumeGift(
 	db: D1Database,
 	accountId: number,
 	giftId: number
-): Promise<boolean> {
-	const { meta } = await db
-		.prepare('DELETE FROM received_gift WHERE id = ?1 AND account_id = ?2')
+): Promise<StoredGift | null> {
+	const row = await db
+		.prepare(
+			'DELETE FROM received_gift WHERE id = ?1 AND account_id = ?2 RETURNING id, data, created_at'
+		)
 		.bind(giftId, accountId)
-		.run()
-	return meta.changes > 0
+		.first<GiftRow>()
+	if (row === null) return null
+	return { ...(JSON.parse(row.data) as GiftContent), Id: row.id, CreatedAt: row.created_at }
 }

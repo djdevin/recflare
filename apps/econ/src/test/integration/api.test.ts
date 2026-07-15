@@ -14,7 +14,7 @@ import {
 	getBalance,
 	spendCurrency,
 } from '../../balance-db'
-import { CONSUMABLE_SCHEMA_DDL } from '../../consumables-db'
+import { CONSUMABLE_SCHEMA_DDL, grantConsumable } from '../../consumables-db'
 import { INVENTORY_SCHEMA_DDL } from '../../inventory-db'
 import { OUTFIT_SCHEMA_DDL } from '../../outfit-db'
 
@@ -418,6 +418,76 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	test('POST /api/consumables/v1/consume reduces the count and deletes the row at zero', async () => {
+		// Seed account 313 with two Supreme Pizza instances (counts 3 and 1).
+		await grantConsumable(env.DB, 313, 'Supreme Pizza', 3)
+		await grantConsumable(env.DB, 313, 'Supreme Pizza', 1)
+
+		type Group = { ConsumableItemDesc: string; Ids: number[]; Count: number }
+		const pizza = async (sub = '313'): Promise<Group | undefined> => {
+			const groups = (await (
+				await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+					headers: await bearer(sub),
+				})
+			).json()) as Group[]
+			return groups.find((g) => g.ConsumableItemDesc === 'Supreme Pizza')
+		}
+		const consume = async (Id: number, DeltaCount: number, sub = '313') =>
+			exports.default.fetch(`${ORIGIN}/api/consumables/v1/consume`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ Id, DeltaCount }),
+			})
+
+		const before = (await pizza())!
+		expect(before.Count).toBe(4)
+		const [firstId, secondId] = before.Ids // firstId: count 3, secondId: count 1
+
+		// No token → 401.
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/api/consumables/v1/consume`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ Id: firstId, DeltaCount: 1 }),
+				})
+			).status
+		).toBe(401)
+
+		// Consume 1 from the count-3 instance → it drops to 2, still present.
+		expect((await consume(firstId, 1)).status).toBe(200)
+		expect((await pizza())!.Count).toBe(3)
+
+		// Consume the whole count-1 instance → its row is deleted.
+		await consume(secondId, 1)
+		const afterSecond = (await pizza())!
+		expect(afterSecond.Ids).not.toContain(secondId)
+		expect(afterSecond.Count).toBe(2)
+
+		// Over-consume the remaining instance (delta > count) → row deleted, group gone.
+		await consume(firstId, 5)
+		expect(await pizza()).toBeUndefined()
+
+		// Consuming a row you don't own is a no-op (scoped to the owner).
+		await grantConsumable(env.DB, 314, 'Soda', 2)
+		const sodaId = (
+			(await (
+				await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+					headers: await bearer('314'),
+				})
+			).json()) as Array<{ Ids: number[] }>
+		)[0].Ids[0]
+		await consume(sodaId, 2, '313') // account 313 tries to consume 314's row
+		const soda = (
+			(await (
+				await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+					headers: await bearer('314'),
+				})
+			).json()) as Array<{ Count: number }>
+		)[0]
+		expect(soda.Count).toBe(2)
+	})
+
 	test('GET /api/storefronts/v4/balance/2 401s without a token, returns the token balance', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`)
 		expect(anon.status).toBe(401)
@@ -758,6 +828,89 @@ describe('econ endpoints', () => {
 				...(await bearer('24')),
 				'Content-Type': 'application/x-www-form-urlencoded',
 			},
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(again.status).toBe(200)
+	})
+
+	test('POST /api/avatar/v2/gifts/consume opens a consumable box (fires ConsumableMappingAdded)', async () => {
+		// Buy a consumable (Supreme Pizza, item 2266 in storefront 300) for account 26 —
+		// its gift box carries a ConsumableItemDesc, so opening it notifies the client.
+		const buy = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('26')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 300,
+				PurchasableItemId: 2266,
+				CurrencyType: 2,
+				RequestedPrice: 95,
+			}),
+		})
+		expect(buy.status).toBe(200)
+		const giftId = ((await buy.json()) as { BalanceUpdates: Array<{ Data: Array<{ Id: number }> }> })
+			.BalanceUpdates[0].Data[0].Id
+
+		// Opening the box succeeds and fires the ConsumableMappingAdded push (which no-ops
+		// against the test hub stub — this asserts the notify path doesn't throw).
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: { ...(await bearer('26')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
+
+		// The box is gone; the consumable stays owned (granted at purchase).
+		expect(
+			await (
+				await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, { headers: await bearer('26') })
+			).json()
+		).toEqual([])
+		const unlocked = (await (
+			await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`, {
+				headers: await bearer('26'),
+			})
+		).json()) as Array<{ ConsumableItemDesc: string }>
+		expect(unlocked.length).toBeGreaterThan(0)
+	})
+
+	test('POST /api/avatar/v2/gifts/consume 403s when the box belongs to another player', async () => {
+		// Account 27 buys an item, producing a gift box owned by 27.
+		const buy = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+			method: 'POST',
+			headers: { ...(await bearer('27')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				StorefrontType: 3,
+				PurchasableItemId: 73,
+				CurrencyType: 2,
+				RequestedPrice: 4500,
+			}),
+		})
+		const giftId = ((await buy.json()) as { BalanceUpdates: Array<{ Data: Array<{ Id: number }> }> })
+			.BalanceUpdates[0].Data[0].Id
+
+		// Account 28 trying to open 27's box is forbidden — and 27 keeps it.
+		const forbidden = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: { ...(await bearer('28')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(forbidden.status).toBe(403)
+		const stillThere = (await (
+			await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, { headers: await bearer('27') })
+		).json()) as Array<{ Id: number }>
+		expect(stillThere.some((g) => g.Id === giftId)).toBe(true)
+
+		// The owner (27) opens it fine, and re-opening the now-gone box is a harmless 200.
+		const ok = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: { ...(await bearer('27')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ Id: String(giftId) }),
+		})
+		expect(ok.status).toBe(200)
+		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
+			method: 'POST',
+			headers: { ...(await bearer('27')), 'Content-Type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams({ Id: String(giftId) }),
 		})
 		expect(again.status).toBe(200)

@@ -37,6 +37,17 @@
 			"secret_name": "JWT_SECRET"
 		}
 	],
+	// The `notify` worker's NotificationsHub DO — used to push websocket notifications
+	// to a player (e.g. ConsumableMappingRemoved when a consumable is consumed).
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {

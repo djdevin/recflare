@@ -1,7 +1,5 @@
 import { Hono } from 'hono'
 
-import { consumeGift } from '@repo/domain'
-
 import { authedId, unauthorized } from '../http'
 import {
 	createInvention,
@@ -50,9 +48,9 @@ async function creatorsInvention(
 }
 
 // ---- Avatar gifts ----------------------------------------------------------
-// The avatar read endpoints (`v4/items`, `v2`, `v2/set`, `v3/saved`, `v2/gifts`)
-// live in the `econ` worker, which the client calls on the econ host — not here.
-// Only the gift generate/consume actions remain on this worker.
+// The avatar read endpoints (`v4/items`, `v2`, `v2/set`, `v3/saved`, `v2/gifts`) and
+// gift-box consume live in the `econ` worker, which the client calls on the econ host
+// — not here. Only the gift `generate` action remains on this worker.
 export const avatarRoutes = new Hono<App>({ strict: false })
 	.post('/api/avatar/v2/gifts/generate', async (c) => {
 		const id = await authedId(c)
@@ -88,19 +86,6 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			GiftRarity: 20,
 			Message: message,
 		})
-	})
-	.post('/api/avatar/v2/gifts/consume', async (c) => {
-		const id = await authedId(c)
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const giftId = typeof body.Id === 'string' ? Number.parseInt(body.Id, 10) || 0 : 0
-		// Opening a box just deletes it — the item was granted into the player's inventory
-		// when they bought it (see the `econ` worker's buyItem), so there's nothing to grant.
-		// Answers the `{ error, success, value }` envelope a captured real consume returns
-		// (not an empty body — the client parses it to finish opening the box). A missing/zero
-		// id, no token, or a box that's already gone (or isn't theirs) is a scoped no-op, not
-		// an error. Mirrors the econ worker's consume route (the client may call either host).
-		if (id !== null && giftId !== 0) await consumeGift(c.env.DB, id, giftId)
-		return c.json({ error: '', success: true, value: null })
 	})
 
 	// Custom avatar item gates — real Rec Room client endpoints with no backing
