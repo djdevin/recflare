@@ -56,6 +56,26 @@ interface RoomRole {
 }
 
 /**
+ * Room roles that confer owner-level management of a room: Owner (255, the
+ * Creator's implicit tier) and CoOwner (30). The reference gates its room-admin
+ * actions on this set.
+ */
+const MANAGE_ROLES: ReadonlySet<number> = new Set([Role.Owner, Role.CoOwner])
+
+/**
+ * Whether an account may manage a room — its creator, or the holder of a
+ * Creator/CoOwner role on the room's `Roles`. This is the owner-or-co-owner gate
+ * the reference applies to room-admin actions (editing room data, viewing a room's
+ * live instances). Shared so the `rooms` and `match` workers apply the same check
+ * rather than each re-deriving the role set.
+ */
+export function canManageRoom(room: Room, accountId: number): boolean {
+	if (room.CreatorAccountId === accountId) return true
+	const roles = Array.isArray(room.Roles) ? (room.Roles as RoomRole[]) : []
+	return roles.some((r) => r.AccountId === accountId && MANAGE_ROLES.has(r.Role))
+}
+
+/**
  * Clone an existing room into a new one owned by `accountId`. Copies the source
  * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
  * name, and the new owner; the `base` template tag is dropped so user clones

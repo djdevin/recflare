@@ -50,6 +50,8 @@ const TEST_ROOMS = [
 		IsDorm: false,
 		Accessibility: 1,
 		CreatorAccountId: 42,
+		// Account 43 is a co-owner (Role 30) — it may view the room's instances too.
+		Roles: [{ AccountId: 43, Role: 30, LastChangedByAccountId: null, InvitedRole: 0 }],
 		SubRooms: [{ SubRoomId: 3, UnitySceneId: RECCENTER_SCENE, MaxPlayers: 8 }],
 	},
 	{
@@ -763,11 +765,12 @@ describe('auth-gated endpoints', () => {
 		expect(players[0]).toMatchObject({ playerId: 55, isOnline: true })
 	})
 
-	test('GET /room/:id/instances is auth-gated, owner-only, and lists the room’s instances', async () => {
+	test('GET /room/:id/instances is auth-gated, owner/co-owner-only, and lists the room’s instances', async () => {
 		// No token → 401.
 		expect((await exports.default.fetch(`${ORIGIN}/room/3/instances`)).status).toBe(401)
 
-		// Not the owner (room 3 is owned by account 42) → 403.
+		// A valid token but no role on the room (room 3 is owned by account 42, with
+		// account 43 as co-owner) → 403.
 		expect(
 			(
 				await exports.default.fetch(`${ORIGIN}/room/3/instances`, {
@@ -797,5 +800,12 @@ describe('auth-gated endpoints', () => {
 		const instances = (await res.json()) as Array<{ roomId: number; roomInstanceId: number }>
 		expect(instances.length).toBeGreaterThanOrEqual(1)
 		expect(instances.every((i) => i.roomId === 3)).toBe(true)
+
+		// The co-owner (account 43, Role 30) may view the instances too.
+		const coOwner = await exports.default.fetch(`${ORIGIN}/room/3/instances`, {
+			headers: await bearer('43'),
+		})
+		expect(coOwner.status).toBe(200)
+		expect((await coOwner.json()) as unknown[]).toHaveLength(instances.length)
 	})
 })

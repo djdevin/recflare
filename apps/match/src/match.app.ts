@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	canManageRoom,
 	createRoomInstance,
 	deleteExpiredPresence,
 	getAccount,
@@ -607,9 +608,9 @@ const app = new Hono<App>()
 	})
 
 	// The room's live instances — the owner's view of active sessions of their room.
-	// Auth-gated (401) and owner-only (403): the caller must be the room's creator.
-	// Unknown room → 404. Returns the bare RoomInstance DTO array (empty when the
-	// room has no live instances).
+	// Auth-gated (401) and owner/co-owner-only (403): the caller must be the room's
+	// creator or hold a Creator/CoOwner role on it. Unknown room → 404. Returns the
+	// bare RoomInstance DTO array (empty when the room has no live instances).
 	.get('/room/:roomId{[0-9]+}/instances', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
@@ -617,7 +618,9 @@ const app = new Hono<App>()
 		const roomId = Number.parseInt(c.req.param('roomId'), 10)
 		const room = await getRoomById(c.env.DB, roomId)
 		if (!room) return c.body(null, 404)
-		if (room.CreatorAccountId !== id) return c.body(null, 403)
+		// The room's creator *or* a co-owner (Role 30) may see its live instances —
+		// same owner-or-co-owner gate the rooms worker uses for room-admin actions.
+		if (!canManageRoom(room, id)) return c.body(null, 403)
 
 		return c.json(await getRoomInstancesByRoom(c.env.DB, roomId))
 	})

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	canManageRoom,
 	cloneRoom,
 	cloneSubRoom,
 	findSubRoom,
@@ -132,25 +133,6 @@ async function authedAccountId(c: Context<App>): Promise<number | null> {
 /** 401 for the auth-gated `*by/me` endpoints — no stub-account fallback. */
 function unauthorized(c: Context<App>) {
 	return c.json({ error: 'Unauthorized' }, 401)
-}
-
-/**
- * Room role values the reference treats as edit-capable: Creator (255) and
- * CoOwner. (CoOwner's numeric value is a best guess from the seed data — base
- * rooms give the co-owner account Role 30.)
- */
-const EDIT_ROLES = new Set([255, 30])
-
-/**
- * Whether an account may edit a room's data — its creator, or a holder of a
- * Creator/CoOwner role. Mirrors the reference's SetRoomData permission check.
- */
-function canEditRoomData(room: Record<string, unknown>, accountId: number): boolean {
-	if (room.CreatorAccountId === accountId) return true
-	const roles = Array.isArray(room.Roles) ? (room.Roles as Array<Record<string, unknown>>) : []
-	return roles.some(
-		(r) => r.AccountId === accountId && typeof r.Role === 'number' && EDIT_ROLES.has(r.Role)
-	)
 }
 
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
@@ -615,7 +597,7 @@ const app = new Hono<App>()
 				Error: 'This room does not exist!',
 			})
 		}
-		if (!canEditRoomData(room, accountId)) {
+		if (!canManageRoom(room, accountId)) {
 			return roomResult(c, {
 				Success: false,
 				ErrorId: 'Rooms.PermissionDenied',
