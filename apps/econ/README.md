@@ -28,11 +28,11 @@ HairColor }` seeded for a new player.
 - `GET /api/avatar/v2/gifts` — `[Authorize]`. The player's unopened gift boxes
   (from their purchases), out of the shared `received_gift` table; `[]` when
   they have none.
-- `POST /api/avatar/v2/gifts/consume` — open a box (form body `Id=<n>&UnlockedLevel=<n>`,
-  posted with a trailing slash). Deletes the box scoped to the caller; the item was
-  already granted at purchase, so this is cosmetic. Always answers an empty `200`, even
-  for a missing/already-opened box, so a fire-and-forget re-open never errors. Also
-  served by the `api` worker (the client may call either host).
+- `POST /api/avatar/v2/gifts/consume` — open a box (form body `Id=<n>&UnlockedLevel=<n>`).
+  Deletes the box scoped to the caller; the item was already granted at purchase, so this
+  is cosmetic. Always answers an empty `200`, even for a missing/already-opened box, so a
+  fire-and-forget re-open never errors. Also served by the `api` worker (the client may
+  call either host).
 - `POST /api/storefronts/v2/buyItem` — `[Authorize]`. Buy a storefront item.
   Looks the item up in `static/storefronts/sf{StorefrontType}.json`, confirms the
   client's `RequestedPrice` still matches, debits the buyer atomically, grants the

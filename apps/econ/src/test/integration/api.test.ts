@@ -643,7 +643,7 @@ describe('econ endpoints', () => {
 		}
 		const giftId = bought.BalanceUpdates[0].Data[0].Id
 
-		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
 			method: 'POST',
 			headers: {
 				...(await bearer('24')),
@@ -666,7 +666,7 @@ describe('econ endpoints', () => {
 		expect(list.some((i) => i.FriendlyName === 'Class of 2016')).toBe(true)
 
 		// Opening it again is a harmless no-op — still 200.
-		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
+		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
 			method: 'POST',
 			headers: {
 				...(await bearer('24')),
