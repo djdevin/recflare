@@ -2,10 +2,12 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
 import { NotificationsHub } from './notifications-hub'
 
 import type { App } from './context'
+import type { MiddlewareHandler } from 'hono'
 
 /**
  * Maps a SignalR hub at `/hub/v1`. The hub itself — WebSocket transport, the
@@ -24,6 +26,25 @@ const HUB_INSTANCE = 'global'
  */
 function isNotificationType(value: unknown): value is string | number {
 	return (typeof value === 'string' && value !== '') || typeof value === 'number'
+}
+
+/**
+ * Account ids allowed to call the internal send/broadcast endpoints. Temporary
+ * lockdown until these are properly gated — for now only these admins can push
+ * notifications through the shared hub.
+ */
+const ADMIN_ACCOUNT_IDS = new Set([1, 2])
+
+/**
+ * Gates the `/internal/*` endpoints on a valid Bearer token whose `sub` is an
+ * allowed admin account. 401 for a missing/invalid token, 403 for a valid token
+ * that isn't an admin.
+ */
+const requireAdmin: MiddlewareHandler<App> = async (c, next) => {
+	const accountId = await validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
+	if (accountId === null) return c.json({ error: 'Unauthorized' }, 401)
+	if (!ADMIN_ACCOUNT_IDS.has(accountId)) return c.json({ error: 'Forbidden' }, 403)
+	await next()
 }
 
 const app = new Hono<App>()
@@ -64,8 +85,10 @@ const app = new Hono<App>()
 	})
 
 	// ---- Internal service-to-service send/broadcast --------------------------
-	// Lets other workers push notifications through the shared hub.
-	// TODO: protect these before production.
+	// Lets other workers push notifications through the shared hub. Gated to admin
+	// accounts (see requireAdmin) as a temporary lockdown.
+	.use('/internal/*', requireAdmin)
+
 	.post('/internal/notify', async (c) => {
 		const body = await c.req
 			.json<{

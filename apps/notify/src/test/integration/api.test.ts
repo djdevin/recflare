@@ -1,10 +1,47 @@
+import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../notify.app'
 
+import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
 const ORIGIN = 'https://example.com'
 const RS = '\u001e'
+
+// Mint a token the way the `auth` worker does, signing with the shared test key
+// seeded into the JWT_SECRET store. Accounts 1 and 2 are the internal-endpoint admins.
+const TEST_SECRET = 'test-signing-key'
+function b64url(input: ArrayBuffer | string): string {
+	const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
+	let binary = ''
+	for (const byte of bytes) binary += String.fromCharCode(byte)
+	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+async function bearer(sub: string): Promise<Record<string, string>> {
+	const now = Math.floor(Date.now() / 1000)
+	const signingInput = `${b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64url(
+		JSON.stringify({ sub, exp: now + 3600 })
+	)}`
+	const key = await crypto.subtle.importKey(
+		'raw',
+		new TextEncoder().encode(TEST_SECRET),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	)
+	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput))
+	return { Authorization: `Bearer ${signingInput}.${b64url(sig)}` }
+}
+
+// Seed the shared JWT signing key into the local Secrets Store so .get() resolves.
+beforeAll(async () => {
+	await adminSecretsStore(env.JWT_SECRET).create(TEST_SECRET)
+})
 
 interface HubRecord {
 	type?: number
@@ -67,10 +104,15 @@ async function connect(
 
 const send = (ws: WebSocket, msg: HubRecord) => ws.send(JSON.stringify(msg) + RS)
 
-const post = (path: string, body: unknown) =>
+// The /internal/* endpoints are admin-gated, so default to an admin (account 1)
+// Bearer token; pass `auth` to override (e.g. to test the 401/403 paths).
+const post = async (path: string, body: unknown, auth?: Record<string, string>) =>
 	exports.default.fetch(`${ORIGIN}${path}`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers: {
+			'Content-Type': 'application/json',
+			...(auth ?? (await bearer('1'))),
+		},
 		body: JSON.stringify(body),
 	})
 
@@ -93,6 +135,31 @@ describe('negotiate', () => {
 	test('GET /hub/v1 without an upgrade header is 426', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/hub/v1`)
 		expect(res.status).toBe(426)
+	})
+})
+
+describe('internal endpoint auth', () => {
+	const body = { playerId: 1, notificationType: 1, data: {} }
+
+	test('401 without a Bearer token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/internal/notify`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+		})
+		expect(res.status).toBe(401)
+	})
+
+	test('403 for a valid token that is not an admin', async () => {
+		const res = await post('/internal/notify', body, await bearer('3'))
+		expect(res.status).toBe(403)
+	})
+
+	test('admin accounts 1 and 2 are allowed', async () => {
+		for (const sub of ['1', '2']) {
+			const res = await post('/internal/broadcast', { notificationType: 1 }, await bearer(sub))
+			expect(res.status).toBe(200)
+		}
 	})
 })
 
@@ -134,7 +201,10 @@ describe('notification delivery', () => {
 		const { ws, waitFor } = await connect('conn-pending')
 		send(ws, { type: 1, target: 'SubscribeToPlayers', arguments: [{ playerIds: [playerId] }] })
 		const note = await waitFor((r) => r.type === 1 && r.target === 'Notification')
-		expect(JSON.parse((note.arguments as string[])[0])).toEqual({ Id: 2, Msg: { messageId: 'm1' } })
+		expect(JSON.parse((note.arguments as string[])[0])).toEqual({
+			Id: '2',
+			Msg: { messageId: 'm1' },
+		})
 
 		ws.close()
 	})
@@ -158,7 +228,10 @@ describe('notification delivery', () => {
 		expect(await res.json()).toMatchObject({ delivered: 1, queued: false })
 
 		const note = await waitFor((r) => r.type === 1 && r.target === 'Notification')
-		expect(JSON.parse((note.arguments as string[])[0])).toEqual({ Id: 1, Msg: { accountId: 42 } })
+		expect(JSON.parse((note.arguments as string[])[0])).toEqual({
+			Id: '1',
+			Msg: { accountId: 42 },
+		})
 
 		ws.close()
 	})
@@ -172,9 +245,32 @@ describe('notification delivery', () => {
 		expect(((await res.json()) as { delivered: number }).delivered).toBeGreaterThanOrEqual(1)
 		const note = await waitFor((r) => r.type === 1 && r.target === 'Notification')
 		expect(JSON.parse((note.arguments as string[])[0])).toEqual({
-			Id: 25,
+			Id: '25',
 			Msg: { message: 'maint' },
 		})
+		ws.close()
+	})
+
+	test('emits a numeric notificationType as a string Id', async () => {
+		// The client dispatches on a string Id, so numeric codes (e.g. econ's
+		// NotificationType enum) must be serialized as strings or they're dropped.
+		const playerId = 9003
+		const { ws, waitFor } = await connect('conn-numeric-id')
+		send(ws, {
+			type: 1,
+			invocationId: 's',
+			target: 'SubscribeToPlayers',
+			arguments: [{ playerIds: [playerId] }],
+		})
+		await waitFor((r) => r.type === 3 && r.invocationId === 's')
+
+		await post('/internal/notify', { playerId, notificationType: 71, data: { itemId: 5 } })
+
+		const note = await waitFor((r) => r.type === 1 && r.target === 'Notification')
+		const payload = JSON.parse((note.arguments as string[])[0]) as { Id: unknown }
+		expect(payload.Id).toBe('71')
+		expect(typeof payload.Id).toBe('string')
+
 		ws.close()
 	})
 })

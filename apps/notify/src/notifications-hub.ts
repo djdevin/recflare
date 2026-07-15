@@ -276,7 +276,10 @@ export class NotificationsHub extends DurableObject<Env> {
 	/**
 	 * Build the `Notification` argument: a JSON string `{ Id, Msg }`
 	 * (null values are dropped from `Msg`). `Id` is a client-defined tag — a
-	 * string name (e.g. "AccountUpdate") or a numeric code.
+	 * string name (e.g. "AccountUpdate") or a numeric code. It is always emitted
+	 * as a string: the client dispatches on a string `Id`, so a numeric frame
+	 * (e.g. the `NotificationType` enum values sent by `econ`) would otherwise be
+	 * silently dropped.
 	 */
 	private buildNotificationPayload(
 		notificationType: string | number,
@@ -289,7 +292,7 @@ export class NotificationsHub extends DurableObject<Env> {
 				msg[key] = value
 			}
 		}
-		return JSON.stringify({ Id: notificationType ?? '', Msg: msg })
+		return JSON.stringify({ Id: String(notificationType), Msg: msg })
 	}
 
 	private invocation(target: string, args: unknown[]): string {
