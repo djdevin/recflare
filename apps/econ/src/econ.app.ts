@@ -326,6 +326,11 @@ const app = new Hono<App>({ strict: false })
 	// per-player progress.
 	.get('/api/objectives/v1/myprogress', (c) => c.json(myProgress))
 
+	// Clears a group of objectives. No per-player progress to clear yet, so this
+	// is a no-op that returns an empty array (a 404 here breaks the client). Accepts
+	// GET or POST since the client may use either.
+	.on(['GET', 'POST'], '/api/objectives/v1/cleargroup', (c) => c.json([]))
+
 	// The player's avatar, stored as a JSON blob on their account row. Falls back
 	// to the default outfit when they haven't saved one — the client's parser NREs
 	// on an empty OutfitSelections (real RecNet never returns one).

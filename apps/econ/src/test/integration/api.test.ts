@@ -260,6 +260,14 @@ describe('econ endpoints', () => {
 		expect(Array.isArray(body.ObjectiveGroups)).toBe(true)
 	})
 
+	test('objectives/v1/cleargroup returns [] for GET and POST (no auth)', async () => {
+		for (const method of ['GET', 'POST'] as const) {
+			const res = await exports.default.fetch(`${ORIGIN}/api/objectives/v1/cleargroup`, { method })
+			expect(res.status).toBe(200)
+			expect(await res.json()).toEqual([])
+		}
+	})
+
 	test('GET /api/checklist/v1/current 401s without a token, returns [] with one', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/checklist/v1/current`)
 		expect(anon.status).toBe(401)
