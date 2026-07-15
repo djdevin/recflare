@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 
+import charadesWords from '../../static/charades.json'
+
 import type { App } from '../context'
 
 // Text sanitization, keepsakes, objectives/events/rewards, and the misc
@@ -12,6 +14,11 @@ export const gameplayRoutes = new Hono<App>({ strict: false })
 		return c.json(typeof body.Value === 'string' ? body.Value : '')
 	})
 	.post('/api/sanitize/v1/isPure', (c) => c.json({ IsPure: true }))
+
+	// ---- Activities -----------------------------------------------------------
+	// Word bank for the Charades activity. The client requests the list by
+	// activity name (`.../words/Charades`); other activities have no data yet.
+	.get('/api/activities/charades/v1/words/:activity', (c) => c.json(charadesWords))
 
 	// Keepsakes (room mementos). Stubbed empty.
 	.get('/api/keepsakes/globalconfig', (c) =>

@@ -130,6 +130,39 @@ async function pushConsumableAdded(
 }
 
 /**
+ * Push a StorefrontBalanceUpdate to a player after their balance changes, mirroring the
+ * reference's
+ * `HubSendToPlayer(accountID, NotifFrame(StorefrontBalanceUpdate, {Balance, CurrencyType, BalanceType}))`.
+ * The client applies it to the shown balance so a purchase debit reflects immediately,
+ * without waiting for a `GET /balance` re-fetch. `Balance` is the resulting total in that
+ * currency (not the delta), `BalanceType` is -2 (account-wide, all platforms). Best-effort:
+ * a hub failure is logged and swallowed, since the balance change has already committed.
+ */
+async function pushBalanceUpdate(
+	c: Context<App>,
+	accountId: number,
+	currencyType: number,
+	balance: number
+): Promise<void> {
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			accountId,
+			NotificationType.StorefrontBalanceUpdate,
+			{
+				Balance: balance,
+				CurrencyType: currencyType,
+				BalanceType: ALL_PLATFORMS,
+			}
+		)
+	} catch (err) {
+		logger.error('failed to push StorefrontBalanceUpdate notification', {
+			accountId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
  * Project a stored avatar into the public render subset returned by
  * `GET /api/avatar/v2/:id` — the fields needed to draw another player's avatar
  * (the full blob also holds `OutfitSelectionsV2`/`CustomAvatarItems`, which this
@@ -602,6 +635,12 @@ const app = new Hono<App>({ strict: false })
 			receiverId,
 			toGiftContent(item.GiftDrop, message, consumableCount, consumableMappingId, consumablePreExisting)
 		)
+
+		// Push the buyer's new (reduced) balance over the socket so their client updates the
+		// shown total immediately — the buyer (`id`) is who was debited, in the currency they
+		// spent. Best-effort; the HTTP response still carries the change either way.
+		const newBalance = await getBalance(c.env.DB, id, currencyType as number, startingTokens)
+		await pushBalanceUpdate(c, id, currencyType as number, newBalance)
 
 		// The response mirrors a captured real buyItem: `Balance` is the change applied (the
 		// negated price), not the resulting balance (the client reads its new total from

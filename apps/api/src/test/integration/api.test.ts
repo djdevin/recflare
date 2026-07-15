@@ -190,6 +190,15 @@ describe('public endpoints', () => {
 		})
 	})
 
+	test('GET /api/activities/charades/v1/words/Charades returns the word bank', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/activities/charades/v1/words/Charades`)
+		expect(res.status).toBe(200)
+		const words = (await res.json()) as Array<{ Id: number; Difficulty: number; EN_US: string }>
+		expect(Array.isArray(words)).toBe(true)
+		expect(words.length).toBeGreaterThan(0)
+		expect(words[0]).toEqual({ Id: 1, Difficulty: 0, EN_US: 'David Bowie' })
+	})
+
 	test('GET /api/playerevents/v1/clubs returns an empty event list', async () => {
 		// The client deserializes this as a bare array — an envelope here fails with
 		// "expected:'[', actual:'{'". No player-event storage yet → empty.
