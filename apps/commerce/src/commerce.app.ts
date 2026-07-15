@@ -41,4 +41,8 @@ const app = new Hono<App>()
 	// an empty list is the client's "no active campaigns" state.
 	.get('/purchasecampaign/allcurrent/v2', (c) => c.json([]))
 
+	// Token-bundle purchase reminders (the "buy more tokens" nudge). None to show,
+	// and an empty list is the client's "no reminders" state.
+	.get('/reminder/currentTokenBundles/v2', (c) => c.json([]))
+
 export default app

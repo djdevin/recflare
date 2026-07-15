@@ -32,4 +32,10 @@ describe('commerce endpoints', () => {
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
 	})
+
+	it('GET /reminder/currentTokenBundles/v2 returns []', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/reminder/currentTokenBundles/v2`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
 })

@@ -116,6 +116,9 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 	// The featured custom-avatar-item feed. No curated items yet → an empty list.
 	.get('/api/customAvatarItems/v1/featured', (c) => c.json([]))
 
+	// The "hot" (trending) custom-avatar-item feed. No items yet → an empty list.
+	.get('/api/customAvatarItems/v1/hot', (c) => c.json([]))
+
 	// Custom avatar items created by a given account. No storage yet → an empty
 	// paginated result (matches the econ `customAvatarItems/v1/owned` shape).
 	.get('/api/customAvatarItems/v2/fromCreator/:accountId{[0-9]+}', (c) =>

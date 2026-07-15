@@ -78,9 +78,10 @@ export function canManageRoom(room: Room, accountId: number): boolean {
 /**
  * Clone an existing room into a new one owned by `accountId`. Copies the source
  * room's content (scene/subrooms/settings), assigning a fresh RoomId, the given
- * name, and the new owner; the `base` template tag is dropped so user clones
- * aren't themselves listed as base rooms. Returns the new room, or null when the
- * source isn't in D1 or disallows cloning.
+ * name, and the new owner. The clone starts with an empty tag set — the source's
+ * tags (including the `base` template tag) do not carry over, so the owner tags the
+ * clone from scratch. Returns the new room, or null when the source isn't in D1 or
+ * disallows cloning.
  */
 export async function cloneRoom(
 	db: D1Database,
@@ -96,12 +97,6 @@ export async function cloneRoom(
 		.first<{ maxId: number | null }>()
 	const newRoomId = (row?.maxId ?? 0) + 1
 
-	const tags = Array.isArray(source.Tags)
-		? (source.Tags as Array<Record<string, unknown>>).filter(
-				(t) => String(t?.Tag).toLowerCase() !== 'base'
-			)
-		: source.Tags
-
 	// Ownership is reset to the cloner — the source room's Roles (its creator and
 	// any co-owners, e.g. the seeded base-room roles for accounts 1/2) must NOT
 	// carry over, or the clone would still list the template's owner as owner.
@@ -115,7 +110,8 @@ export async function cloneRoom(
 		Name: name,
 		CreatorAccountId: accountId,
 		IsDorm: false,
-		Tags: tags,
+		// Start fresh: drop every tag the source carried (including `base`).
+		Tags: [],
 		Roles: roles,
 		CreatedAt: new Date().toISOString(),
 	}
