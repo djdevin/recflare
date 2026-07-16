@@ -522,25 +522,30 @@ const app = new Hono<App>()
 		return c.json({ success: true })
 	})
 
-	// Developer role lookup. The role is off by default and only an operator grants
-	// it (via `runx admin grant-developer`, which sets the account's isDeveloper flag).
-	// The same flag also rides in the token's `role` claim (see accountRoles).
+	// Developer role lookup. Returns a bare JSON boolean (the client reads the body as
+	// a bool), and 404s for an unknown player — mirroring the reference API. The role
+	// is off by default and only an operator grants it (via `runx admin grant-developer`,
+	// which sets the account's isDeveloper flag); it also rides in the token's `role`
+	// claim (see accountRoles).
 	.get('/role/developer/:id', async (c) => {
 		const { id } = c.req.param()
 		logger.info('developer role lookup', { id })
 		const accountId = Number.parseInt(id, 10)
 		const account = Number.isNaN(accountId) ? null : await getAccount(c.env.DB, accountId)
-		return c.json({ success: account?.isDeveloper === true })
+		if (!account) return c.body(null, 404)
+		return c.json(account.isDeveloper === true)
 	})
 
-	// Moderator role lookup, mirroring developer. Operator-granted only (via
-	// `runx admin grant-moderator`); the flag also rides in the token's `role` claim.
+	// Moderator role lookup, mirroring developer (bare boolean, 404 for unknown player).
+	// Operator-granted only (via `runx admin grant-moderator`); the flag also rides in
+	// the token's `role` claim.
 	.get('/role/moderator/:id', async (c) => {
 		const { id } = c.req.param()
 		logger.info('moderator role lookup', { id })
 		const accountId = Number.parseInt(id, 10)
 		const account = Number.isNaN(accountId) ? null : await getAccount(c.env.DB, accountId)
-		return c.json({ success: account?.isModerator === true })
+		if (!account) return c.body(null, 404)
+		return c.json(account.isModerator === true)
 	})
 
 export default app

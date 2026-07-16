@@ -587,30 +587,37 @@ describe('auth worker routes', () => {
 		expect(await rotate.json()).toEqual({ success: true })
 	})
 
-	test('GET /role/developer/:id does not grant developer', async () => {
+	test('GET /role/developer/:id returns a bare false for an un-flagged account', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/role/developer/42`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ success: false })
+		expect(await res.json()).toBe(false)
 	})
 
-	test('GET /role/developer/:id grants developer when the account is flagged', async () => {
+	test('GET /role/developer/:id returns a bare true when the account is flagged', async () => {
 		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 			.bind(JSON.stringify({ accountId: 4242, username: 'DevPlayer', isDeveloper: true }))
 			.run()
 		const res = await exports.default.fetch(`${ORIGIN}/role/developer/4242`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ success: true })
+		expect(await res.json()).toBe(true)
 	})
 
-	test('GET /role/moderator/:id reflects the isModerator flag', async () => {
+	test('GET /role/developer/:id 404s for an unknown player', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/role/developer/99999`)
+		expect(res.status).toBe(404)
+	})
+
+	test('GET /role/moderator/:id reflects the isModerator flag as a bare boolean', async () => {
 		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 			.bind(JSON.stringify({ accountId: 4343, username: 'ModPlayer', isModerator: true }))
 			.run()
 		const granted = await exports.default.fetch(`${ORIGIN}/role/moderator/4343`)
-		expect(await granted.json()).toEqual({ success: true })
+		expect(await granted.json()).toBe(true)
 		// An account without the flag (42) is not a moderator.
 		const plain = await exports.default.fetch(`${ORIGIN}/role/moderator/42`)
-		expect(await plain.json()).toEqual({ success: false })
+		expect(await plain.json()).toBe(false)
+		// Unknown player → 404.
+		expect((await exports.default.fetch(`${ORIGIN}/role/moderator/99999`)).status).toBe(404)
 	})
 
 	test('unknown path returns 404', async () => {
