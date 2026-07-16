@@ -1,14 +1,21 @@
 /**
- * Password hashing for /connect/token credential login and
- * /account/me/changepassword. PBKDF2-SHA256 with a random per-password salt,
- * stored as `salt:hash` (both base64). The raw password is never persisted.
+ * Password hashing for the `admin` CLI. This is a deliberate copy of the canonical
+ * implementation in `@repo/domain` (packages/domain/src/password.ts), which the auth
+ * worker uses to verify logins. It's duplicated rather than imported because
+ * `@repo/tools` cannot depend on a workspace package (every package depends on
+ * `@repo/tools` for its scripts, so importing one back would be a dependency cycle).
+ *
+ * The format MUST stay identical to the canonical version or a password set by the
+ * CLI won't verify at login — `password.spec.ts` round-trips a hash to catch drift.
+ * PBKDF2-SHA256, random 16-byte salt, stored as `salt:hash` (both base64).
  */
 const ITERATIONS = 100_000
 
 const b64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
-const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0))
+const fromB64 = (s: string): Uint8Array<ArrayBuffer> =>
+	Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0))
 
-async function deriveBits(password: string, salt: Uint8Array): Promise<Uint8Array> {
+async function deriveBits(password: string, salt: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
 	const keyMaterial = await crypto.subtle.importKey(
 		'raw',
 		new TextEncoder().encode(password),

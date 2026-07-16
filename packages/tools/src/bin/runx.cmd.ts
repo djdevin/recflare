@@ -3,6 +3,7 @@ import 'zx/globals'
 import { program } from '@commander-js/extra-typings'
 import { catchProcessError } from '@jahands/cli-tools/proc'
 
+import { adminCmd } from '../cmd/admin.cmd'
 import { buildCmd } from '../cmd/build.cmd'
 import { checkCmd } from '../cmd/check.cmd'
 import { ciCmd } from '../cmd/ci.cmd'
@@ -18,6 +19,7 @@ program
 	// While `packages/tools/bin` scripts work well for simple tasks,
 	// a typescript CLI is nicer for more complex things.
 
+	.addCommand(adminCmd)
 	.addCommand(fixCmd)
 	.addCommand(buildCmd)
 	.addCommand(checkCmd)

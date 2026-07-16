@@ -81,6 +81,12 @@ export interface Account {
 	 * DTO (the DTO builders pick only known fields), so it doesn't leak.
 	 */
 	passwordHash?: string
+	/**
+	 * Whether this account holds the developer role (backs GET /role/developer/:id).
+	 * Not set by any player-facing flow — only an operator grants it, via
+	 * `runx admin grant-developer`. Absent/false means no developer role.
+	 */
+	isDeveloper?: boolean
 }
 
 interface AccountRow {

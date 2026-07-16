@@ -9,16 +9,17 @@ import {
 	getAccountByUsername,
 	getAccountsByPlatformId,
 	getPasswordHash,
+	hashPassword,
 	RoomInstanceType,
 	setLastLoginTime,
 	setLoginContext,
 	setPasswordHash,
 	setPresence,
+	verifyPassword,
 } from '@repo/domain'
 import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from '@repo/jwt'
 
-import { hashPassword, verifyPassword } from './password'
 import { consumeRefreshToken, issueRefreshToken } from './refresh-db'
 import { verifySteamTicket } from './steam-ticket'
 
@@ -497,11 +498,14 @@ const app = new Hono<App>()
 		return c.json({ success: true })
 	})
 
-	// Developer role lookup. No developer role granted by default.
-	.get('/role/developer/:id', (c) => {
+	// Developer role lookup. The role is off by default and only an operator grants
+	// it (via `runx admin grant-developer`, which sets the account's isDeveloper flag).
+	.get('/role/developer/:id', async (c) => {
 		const { id } = c.req.param()
 		logger.info('developer role lookup', { id })
-		return c.json({ success: false })
+		const accountId = Number.parseInt(id, 10)
+		const account = Number.isNaN(accountId) ? null : await getAccount(c.env.DB, accountId)
+		return c.json({ success: account?.isDeveloper === true })
 	})
 
 export default app

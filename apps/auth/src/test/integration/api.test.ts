@@ -4,10 +4,9 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../auth.app'
 
-import { getAccountsByDeviceId, PRESENCE_SCHEMA_DDL, SCHEMA_DDL } from '@repo/domain'
+import { getAccountsByDeviceId, hashPassword, PRESENCE_SCHEMA_DDL, SCHEMA_DDL } from '@repo/domain'
 
 import { isLinkedToPlatformIdentity } from '../../auth.app'
-import { hashPassword } from '../../password'
 import { REFRESH_SCHEMA_DDL } from '../../refresh-db'
 
 import type { Env } from '../../context'
@@ -573,6 +572,15 @@ describe('auth worker routes', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/role/developer/42`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ success: false })
+	})
+
+	test('GET /role/developer/:id grants developer when the account is flagged', async () => {
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: 4242, username: 'DevPlayer', isDeveloper: true }))
+			.run()
+		const res = await exports.default.fetch(`${ORIGIN}/role/developer/4242`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
 	})
 
 	test('unknown path returns 404', async () => {
