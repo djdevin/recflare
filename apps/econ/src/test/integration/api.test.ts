@@ -946,6 +946,38 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	test('POST /api/challenge/v2/updateProgress echoes the challenge, never complete (stub)', async () => {
+		const config =
+			'{"ct":1,"ipc":false,"ctc":[{"ct":0,"ipc":false,"wc":[{"ct":6,"vs":[2]},{"ct":7,"vs":[{"l":"a673712c-877f-4749-b69a-4a4c6310d545"}]}]}],"t":5,"cc":1}'
+		const res = await exports.default.fetch(`${ORIGIN}/api/challenge/v2/updateProgress`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				ChallengeMapId: '17',
+				ChallengeId: '49',
+				Config: config,
+				Complete: 'False',
+			}),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			ChallengeMapId: 17,
+			ChallengeId: 49,
+			Config: config,
+			Complete: false,
+		})
+	})
+
+	test('POST /api/gamerewards/v1/request returns [] (stub)', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/gamerewards/v1/request`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'rewardType=FirstActivityOfDay&Message=First%20Game%20of%20the%20Day',
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('GET /api/roomkeys/v1/mine returns []', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/mine`)
 		expect(res.status).toBe(200)

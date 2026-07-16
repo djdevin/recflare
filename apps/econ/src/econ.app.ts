@@ -695,8 +695,31 @@ const app = new Hono<App>({ strict: false })
 	// per-rotation challenge data is wired up.
 	.get('/api/challenge/v2/getCurrent', (c) => c.json(weeklyChallenge))
 
+	// Report progress on a weekly challenge. The client evaluates the challenge's rule
+	// tree locally and posts ChallengeMapId/ChallengeId, that tree in `Config`, and
+	// whether it now considers the challenge `Complete`. Stubbed: with no challenge-
+	// progress DB yet we persist nothing and never mark a challenge complete (so the
+	// gift flow isn't triggered). Echo the identifying fields back with Complete=false
+	// so the client gets a well-formed, non-null body to deserialize.
+	.post('/api/challenge/v2/updateProgress', async (c) => {
+		const body = await c.req
+			.json<{ ChallengeMapId?: string | number; ChallengeId?: string | number; Config?: string }>()
+			.catch(() => ({}) as Record<string, never>)
+		return c.json({
+			ChallengeMapId: Number(body.ChallengeMapId) || 0,
+			ChallengeId: Number(body.ChallengeId) || 0,
+			Config: typeof body.Config === 'string' ? body.Config : '',
+			Complete: false,
+		})
+	})
+
 	// Pending game rewards. Returns "[]".
 	.get('/api/gamerewards/v1/pending', (c) => c.json([]))
+
+	// Request a game reward (client posts `rewardType`/`Message`, e.g.
+	// FirstActivityOfDay). Stubbed: with no reward DB yet we grant nothing and return an
+	// empty list of rewards — matching the `pending` shape so the client deserializes it.
+	.post('/api/gamerewards/v1/request', (c) => c.json([]))
 
 	// The player's room keys. Returns "[]".
 	.get('/api/roomkeys/v1/mine', (c) => c.json([]))
