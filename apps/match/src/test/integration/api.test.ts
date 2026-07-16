@@ -150,6 +150,15 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual({ errorCode: 0 })
 	})
 
+	test('POST /player/notifydisconnect returns 200', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/player/notifydisconnect`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'PlayerId=155&RoomInstanceId=1000001',
+		})
+		expect(res.status).toBe(200)
+	})
+
 	test('GET /player?id=N synthesizes a player payload for that id', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player?id=99`)
 		expect(res.status).toBe(200)

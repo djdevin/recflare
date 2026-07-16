@@ -1,5 +1,8 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+// Type-only import (erased at build) of the DO class owned by the `notify`
+// worker, so the cross-worker RPC stub is fully typed.
+import type { NotificationsHub } from '../../notify/src/notifications-hub'
 
 export type Env = SharedHonoEnv & {
 	// Shared Secrets Store binding for the HS256 JWT signing key. Resolve the value
@@ -18,6 +21,9 @@ export type Env = SharedHonoEnv & {
 	// Image bucket (shared with the `img` worker, which serves objects back by
 	// key). Uploaded saved images are written here.
 	IMAGES: R2Bucket
+	// SignalR notifications hub (DO owned by the `notify` worker). Bound here to
+	// push RelationshipChanged notifications when a player's relationship changes.
+	RECFLARE_NOTIFICATIONS_HUB: DurableObjectNamespace<NotificationsHub>
 }
 
 /** Variables can be extended */

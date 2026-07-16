@@ -1458,6 +1458,43 @@ describe('relationships', () => {
 		return (await res.json()) as Rel[]
 	}
 
+	// Standard ack the flag endpoints (favorite/ignore/mute + inverses) now return —
+	// the relationship detail rides a RelationshipChanged hub notification instead.
+	const ACK = { Success: true, Message: '' }
+
+	// POST a flag mutation the real client way (form body `PlayerId=<id>`), returning
+	// the parsed ack body.
+	async function ackFlag(path: string, sub: string, playerId: number) {
+		return (await (
+			await exports.default.fetch(`${ORIGIN}${path}`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: `PlayerId=${playerId}`,
+			})
+		).json()) as { Success: boolean; Message: string }
+	}
+
+	// A player's own-side flags read straight from the relationship row. The None row a
+	// flag can create for an otherwise-unrelated pair isn't reported by v2/get, so the
+	// flag effect is verified here instead of through the (now ack-only) response.
+	async function ownFlags(playerId: number, otherId: number) {
+		const row = (await env.DB.prepare(
+			`SELECT requester_id, requester_favorited, requester_ignored, requester_muted,
+			        target_favorited, target_ignored, target_muted
+			 FROM relationship
+			 WHERE (requester_id = ?1 AND target_id = ?2) OR (requester_id = ?2 AND target_id = ?1)`
+		)
+			.bind(playerId, otherId)
+			.first()) as Record<string, number> | null
+		if (!row) return null
+		const isRequester = row.requester_id === playerId
+		return {
+			Favorited: isRequester ? row.requester_favorited : row.target_favorited,
+			Ignored: isRequester ? row.requester_ignored : row.target_ignored,
+			Muted: isRequester ? row.requester_muted : row.target_muted,
+		}
+	}
+
 	test('GET /api/relationships/v2/get is auth-gated', async () => {
 		expect((await exports.default.fetch(`${ORIGIN}/api/relationships/v2/get`)).status).toBe(401)
 	})
@@ -1537,64 +1574,57 @@ describe('relationships', () => {
 
 	test('v1 ignore/mute set the caller’s own side of the relationship', async () => {
 		type FullRel = { PlayerID: number; RelationshipType: number; Ignored: number; Muted: number }
-		// POST the real client shape: form body `PlayerId=<id>`.
-		const flag = async (path: string, sub: string, playerId: number) =>
-			(await (
-				await exports.default.fetch(`${ORIGIN}${path}`, {
-					method: 'POST',
-					headers: {
-						...(await bearer(sub)),
-						'Content-Type': 'application/x-www-form-urlencoded',
-					},
-					body: `PlayerId=${playerId}`,
-				})
-			).json()) as FullRel
 
-		// 700 ignores 701 with no prior relationship → a bare None row, the caller's side flagged.
-		expect(await flag('/api/relationships/v1/ignore', '700', 701)).toMatchObject({
-			PlayerID: 701,
-			RelationshipType: 0,
-			Ignored: 1,
-			Muted: 0,
-		})
+		// 700 ignores 701 with no prior relationship → a bare None row, the caller's side
+		// flagged. The response is now just the ack; the flag is verified on the row.
+		expect(await ackFlag('/api/relationships/v1/ignore', '700', 701)).toEqual(ACK)
+		expect(await ownFlags(700, 701)).toMatchObject({ Ignored: 1, Muted: 0 })
 		// 700 then mutes 701 → same row, mute added, the earlier ignore preserved.
-		expect(await flag('/api/relationships/v1/mute', '700', 701)).toMatchObject({
-			PlayerID: 701,
-			Ignored: 1,
-			Muted: 1,
-		})
+		expect(await ackFlag('/api/relationships/v1/mute', '700', 701)).toEqual(ACK)
+		expect(await ownFlags(700, 701)).toMatchObject({ Ignored: 1, Muted: 1 })
 
 		// The tricky case: the caller is the row's TARGET. 710 sends 711 a request
 		// (710 = requester); 711 ignoring 710 must flag the target side, not the requester's.
 		await mutate('/api/relationships/v2/sendfriendrequest', '710', 711)
-		expect(await flag('/api/relationships/v1/ignore', '711', 710)).toMatchObject({
-			PlayerID: 710,
-			RelationshipType: 2, // 711 sees 710's request as Received
-			Ignored: 1,
-		})
+		expect(await ackFlag('/api/relationships/v1/ignore', '711', 710)).toEqual(ACK)
+		// 711 sees 710's request as Received (2) with their own Ignored set.
+		expect((await relationships('711')) as unknown as FullRel[]).toEqual([
+			expect.objectContaining({ PlayerID: 710, RelationshipType: 2, Ignored: 1 }),
+		])
 		// 710's own side is untouched — the requester never ignored anyone.
-		const view710 = (await relationships('710')) as unknown as FullRel[]
-		expect(view710).toEqual([
+		expect((await relationships('710')) as unknown as FullRel[]).toEqual([
 			expect.objectContaining({ PlayerID: 711, RelationshipType: 1, Ignored: 0 }),
 		])
+	})
+
+	test('v1 unignore/unmute clear the caller’s own flags independently', async () => {
+		// 800 ignores and mutes 801 (bare None row, both flags on the caller's side).
+		await ackFlag('/api/relationships/v1/ignore', '800', 801)
+		await ackFlag('/api/relationships/v1/mute', '800', 801)
+		expect(await ownFlags(800, 801)).toMatchObject({ Ignored: 1, Muted: 1 })
+		// unignore clears only Ignored; the mute is left in place.
+		expect(await ackFlag('/api/relationships/v1/unignore', '800', 801)).toEqual(ACK)
+		expect(await ownFlags(800, 801)).toMatchObject({ Ignored: 0, Muted: 1 })
+		// unmute then clears Muted too.
+		expect(await ackFlag('/api/relationships/v1/unmute', '800', 801)).toEqual(ACK)
+		expect(await ownFlags(800, 801)).toMatchObject({ Ignored: 0, Muted: 0 })
 	})
 
 	test('v1 favorite/unfavorite toggle the caller’s own side, leaving the friendship intact', async () => {
 		// 720 and 721 are friends; 720 favorites 721 — the real client shape, a GET with `?id=`.
 		await mutate('/api/relationships/v2/addfriend', '720', 721)
-		expect(
-			(await (await mutate('/api/relationships/v1/favorite', '720', 721)).json()) as Rel
-		).toMatchObject({ PlayerID: 721, RelationshipType: 3, Favorited: 1 })
-
+		expect(await (await mutate('/api/relationships/v1/favorite', '720', 721)).json()).toEqual(ACK)
+		// 720's own side is favorited; the friendship is intact.
+		expect(await relationships('720')).toEqual([
+			{ PlayerID: 721, RelationshipType: 3, Favorited: 1, Ignored: 0, Muted: 0 },
+		])
 		// Favoriting is one-sided: 721 does not see themselves as having favorited 720.
 		expect(await relationships('721')).toEqual([
 			{ PlayerID: 720, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
 		])
 
 		// Unfavorite clears the flag but keeps the friendship.
-		expect(
-			(await (await mutate('/api/relationships/v1/unfavorite', '720', 721)).json()) as Rel
-		).toMatchObject({ PlayerID: 721, RelationshipType: 3, Favorited: 0 })
+		expect(await (await mutate('/api/relationships/v1/unfavorite', '720', 721)).json()).toEqual(ACK)
 		expect(await relationships('720')).toEqual([
 			{ PlayerID: 721, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
 		])
@@ -1602,14 +1632,28 @@ describe('relationships', () => {
 
 	test('favoriting a player you have no relationship with is allowed', async () => {
 		// Mirrors ignore/mute: a bare None row is created with the caller's side flagged.
-		expect(
-			(await (await mutate('/api/relationships/v1/favorite', '730', 731)).json()) as Rel
-		).toMatchObject({ PlayerID: 731, RelationshipType: 0, Favorited: 1 })
+		expect(await (await mutate('/api/relationships/v1/favorite', '730', 731)).json()).toEqual(ACK)
+		expect(await ownFlags(730, 731)).toMatchObject({ Favorited: 1 })
 		// A None row is not reported as a relationship by v2/get.
 		expect(await relationships('730')).toEqual([])
 	})
 
 	test('a self-targeted favorite is rejected', async () => {
 		expect((await mutate('/api/relationships/v1/favorite', '740', 740)).status).toBe(400)
+	})
+
+	test('a flag change pushes a RelationshipChanged notification with the relationship', async () => {
+		// The relationship detail now rides a hub notification instead of the response.
+		// The notify DO is stubbed to record its last notifyPlayer call (see vitest.config).
+		await ackFlag('/api/relationships/v1/favorite', '750', 751)
+		const res = await env.RECFLARE_NOTIFICATIONS_HUB.getByName('global').fetch('http://do/last')
+		const last = (await res.json()) as {
+			playerId: number
+			notificationType: number
+			data: { PlayerID: number; Favorited: number; RelationshipType: number }
+		}
+		expect(last.playerId).toBe(750) // sent to the caller
+		expect(last.notificationType).toBe(1) // NotificationType.RelationshipChanged
+		expect(last.data).toMatchObject({ PlayerID: 751, Favorited: 1, RelationshipType: 0 })
 	})
 })

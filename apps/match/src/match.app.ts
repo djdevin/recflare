@@ -426,6 +426,11 @@ const app = new Hono<App>()
 		return c.body(null, 200)
 	})
 
+	// Fire-and-forget disconnect notification (form body `PlayerId`/`RoomInstanceId`).
+	// The client posts this when it drops a room; we don't act on it — presence is
+	// cleared by logout and otherwise expires on its own TTL — so just ack with 200.
+	.post('/player/notifydisconnect', (c) => c.body(null, 200))
+
 	.get('/player', async (c) => {
 		// Returns each requested player's presence. Reads the `id` query param(s);
 		// with none it serves the static getplayer.json default.
