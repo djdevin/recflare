@@ -263,6 +263,9 @@ const lookup = new Command('lookup')
 
 export const adminCmd = new Command('admin')
 	.description('Operator tools for accounts on the shared recflare D1 database')
+	// Bare `admin` (no subcommand) prints help and exits cleanly, rather than
+	// commander's default "missing command" error (exit 1).
+	.action((_opts, command: Command) => command.outputHelp())
 	.addCommand(setPassword)
 	.addCommand(clearPassword)
 	.addCommand(grantDeveloper)
