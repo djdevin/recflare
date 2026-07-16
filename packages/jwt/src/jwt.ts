@@ -69,14 +69,20 @@ const TOKEN_SCOPES = [
 	'offline_access',
 ]
 
-/** Roles granted — the client needs `gameClient` to operate. */
-const TOKEN_ROLES = ['gameClient' /* 'developer', 'moderator', 'junior'*/]
+/**
+ * Base roles every token carries — the client needs `gameClient` to operate.
+ * Elevated roles (e.g. `developer`, `moderator`) are NOT baked in here; the auth
+ * worker passes them per-account as `extraRoles` from the account's role flags, so
+ * a plain player's token stays `['gameClient']` and only granted accounts get more.
+ */
+const BASE_ROLES = ['gameClient']
 
 export async function generateToken(
 	accountId: string,
 	platformId: string,
 	platform: string,
-	secret: string
+	secret: string,
+	extraRoles: string[] = []
 ): Promise<string> {
 	const now = Math.floor(Date.now() / 1000)
 	// The client reads `role`/`scope` (and expects a well-formed iss/aud) to
@@ -97,7 +103,7 @@ export async function generateToken(
 			platform_id: platformId,
 			'rn.ver': '20230302',
 			'rn.plat': '0',
-			role: TOKEN_ROLES,
+			role: [...BASE_ROLES, ...extraRoles],
 			scope: TOKEN_SCOPES,
 			jti: crypto.randomUUID(),
 		},

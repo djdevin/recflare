@@ -20,7 +20,7 @@ bun runx admin set-password --username alice --remote
 ```
 
 The new password is taken from `--password <pw>`, else from piped stdin, else
-prompted interactively (hidden input, entered twice and compared):
+prompted interactively.
 
 ```sh
 # interactive (prompts, hidden)
@@ -33,20 +33,22 @@ bun runx admin set-password --account 1 --password "s3cret-pw"
 
 ### `clear-password` — remove an account's password
 
-Leaves the account with no login credential (it can't be logged into until a
-password is set again).
+Leaves the account with no login credential (only platform login).
 
 ```sh
 bun runx admin clear-password --username alice
 ```
 
-### `grant-developer` — grant or revoke the developer role
+### `grant-developer` / `grant-moderator` — grant or revoke a role
 
-Backs `GET /role/developer/:id`. Off by default; only this command grants it.
+Both are off by default; only these commands set them. A granted role backs its
+`GET /role/<role>/:id` lookup **and** rides in the login token's `role` claim, so it
+takes effect on the account's next login or token refresh.
 
 ```sh
 bun runx admin grant-developer --account 1
 bun runx admin grant-developer --account 1 --revoke
+bun runx admin grant-moderator --username alice --remote
 ```
 
 ### `lookup` — print an account
@@ -57,7 +59,7 @@ bun runx admin lookup --username alice
 ```
 
 Prints id, username, platform, platform id, created/last-login times, and whether
-the account has a password and the developer role.
+the account has a password, the developer role, and the moderator role.
 
 ## Options
 

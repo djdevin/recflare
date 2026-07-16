@@ -82,11 +82,17 @@ export interface Account {
 	 */
 	passwordHash?: string
 	/**
-	 * Whether this account holds the developer role (backs GET /role/developer/:id).
-	 * Not set by any player-facing flow — only an operator grants it, via
-	 * `runx admin grant-developer`. Absent/false means no developer role.
+	 * Whether this account holds the developer role (backs GET /role/developer/:id
+	 * and the token's `role` claim). Not set by any player-facing flow — only an
+	 * operator grants it, via `runx admin grant-developer`. Absent/false means no role.
 	 */
 	isDeveloper?: boolean
+	/**
+	 * Whether this account holds the moderator role (backs GET /role/moderator/:id
+	 * and the token's `role` claim). Operator-granted only, via
+	 * `runx admin grant-moderator`. Absent/false means no role.
+	 */
+	isModerator?: boolean
 }
 
 interface AccountRow {

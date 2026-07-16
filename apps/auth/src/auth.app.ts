@@ -139,6 +139,19 @@ async function authedId(c: Context<App>): Promise<number | null> {
 }
 
 /**
+ * The elevated role names for an account's token `role` claim, derived from its
+ * role flags. Base roles (gameClient) are added by generateToken — these are only
+ * the operator-granted extras. Order is stable so tokens are deterministic.
+ */
+function accountRoles(account: Pick<Account, 'isDeveloper' | 'isModerator'> | null): string[] {
+	if (!account) return []
+	const roles: string[] = []
+	if (account.isDeveloper) roles.push('developer')
+	if (account.isModerator) roles.push('moderator')
+	return roles
+}
+
+/**
  * The platform an account's `platformId` belongs to. Nothing defaults the `platform`
  * field (see defaultAccount), so an account can carry a platform identity with no
  * platform recorded — and Steam is the only platform whose identity we can prove, so
@@ -453,7 +466,18 @@ const app = new Hono<App>()
 			)
 		}
 
-		const accessToken = await generateToken(accountId, platformId, platform, jwtSecret)
+		// Stamp the account's elevated roles into the token's `role` claim so the client
+		// authorizes developer/moderator powers from the token itself (not just the
+		// /role/* lookups). One read of the just-resolved account; roles thus refresh on
+		// every login and every refresh_token grant.
+		const roleAccount = await getAccount(c.env.DB, Number(accountId))
+		const accessToken = await generateToken(
+			accountId,
+			platformId,
+			platform,
+			jwtSecret,
+			accountRoles(roleAccount)
+		)
 		// Issue a fresh, persisted refresh token (single-use; the client redeems it via
 		// grant_type=refresh_token). A refresh grant thus rotates its token.
 		const refreshToken = await issueRefreshToken(c.env.DB, {
@@ -500,12 +524,23 @@ const app = new Hono<App>()
 
 	// Developer role lookup. The role is off by default and only an operator grants
 	// it (via `runx admin grant-developer`, which sets the account's isDeveloper flag).
+	// The same flag also rides in the token's `role` claim (see accountRoles).
 	.get('/role/developer/:id', async (c) => {
 		const { id } = c.req.param()
 		logger.info('developer role lookup', { id })
 		const accountId = Number.parseInt(id, 10)
 		const account = Number.isNaN(accountId) ? null : await getAccount(c.env.DB, accountId)
 		return c.json({ success: account?.isDeveloper === true })
+	})
+
+	// Moderator role lookup, mirroring developer. Operator-granted only (via
+	// `runx admin grant-moderator`); the flag also rides in the token's `role` claim.
+	.get('/role/moderator/:id', async (c) => {
+		const { id } = c.req.param()
+		logger.info('moderator role lookup', { id })
+		const accountId = Number.parseInt(id, 10)
+		const account = Number.isNaN(accountId) ? null : await getAccount(c.env.DB, accountId)
+		return c.json({ success: account?.isModerator === true })
 	})
 
 export default app

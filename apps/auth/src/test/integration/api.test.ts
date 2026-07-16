@@ -256,7 +256,26 @@ describe('auth worker routes', () => {
 		expect(payload.iss).toBe('https://auth.recflare.net')
 		expect(payload.aud).toBe('https://auth.recflare.net')
 		expect(payload.role).toContain('gameClient')
+		// A plain account carries only the base role — no elevated roles.
+		expect(payload.role).not.toContain('developer')
+		expect(payload.role).not.toContain('moderator')
 		expect(payload.scope).toContain('rn.api')
+	})
+
+	test('POST /connect/token stamps developer/moderator roles into the token', async () => {
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 91,
+					username: 'StaffPlayer',
+					passwordHash: await hashPassword(LOGIN_PASSWORD),
+					isDeveloper: true,
+					isModerator: true,
+				})
+			)
+			.run()
+		const payload = await tokenFor(`account_id=91&password=${LOGIN_PASSWORD}`)
+		expect(payload.role).toEqual(expect.arrayContaining(['gameClient', 'developer', 'moderator']))
 	})
 
 	test('POST /connect/token 400s when no account_id is posted (never defaults to 1)', async () => {
@@ -581,6 +600,17 @@ describe('auth worker routes', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/role/developer/4242`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ success: true })
+	})
+
+	test('GET /role/moderator/:id reflects the isModerator flag', async () => {
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(JSON.stringify({ accountId: 4343, username: 'ModPlayer', isModerator: true }))
+			.run()
+		const granted = await exports.default.fetch(`${ORIGIN}/role/moderator/4343`)
+		expect(await granted.json()).toEqual({ success: true })
+		// An account without the flag (42) is not a moderator.
+		const plain = await exports.default.fetch(`${ORIGIN}/role/moderator/42`)
+		expect(await plain.json()).toEqual({ success: false })
 	})
 
 	test('unknown path returns 404', async () => {

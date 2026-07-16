@@ -194,23 +194,35 @@ const clearPassword = new Command('clear-password')
 		console.log(chalk.green(`✓ password cleared for ${label}`))
 	})
 
-const grantDeveloper = new Command('grant-developer')
-	.description('Grant (or, with --revoke, remove) the developer role on an account')
-	.option('--account <id>', 'Account id to target')
-	.option('--username <name>', 'Username to target (case-insensitive)')
-	.option('--revoke', 'Remove the developer role instead of granting it', false)
-	.option('--local', 'Target the local dev database (the default).', false)
-	.option('--remote', 'Target the deployed database instead of the local dev database.', false)
-	.action(async (opts) => {
-		const { where, label } = whereClause(opts.account, opts.username)
-		const remote = resolveRemote(opts)
-		const value = opts.revoke ? 'false' : 'true'
-		const sql = `UPDATE account SET data = json_set(data, '$.isDeveloper', json('${value}')) WHERE ${where} RETURNING account_id`
-		const verb = opts.revoke ? 'Revoking' : 'Granting'
-		console.log(`${verb} developer role for ${label} on ${target(remote)}`)
-		assertMatched(await execSql(sql, remote), label)
-		console.log(chalk.green(`✓ developer role ${opts.revoke ? 'revoked' : 'granted'} for ${label}`))
-	})
+/**
+ * Build a `grant-<role>` command that toggles a boolean role flag on the account
+ * blob. `jsonKey` is the account field (e.g. `isDeveloper`) — a fixed literal, not
+ * user input. Both the /role/:role lookup and the token's `role` claim read it.
+ */
+function grantRoleCommand(name: string, jsonKey: string, roleLabel: string) {
+	return new Command(name)
+		.description(`Grant (or, with --revoke, remove) the ${roleLabel} role on an account`)
+		.option('--account <id>', 'Account id to target')
+		.option('--username <name>', 'Username to target (case-insensitive)')
+		.option('--revoke', `Remove the ${roleLabel} role instead of granting it`, false)
+		.option('--local', 'Target the local dev database (the default).', false)
+		.option('--remote', 'Target the deployed database instead of the local dev database.', false)
+		.action(async (opts) => {
+			const { where, label } = whereClause(opts.account, opts.username)
+			const remote = resolveRemote(opts)
+			const value = opts.revoke ? 'false' : 'true'
+			const sql = `UPDATE account SET data = json_set(data, '$.${jsonKey}', json('${value}')) WHERE ${where} RETURNING account_id`
+			const verb = opts.revoke ? 'Revoking' : 'Granting'
+			console.log(`${verb} ${roleLabel} role for ${label} on ${target(remote)}`)
+			assertMatched(await execSql(sql, remote), label)
+			console.log(
+				chalk.green(`✓ ${roleLabel} role ${opts.revoke ? 'revoked' : 'granted'} for ${label}`)
+			)
+		})
+}
+
+const grantDeveloper = grantRoleCommand('grant-developer', 'isDeveloper', 'developer')
+const grantModerator = grantRoleCommand('grant-moderator', 'isModerator', 'moderator')
 
 const lookup = new Command('lookup')
 	.description('Print an account by id or username')
@@ -229,7 +241,8 @@ const lookup = new Command('lookup')
 			json_extract(data, '$.createdAt') AS createdAt,
 			json_extract(data, '$.lastLoginTime') AS lastLoginTime,
 			(json_extract(data, '$.passwordHash') IS NOT NULL) AS hasPassword,
-			(json_extract(data, '$.isDeveloper') = 1) AS isDeveloper
+			(json_extract(data, '$.isDeveloper') = 1) AS isDeveloper,
+			(json_extract(data, '$.isModerator') = 1) AS isModerator
 			FROM account WHERE ${where}`
 		const res = await execSql(sql, remote)
 		const row = res.results[0]
@@ -239,10 +252,10 @@ const lookup = new Command('lookup')
 		}
 		const asText = (v: unknown): string =>
 			v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v as number | string | boolean)
+		const boolKeys = new Set(['hasPassword', 'isDeveloper', 'isModerator'])
 		const table = new Table()
 		for (const [key, value] of Object.entries(row)) {
-			const shown =
-				key === 'hasPassword' || key === 'isDeveloper' ? (value === 1 ? 'yes' : 'no') : asText(value)
+			const shown = boolKeys.has(key) ? (value === 1 ? 'yes' : 'no') : asText(value)
 			table.push({ [key]: shown })
 		}
 		console.log(table.toString())
@@ -253,4 +266,20 @@ export const adminCmd = new Command('admin')
 	.addCommand(setPassword)
 	.addCommand(clearPassword)
 	.addCommand(grantDeveloper)
+	.addCommand(grantModerator)
 	.addCommand(lookup)
+	.addHelpText(
+		'after',
+		`
+Select an account with --account <id> or --username <name>.
+Target --local (default) or --remote (production; needs RECFLARE_D1 in .env).
+Add --help to any subcommand for its options, e.g. \`runx admin set-password --help\`.
+
+Examples:
+  $ runx admin set-password --account 1               # prompts, hidden
+  $ echo "s3cret" | runx admin set-password --account 1
+  $ runx admin clear-password --username alice
+  $ runx admin grant-developer --account 1 [--revoke]
+  $ runx admin grant-moderator --username alice --remote
+  $ runx admin lookup --username alice --remote`
+	)

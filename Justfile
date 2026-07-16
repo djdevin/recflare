@@ -108,3 +108,11 @@ update *args:
 [positional-arguments]
 runx *args:
   bun runx "$@"
+
+# Admin account tools (set-password, clear-password, grant-developer, lookup).
+# Run `just admin --help` for usage and examples. See CLI.md.
+[group('4. utility')]
+[positional-arguments]
+[no-cd]
+admin *args:
+  bun runx admin "$@"
