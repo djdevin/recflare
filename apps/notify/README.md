@@ -15,10 +15,13 @@ instance holds the shared hub state (one process across all connections).
 - `GET /hub/v1` (WebSocket upgrade) — the hub. Forwarded to the Durable Object.
   Non-upgrade requests get `426`.
 - `POST /internal/notify` — `{ playerId, notificationType, data? }`. Send to a
-  player's connections, queueing if they're offline. **Unauthenticated; internal
-  use only (TODO: protect).**
+  player's connections, queueing if they're offline. **Admin-gated**: requires a
+  Bearer token carrying an admin role (`developer`/`moderator`) in its `role` claim.
 - `POST /internal/broadcast` — `{ notificationType, data? }`. Send to every
-  connected client.
+  connected client. Same admin-role gate as `/internal/notify`.
+- `POST /internal/coach-message-all` — `{ messageContent }`. Broadcast a coach/system
+  `MessageReceived` to every connected client (online-only; not persisted). Same
+  admin-role gate.
 
 ## Hub protocol
 

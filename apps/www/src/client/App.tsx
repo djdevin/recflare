@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 
-/** The self-account shape returned by the accounts worker (`GET /account/me`). */
+/** The self-account shape returned by the www BFF (`/api/me`, `/api/login`, …). */
 interface SelfAccount {
 	accountId: number
 	username: string
 	displayName: string
 	email: string | null
+	/** Whether this session may use admin controls (from the token's role claim). */
+	isAdmin?: boolean
 }
 
 /**
@@ -30,12 +32,59 @@ async function api<T = unknown>(path: string, body?: unknown): Promise<T> {
 	return data as T
 }
 
+/** Minimal history-based router: current pathname + a navigate() that pushes state. */
+function useRouter() {
+	const [path, setPath] = useState(() => window.location.pathname)
+	useEffect(() => {
+		const onPop = () => setPath(window.location.pathname)
+		window.addEventListener('popstate', onPop)
+		return () => window.removeEventListener('popstate', onPop)
+	}, [])
+	const navigate = useCallback((to: string) => {
+		if (to !== window.location.pathname) {
+			window.history.pushState(null, '', to)
+			window.scrollTo(0, 0)
+		}
+		setPath(to)
+	}, [])
+	return { path, navigate }
+}
+
+type Navigate = (to: string) => void
+
+/** An in-app link that routes client-side instead of doing a full page load. */
+function Link({
+	to,
+	navigate,
+	className,
+	children,
+}: {
+	to: string
+	navigate: Navigate
+	className?: string
+	children: ReactNode
+}) {
+	return (
+		<a
+			href={to}
+			className={className}
+			onClick={(e) => {
+				e.preventDefault()
+				navigate(to)
+			}}
+		>
+			{children}
+		</a>
+	)
+}
+
 export function App() {
 	// undefined = still checking the session; null = signed out.
 	const [account, setAccount] = useState<SelfAccount | null | undefined>(undefined)
+	const { path, navigate } = useRouter()
 
 	useEffect(() => {
-		api<{ accountId: number } & SelfAccount>('/api/me')
+		api<SelfAccount>('/api/me')
 			.then((me) => setAccount(me))
 			.catch(() => setAccount(null))
 	}, [])
@@ -43,18 +92,183 @@ export function App() {
 	const logout = useCallback(async () => {
 		await api('/api/logout', {})
 		setAccount(null)
+		navigate('/')
+	}, [navigate])
+
+	return (
+		<>
+			<NavBar account={account} path={path} navigate={navigate} onLogout={logout} />
+			{path === '/login' ? (
+				<LoginPage account={account} navigate={navigate} onAuthed={setAccount} />
+			) : path === '/account' ? (
+				<AccountPage account={account} navigate={navigate} onChange={setAccount} />
+			) : (
+				<HomePage />
+			)}
+		</>
+	)
+}
+
+/** Top nav: brand → home, plus a sign-in / my-account link for the session. */
+function NavBar({
+	account,
+	path,
+	navigate,
+	onLogout,
+}: {
+	account: SelfAccount | null | undefined
+	path: string
+	navigate: Navigate
+	onLogout: () => void
+}) {
+	return (
+		<header className="nav">
+			<Link to="/" navigate={navigate} className="brand">
+				RecFlare
+			</Link>
+			<nav className="nav-links">
+				{account === undefined ? null : account ? (
+					<>
+						<Link to="/account" navigate={navigate} className={path === '/account' ? 'active' : ''}>
+							My account
+						</Link>
+						<button className="linkish" onClick={onLogout}>
+							Sign out
+						</button>
+					</>
+				) : (
+					<Link to="/login" navigate={navigate} className={path === '/login' ? 'active' : ''}>
+						Sign in
+					</Link>
+				)}
+			</nav>
+		</header>
+	)
+}
+
+/** Public homepage: a slideshow of recent public photos. */
+function HomePage() {
+	return (
+		<main className="shell wide">
+			<Slideshow />
+		</main>
+	)
+}
+
+/** A recent public image plus who took it and where. */
+interface Slide {
+	url: string
+	username: string
+	roomName: string | null
+}
+
+function Slideshow() {
+	const [slides, setSlides] = useState<Slide[] | null>(null)
+	const [error, setError] = useState('')
+	const [idx, setIdx] = useState(0)
+
+	useEffect(() => {
+		api<{ images: Slide[] }>('/api/slideshow')
+			.then((d) => setSlides(d.images))
+			.catch((e) => setError(e instanceof Error ? e.message : String(e)))
 	}, [])
+
+	useEffect(() => {
+		if (!slides || slides.length < 2) return
+		const t = setInterval(() => setIdx((i) => (i + 1) % slides.length), 5000)
+		return () => clearInterval(t)
+	}, [slides])
+
+	if (error) return <p className="error">Couldn’t load the slideshow: {error}</p>
+	if (!slides) return <p className="muted">Loading…</p>
+	if (slides.length === 0) return <p className="muted">No photos yet.</p>
+
+	const slide = slides[idx]
+	const step = (delta: number) => setIdx((i) => (i + delta + slides.length) % slides.length)
+
+	return (
+		<div className="slideshow">
+			<div className="slide-stage">
+				<img src={slide.url} alt={`Photo by ${slide.username}`} />
+				{slides.length > 1 && (
+					<>
+						<button className="slide-nav prev" onClick={() => step(-1)} aria-label="Previous photo">
+							‹
+						</button>
+						<button className="slide-nav next" onClick={() => step(1)} aria-label="Next photo">
+							›
+						</button>
+					</>
+				)}
+			</div>
+			<div className="slide-meta">
+				<div>
+					<span className="big">@{slide.username}</span>
+					{slide.roomName && <span className="muted"> · {slide.roomName}</span>}
+				</div>
+				<div className="muted">
+					{idx + 1} / {slides.length}
+				</div>
+			</div>
+		</div>
+	)
+}
+
+/** The sign-in page. Redirects to the account page once a session exists. */
+function LoginPage({
+	account,
+	navigate,
+	onAuthed,
+}: {
+	account: SelfAccount | null | undefined
+	navigate: Navigate
+	onAuthed: (a: SelfAccount) => void
+}) {
+	useEffect(() => {
+		if (account) navigate('/account')
+	}, [account, navigate])
 
 	return (
 		<main className="shell">
-			<h1>Recflare Accounts</h1>
-			{account === undefined ? (
-				<p className="muted">Loading…</p>
-			) : account ? (
-				<Dashboard account={account} onChange={setAccount} onLogout={logout} />
-			) : (
-				<AuthForms onAuthed={setAccount} />
-			)}
+			<section className="card">
+				<h2>Sign in</h2>
+				<LoginForm
+					onAuthed={(a) => {
+						onAuthed(a)
+						navigate('/account')
+					}}
+				/>
+			</section>
+		</main>
+	)
+}
+
+/** The signed-in account page. Redirects to sign-in when there's no session. */
+function AccountPage({
+	account,
+	navigate,
+	onChange,
+}: {
+	account: SelfAccount | null | undefined
+	navigate: Navigate
+	onChange: (a: SelfAccount) => void
+}) {
+	useEffect(() => {
+		if (account === null) navigate('/login')
+	}, [account, navigate])
+
+	if (!account) {
+		return (
+			<main className="shell">
+				<p className="muted">{account === undefined ? 'Loading…' : 'Redirecting…'}</p>
+			</main>
+		)
+	}
+
+	return (
+		<main className="shell wide">
+			<h1>My account</h1>
+			<Dashboard account={account} onChange={onChange} />
 		</main>
 	)
 }
@@ -81,61 +295,11 @@ function useAction() {
 	return { pending, error, done, run }
 }
 
-function AuthForms({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
-	const [tab, setTab] = useState<'signup' | 'login'>('signup')
-	return (
-		<section className="card">
-			<div className="tabs">
-				<button className={tab === 'signup' ? 'active' : ''} onClick={() => setTab('signup')}>
-					Create account
-				</button>
-				<button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
-					Sign in
-				</button>
-			</div>
-			{tab === 'signup' ? <SignupForm onAuthed={onAuthed} /> : <LoginForm onAuthed={onAuthed} />}
-		</section>
-	)
-}
-
-function SignupForm({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
-	const [password, setPassword] = useState('')
-	const { pending, error, run } = useAction()
-
-	return (
-		<form
-			onSubmit={(e) => {
-				e.preventDefault()
-				void run(async () => {
-					const { account } = await api<{ account: SelfAccount }>('/api/signup', { password })
-					onAuthed(account)
-					return ''
-				})
-			}}
-		>
-			<p className="muted">
-				A new account id is assigned automatically. Choose a password to sign in later.
-			</p>
-			<label>
-				Password
-				<input
-					type="password"
-					value={password}
-					autoComplete="new-password"
-					onChange={(e) => setPassword(e.target.value)}
-					required
-				/>
-			</label>
-			{error && <p className="error">{error}</p>}
-			<button type="submit" disabled={pending}>
-				{pending ? 'Creating…' : 'Create account'}
-			</button>
-		</form>
-	)
-}
-
+// Manual web signups are disabled for now, so only sign-in is exposed (accounts are
+// created via the game/platform, not the website). To bring signups back, restore a
+// SignupForm calling POST /api/signup and re-enable that endpoint in www.app.ts.
 function LoginForm({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
-	const [accountId, setAccountId] = useState('')
+	const [username, setUsername] = useState('')
 	const [password, setPassword] = useState('')
 	const { pending, error, run } = useAction()
 
@@ -145,7 +309,7 @@ function LoginForm({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
 				e.preventDefault()
 				void run(async () => {
 					const { account } = await api<{ account: SelfAccount }>('/api/login', {
-						accountId,
+						username,
 						password,
 					})
 					onAuthed(account)
@@ -154,13 +318,12 @@ function LoginForm({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
 			}}
 		>
 			<label>
-				Account id
+				Username
 				<input
 					type="text"
-					inputMode="numeric"
-					value={accountId}
+					value={username}
 					autoComplete="username"
-					onChange={(e) => setAccountId(e.target.value)}
+					onChange={(e) => setUsername(e.target.value)}
 					required
 				/>
 			</label>
@@ -185,32 +348,138 @@ function LoginForm({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
 function Dashboard({
 	account,
 	onChange,
-	onLogout,
 }: {
 	account: SelfAccount
 	onChange: (a: SelfAccount) => void
-	onLogout: () => void
 }) {
+	// The dashboard sections, shown one at a time via the left tab rail. Admin-only
+	// sections are appended when the session carries an admin role.
+	const sections = [
+		{ id: 'email', label: 'Email', render: () => <EmailForm account={account} onChange={onChange} /> },
+		{ id: 'password', label: 'Password', render: () => <PasswordForm /> },
+		...(account.isAdmin
+			? [
+					{ id: 'maintenance', label: 'Server maintenance', render: () => <MaintenanceForm /> },
+					{ id: 'coach', label: 'Broadcast message', render: () => <CoachMessageForm /> },
+				]
+			: []),
+	]
+	const [active, setActive] = useState(sections[0].id)
+	const current = sections.find((s) => s.id === active) ?? sections[0]
+
 	return (
 		<>
 			<section className="card">
-				<div className="row">
-					<div>
-						<div className="muted">Signed in as</div>
-						<div className="big">
-							{account.displayName || account.username}{' '}
-							<span className="muted">#{account.accountId}</span>
-						</div>
-						<div className="muted">{account.email ?? 'no email set'}</div>
-					</div>
-					<button className="ghost" onClick={onLogout}>
-						Sign out
-					</button>
+				<div className="muted">Signed in as</div>
+				<div className="big">
+					{account.displayName || account.username}{' '}
+					<span className="muted">#{account.accountId}</span>
 				</div>
+				<div className="muted">@{account.username}</div>
+				<div className="muted">{account.email ?? 'no email set'}</div>
 			</section>
-			<EmailForm account={account} onChange={onChange} />
-			<PasswordForm />
+			<div className="workspace">
+				<nav className="vtabs">
+					{sections.map((s) => (
+						<button
+							key={s.id}
+							className={s.id === active ? 'active' : ''}
+							onClick={() => setActive(s.id)}
+						>
+							{s.label}
+						</button>
+					))}
+				</nav>
+				<div className="panel">{current.render()}</div>
+			</div>
 		</>
+	)
+}
+
+/** Admin-only: send a coach/system message to every online player. */
+function CoachMessageForm() {
+	const [message, setMessage] = useState('')
+	const { pending, error, done, run } = useAction()
+
+	return (
+		<section className="card">
+			<h2>Broadcast message</h2>
+			<p className="muted">
+				Send a message from the Coach to every connected player. Players who aren&apos;t online
+				won&apos;t receive it.
+			</p>
+			<form
+				onSubmit={(e) => {
+					e.preventDefault()
+					void run(async () => {
+						const { sent } = await api<{ sent?: number }>('/api/coach-message', {
+							messageContent: message,
+						})
+						setMessage('')
+						return `Sent to ${sent ?? 0} online player${sent === 1 ? '' : 's'}.`
+					})
+				}}
+			>
+				<label>
+					Message
+					<textarea
+						value={message}
+						rows={3}
+						onChange={(e) => setMessage(e.target.value)}
+						required
+					/>
+				</label>
+				{error && <p className="error">{error}</p>}
+				{done && <p className="ok">{done}</p>}
+				<button type="submit" disabled={pending}>
+					{pending ? 'Sending…' : 'Send to all online'}
+				</button>
+			</form>
+		</section>
+	)
+}
+
+/** Admin-only: broadcast a server-maintenance countdown to every connected client. */
+function MaintenanceForm() {
+	const [minutes, setMinutes] = useState('5')
+	const { pending, error, done, run } = useAction()
+
+	return (
+		<section className="card">
+			<h2>Server maintenance</h2>
+			<p className="muted">
+				Broadcast a maintenance countdown to every connected client. Enter how many minutes until
+				maintenance starts (0 = now).
+			</p>
+			<form
+				onSubmit={(e) => {
+					e.preventDefault()
+					void run(async () => {
+						const { connections } = await api<{ connections?: number }>('/api/maintenance', {
+							startsInMinutes: Number(minutes),
+						})
+						return `Notified ${connections ?? 0} connected client${connections === 1 ? '' : 's'}.`
+					})
+				}}
+			>
+				<label>
+					Starts in (minutes)
+					<input
+						type="number"
+						min="0"
+						step="1"
+						value={minutes}
+						onChange={(e) => setMinutes(e.target.value)}
+						required
+					/>
+				</label>
+				{error && <p className="error">{error}</p>}
+				{done && <p className="ok">{done}</p>}
+				<button type="submit" disabled={pending}>
+					{pending ? 'Broadcasting…' : 'Broadcast maintenance'}
+				</button>
+			</form>
+		</section>
 	)
 }
 

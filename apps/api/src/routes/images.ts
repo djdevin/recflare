@@ -8,21 +8,12 @@ import {
 	getImagesByRoom,
 	getPlayerFeed,
 	getSlideshowImages,
+	SavedImageType,
 	setImageCheer,
 } from '../images-db'
 import { authedId, unauthorized } from '../http'
 
 import type { App } from '../context'
-
-/** Saved-image categories from the C# `SavedImageType` enum (`imgMeta.savedImageType`). */
-const SavedImageType = {
-	None: 0,
-	ShareCamera: 1,
-	OutfitThumbnail: 2,
-	RoomThumbnail: 3,
-	ProfileThumbnail: 4,
-	InventionThumbnail: 5,
-} as const
 
 /** Bucket folder each SavedImageType is stored under; unknown types fall back to `none`. */
 const typeFolder: Record<number, string> = {
@@ -150,13 +141,12 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		return c.json(await getPlayerFeed(c.env.DB, playerId, skip, take))
 	})
 
-	// Global slideshow feed — the most recent publicly-listable images (Accessibility
-	// 0 or 1) across all rooms, newest first, each joined to its creator's username
-	// and room name. Auth-gated. Returns `{ Images, ValidTill }`, where ValidTill is a
-	// short (2-minute) cache hint the client refreshes against.
+	// Global slideshow feed — the most recent publicly-listable ShareCamera photos
+	// (Accessibility 0 or 1, Type 1) across all rooms, newest first, each joined to its
+	// creator's username and room name. Public (no auth): it only surfaces already-public
+	// images and backs the anonymous homepage slideshow. Returns `{ Images, ValidTill }`,
+	// where ValidTill is a short (2-minute) cache hint the client refreshes against.
 	.get('/api/images/v1/slideshow', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
 		const Images = await getSlideshowImages(c.env.DB)
 		const ValidTill = new Date(Date.now() + 2 * 60 * 1000).toISOString()
 		return c.json({ Images, ValidTill })

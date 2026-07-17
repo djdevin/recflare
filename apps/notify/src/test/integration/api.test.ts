@@ -22,10 +22,12 @@ function b64url(input: ArrayBuffer | string): string {
 	for (const byte of bytes) binary += String.fromCharCode(byte)
 	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
-async function bearer(sub: string): Promise<Record<string, string>> {
+async function bearer(sub: string, roles?: string[]): Promise<Record<string, string>> {
 	const now = Math.floor(Date.now() / 1000)
+	const claims: Record<string, unknown> = { sub, exp: now + 3600 }
+	if (roles) claims.role = roles
 	const signingInput = `${b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64url(
-		JSON.stringify({ sub, exp: now + 3600 })
+		JSON.stringify(claims)
 	)}`
 	const key = await crypto.subtle.importKey(
 		'raw',
@@ -104,14 +106,14 @@ async function connect(
 
 const send = (ws: WebSocket, msg: HubRecord) => ws.send(JSON.stringify(msg) + RS)
 
-// The /internal/* endpoints are admin-gated, so default to an admin (account 1)
-// Bearer token; pass `auth` to override (e.g. to test the 401/403 paths).
+// The /internal/* endpoints are admin-gated (a token carrying an admin role), so
+// default to a moderator token; pass `auth` to override (e.g. the 401/403 paths).
 const post = async (path: string, body: unknown, auth?: Record<string, string>) =>
 	exports.default.fetch(`${ORIGIN}${path}`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			...(auth ?? (await bearer('1'))),
+			...(auth ?? (await bearer('1', ['gameClient', 'moderator']))),
 		},
 		body: JSON.stringify(body),
 	})
@@ -150,14 +152,18 @@ describe('internal endpoint auth', () => {
 		expect(res.status).toBe(401)
 	})
 
-	test('403 for a valid token that is not an admin', async () => {
-		const res = await post('/internal/notify', body, await bearer('3'))
+	test('403 for a valid token without an admin role', async () => {
+		const res = await post('/internal/notify', body, await bearer('3', ['gameClient']))
 		expect(res.status).toBe(403)
 	})
 
-	test('admin accounts 1 and 2 are allowed', async () => {
-		for (const sub of ['1', '2']) {
-			const res = await post('/internal/broadcast', { notificationType: 1 }, await bearer(sub))
+	test('tokens carrying an admin role are allowed', async () => {
+		for (const role of ['developer', 'moderator']) {
+			const res = await post(
+				'/internal/broadcast',
+				{ notificationType: 1 },
+				await bearer('3', ['gameClient', role])
+			)
 			expect(res.status).toBe(200)
 		}
 	})
@@ -249,6 +255,35 @@ describe('notification delivery', () => {
 			Msg: { message: 'maint' },
 		})
 		ws.close()
+	})
+
+	test('coach-message-all messages every connected client', async () => {
+		const a = await connect('coach-a')
+		const b = await connect('coach-b')
+
+		const res = await post('/internal/coach-message-all', { messageContent: 'hello all' })
+		expect(res.status).toBe(200)
+		expect(((await res.json()) as { sent: number }).sent).toBeGreaterThanOrEqual(2)
+
+		const noteA = await a.waitFor((r) => r.type === 1 && r.target === 'Notification')
+		const payloadA = JSON.parse((noteA.arguments as string[])[0]) as {
+			Id: string
+			Msg: Record<string, unknown>
+		}
+		expect(payloadA.Id).toBe('2') // MessageReceived
+		expect(payloadA.Msg).toMatchObject({ FromPlayerId: 1, Type: 100, Data: 'hello all' })
+
+		const noteB = await b.waitFor((r) => r.type === 1 && r.target === 'Notification')
+		const payloadB = JSON.parse((noteB.arguments as string[])[0]) as { Msg: Record<string, unknown> }
+		expect(payloadB.Msg).toMatchObject({ Data: 'hello all' })
+
+		a.ws.close()
+		b.ws.close()
+	})
+
+	test('coach-message-all 400s on an empty message', async () => {
+		const res = await post('/internal/coach-message-all', { messageContent: '   ' })
+		expect(res.status).toBe(400)
 	})
 
 	test('emits a numeric notificationType as a string Id', async () => {

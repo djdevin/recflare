@@ -4,7 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withOnError } from '@repo/hono-helpers'
 
-import { accountsBase, authBase, postForm } from './upstream'
+import { accountsBase, apiBase, authBase, imgBase, notifyBase, postForm } from './upstream'
 
 import type { Context } from 'hono'
 import type { CookieOptions } from 'hono/utils/cookie'
@@ -22,10 +22,22 @@ import type { App } from './context'
 const SESSION_COOKIE = 'rf_token'
 
 /**
- * `create_account` needs a platform; RecNet (4) is the web platform. It's also
- * passed on credential logins for parity, though the auth worker ignores it there.
+ * RecNet (4) is the web platform, stamped as the token's `platform` claim on login.
+ * NOT passed on signup: create_account treats an asserted platform as one to verify
+ * against Steam and rejects RecNet — the web signup is the (platform-less) password
+ * account path.
  */
 const WEB_PLATFORM = '4'
+
+/**
+ * Roles that unlock the admin controls in the UI. Mirrors the notify worker's
+ * `ADMIN_ROLES` gate — www only decides whether to *show* the controls; notify does
+ * the real enforcement (it verifies the token) on every call.
+ */
+const ADMIN_ROLES = new Set(['developer', 'moderator'])
+
+/** `NotificationType.ServerMaintenance` in the notify worker's enum. */
+const SERVER_MAINTENANCE = 25
 
 /** Cookie flags for the session token. `secure` is dropped for local http dev. */
 function sessionCookieOptions(c: Context<App>, maxAge: number): CookieOptions {
@@ -42,6 +54,25 @@ function sessionCookieOptions(c: Context<App>, maxAge: number): CookieOptions {
 /** Pull the session token out of the request cookie, or null when absent. */
 function sessionToken(c: Context<App>): string | null {
 	return getCookie(c, SESSION_COOKIE) ?? null
+}
+
+/**
+ * Whether the session token carries an admin role. Decodes the JWT's `role` claim
+ * WITHOUT verifying — www holds no signing key, and this only gates whether admin UI
+ * is shown; the notify worker verifies the token before acting on it. A malformed
+ * token simply reads as "not admin".
+ */
+function isAdminToken(token: string): boolean {
+	const payload = token.split('.')[1]
+	if (!payload) return false
+	try {
+		const b64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+		const padded = b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '=')
+		const claims = JSON.parse(atob(padded)) as { role?: unknown }
+		return Array.isArray(claims.role) && claims.role.some((r) => ADMIN_ROLES.has(r as string))
+	} catch {
+		return false
+	}
 }
 
 /** Relay an upstream worker's JSON response back to the browser unchanged. */
@@ -76,7 +107,8 @@ async function establishSession(c: Context<App>, tokenResponse: Response) {
 		headers: { authorization: `Bearer ${token.access_token}` },
 	})
 	if (!me.ok) return c.json({ error: 'failed to load account after auth' }, 502)
-	return c.json({ account: await me.json() })
+	const account = (await me.json()) as Record<string, unknown>
+	return c.json({ account: { ...account, isAdmin: isAdminToken(token.access_token) } })
 }
 
 const app = new Hono<App>()
@@ -94,33 +126,27 @@ const app = new Hono<App>()
 
 	// ---- BFF API ------------------------------------------------------------
 
-	// Create a new account with a login password, then start a session.
-	.post('/api/signup', async (c) => {
-		const { password } = await c.req
-			.json<{ password?: string }>()
-			.catch(() => ({}) as { password?: string })
-		if (!password) return c.json({ error: 'A password is required.' }, 400)
+	// Manual web signups are disabled for now — accounts are created via the game /
+	// platform, not the website. Kept as an explicit closed endpoint (rather than
+	// removed) so a direct POST is refused too, not just hidden in the UI. To reopen,
+	// forward a platform-less `grant_type=create_account` to auth and start a session
+	// (see git history), and restore the SignupForm in the client.
+	.post('/api/signup', (c) => c.json({ error: 'Account creation is currently disabled.' }, 403))
 
-		const res = await postForm(`${authBase(c.env)}/connect/token`, {
-			grant_type: 'create_account',
-			platform: WEB_PLATFORM,
-			password,
-		})
-		return establishSession(c, res)
-	})
-
-	// Log in with an existing account id + password, then start a session.
+	// Log in with a username + password, then start a session. The auth password grant
+	// resolves the account by `username` (case-insensitive) — web players sign in with
+	// their username, not the numeric account id.
 	.post('/api/login', async (c) => {
-		const { accountId, password } = await c.req
-			.json<{ accountId?: string; password?: string }>()
-			.catch(() => ({}) as { accountId?: string; password?: string })
-		if (!accountId || !password) {
-			return c.json({ error: 'Account id and password are required.' }, 400)
+		const { username, password } = await c.req
+			.json<{ username?: string; password?: string }>()
+			.catch(() => ({}) as { username?: string; password?: string })
+		if (!username || !password) {
+			return c.json({ error: 'Username and password are required.' }, 400)
 		}
 
 		const res = await postForm(`${authBase(c.env)}/connect/token`, {
 			grant_type: 'password',
-			account_id: String(accountId),
+			username,
 			platform: WEB_PLATFORM,
 			password,
 		})
@@ -131,6 +157,24 @@ const app = new Hono<App>()
 	.post('/api/logout', (c) => {
 		deleteCookie(c, SESSION_COOKIE, { path: '/' })
 		return c.json({ success: true })
+	})
+
+	// Public homepage slideshow. Proxies the api worker's (public) slideshow feed and
+	// projects each image to a full img.<domain> URL the browser can load directly, so
+	// the page JS never has to know the upstream hosts. No session required.
+	.get('/api/slideshow', async (c) => {
+		const res = await fetch(`${apiBase(c.env)}/api/images/v1/slideshow`)
+		if (!res.ok) return relay(c, res)
+		const data = (await res.json()) as {
+			Images?: Array<{ ImageName: string; Username: string; RoomName: string | null }>
+			ValidTill?: string
+		}
+		const images = (data.Images ?? []).map((i) => ({
+			url: `${imgBase(c.env)}/${i.ImageName}`,
+			username: i.Username,
+			roomName: i.RoomName,
+		}))
+		return c.json({ images, validTill: data.ValidTill ?? null })
 	})
 
 	// Current session's self account (used to restore UI state on page load).
@@ -146,7 +190,11 @@ const app = new Hono<App>()
 			deleteCookie(c, SESSION_COOKIE, { path: '/' })
 			return c.json({ error: 'session expired' }, 401)
 		}
-		return relay(c, res)
+		if (!res.ok) return relay(c, res)
+		// Augment the self account with whether this session may use admin controls,
+		// read from the token's role claim (see isAdminToken).
+		const account = (await res.json()) as Record<string, unknown>
+		return c.json({ ...account, isAdmin: isAdminToken(token) })
 	})
 
 	// Set the signed-in account's email.
@@ -177,6 +225,58 @@ const app = new Hono<App>()
 			token
 		)
 		return relay(c, res)
+	})
+
+	// Broadcast a ServerMaintenance countdown to every connected client. Forwards the
+	// session token to the notify worker, which enforces the admin-role gate — so a
+	// non-admin session is rejected upstream (403) even though www shows no button.
+	// The notification frame carries `Msg: { StartsInMinutes }`, matching the client's
+	// ServerMaintenance handler; the response mirrors the reference maintenance API.
+	.post('/api/maintenance', async (c) => {
+		const token = sessionToken(c)
+		if (!token) return c.json({ error: 'not signed in' }, 401)
+
+		const { startsInMinutes } = await c.req
+			.json<{ startsInMinutes?: number }>()
+			.catch(() => ({}) as { startsInMinutes?: number })
+		const minutes = Number(startsInMinutes)
+		const startsIn = Number.isFinite(minutes) && minutes > 0 ? Math.floor(minutes) : 0
+
+		const res = await fetch(`${notifyBase(c.env)}/internal/broadcast`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+			body: JSON.stringify({
+				notificationType: SERVER_MAINTENANCE,
+				data: { StartsInMinutes: startsIn },
+			}),
+		})
+		if (!res.ok) return relay(c, res)
+
+		const result = (await res.json()) as { delivered?: number }
+		return c.json({ success: true, starts_in_minutes: startsIn, connections: result.delivered ?? 0 })
+	})
+
+	// Send a coach/system message to every online player. Like maintenance, this
+	// forwards the session token to notify, which enforces the admin-role gate.
+	.post('/api/coach-message', async (c) => {
+		const token = sessionToken(c)
+		if (!token) return c.json({ error: 'not signed in' }, 401)
+
+		const { messageContent } = await c.req
+			.json<{ messageContent?: string }>()
+			.catch(() => ({}) as { messageContent?: string })
+		const content = typeof messageContent === 'string' ? messageContent.trim() : ''
+		if (content === '') return c.json({ error: 'A message is required.' }, 400)
+
+		const res = await fetch(`${notifyBase(c.env)}/internal/coach-message-all`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+			body: JSON.stringify({ messageContent: content }),
+		})
+		if (!res.ok) return relay(c, res)
+
+		const result = (await res.json()) as { sent?: number }
+		return c.json({ success: true, sent: result.sent ?? 0 })
 	})
 
 	// ---- Static SPA ---------------------------------------------------------

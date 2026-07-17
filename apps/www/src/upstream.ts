@@ -10,6 +10,9 @@ import type { Env } from './context'
 
 export const authBase = (env: Env): string => `https://auth.${env.DOMAIN}`
 export const accountsBase = (env: Env): string => `https://accounts.${env.DOMAIN}`
+export const notifyBase = (env: Env): string => `https://notify.${env.DOMAIN}`
+export const apiBase = (env: Env): string => `https://api.${env.DOMAIN}`
+export const imgBase = (env: Env): string => `https://img.${env.DOMAIN}`
 
 /**
  * POST a form-urlencoded body to an upstream worker. The auth/accounts endpoints

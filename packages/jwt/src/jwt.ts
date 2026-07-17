@@ -51,6 +51,32 @@ export async function validateAndGetAccountId(
 	return Number.isNaN(id) ? null : id
 }
 
+/**
+ * Validate a request's bearer token and return its `role` claim — the array of role
+ * strings stamped by {@link generateToken} (e.g. `['gameClient', 'moderator']`) — or
+ * `null` when the request carries no valid token (missing/malformed/expired). A valid
+ * token with no `role` claim yields `[]`. Callers gate privileged actions on a specific
+ * role being present; the shape mirrors {@link validateAndGetAccountId} so a handler can
+ * ask for the id or the roles the same way.
+ */
+export async function validateAndGetRoles(
+	request: Request,
+	secret: string
+): Promise<string[] | null> {
+	const authHeader = request.headers.get('Authorization')
+	if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) return null
+
+	const token = authHeader.slice('bearer '.length)
+	try {
+		const payload = await verify(token, secret, 'HS256') // checks exp/nbf/signature
+		return Array.isArray(payload.role)
+			? payload.role.filter((r): r is string => typeof r === 'string')
+			: []
+	} catch {
+		return null
+	}
+}
+
 /** Scopes stamped onto every token (as a claim array). */
 const TOKEN_SCOPES = [
 	'profile',

@@ -36,9 +36,25 @@ export const SCHEMA_DDL: string[] = [
 	`CREATE INDEX IF NOT EXISTS idx_image_interaction_image ON image_interaction (saved_image_id)`,
 ]
 
+/**
+ * Saved-image categories from the C# `SavedImageType` enum — the value of a stored
+ * image's `Type` (and the client's `imgMeta.savedImageType` on upload). Lives here in
+ * the image data layer so both the upload route and the slideshow query share one
+ * definition.
+ */
+export const SavedImageType = {
+	None: 0,
+	ShareCamera: 1,
+	OutfitThumbnail: 2,
+	RoomThumbnail: 3,
+	ProfileThumbnail: 4,
+	InventionThumbnail: 5,
+} as const
+
 /** A stored image record (the client-facing SavedImage shape). */
 export interface SavedImage {
 	Id: number
+	/** A {@link SavedImageType} value. */
 	Type: number
 	Accessibility: number
 	AccessibilityLocked: boolean
@@ -275,11 +291,12 @@ async function getRoomNames(db: D1Database, ids: number[]): Promise<Map<number, 
 }
 
 /**
- * The global slideshow feed — the most recent publicly-listable images across all
- * rooms (Accessibility 0 or 1), newest first, capped at `limit`. Each row is joined
- * to its creator's username and (if any) its room's name. Returns the projected
- * SlideshowImage shape. Usernames/room names are resolved in two batched lookups to
- * avoid an N+1 across the (at most `limit`) images.
+ * The global slideshow feed — the most recent publicly-listable ShareCamera photos
+ * across all rooms (Accessibility 0 or 1, Type 1), newest first, capped at `limit`.
+ * Only ShareCamera images are surfaced (not room/profile/invention thumbnails). Each
+ * row is joined to its creator's username and (if any) its room's name. Returns the
+ * projected SlideshowImage shape. Usernames/room names are resolved in two batched
+ * lookups to avoid an N+1 across the (at most `limit`) images.
  */
 export async function getSlideshowImages(
 	db: D1Database,
@@ -289,9 +306,10 @@ export async function getSlideshowImages(
 		.prepare(
 			`SELECT data FROM image
 			 WHERE json_extract(data, '$.Accessibility') IN (0, 1)
-			 ORDER BY id DESC LIMIT ?1`
+			   AND json_extract(data, '$.Type') = ?1
+			 ORDER BY id DESC LIMIT ?2`
 		)
-		.bind(limit)
+		.bind(SavedImageType.ShareCamera, limit)
 		.all<ImageRow>()
 	const images = results.map((r) => JSON.parse(r.data) as SavedImage)
 

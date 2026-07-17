@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
-import { validateAndGetAccountId } from '@repo/jwt'
+import { validateAndGetRoles } from '@repo/jwt'
 
 import { NotificationsHub } from './notifications-hub'
 
@@ -29,21 +29,23 @@ function isNotificationType(value: unknown): value is string | number {
 }
 
 /**
- * Account ids allowed to call the internal send/broadcast endpoints. Temporary
- * lockdown until these are properly gated — for now only these admins can push
- * notifications through the shared hub.
+ * Roles allowed to call the internal send/broadcast endpoints. These are the
+ * operator-granted elevated roles (see the auth worker's `role` claim, set from an
+ * account's isDeveloper/isModerator flags via the admin CLI) — so a staffer grants
+ * themselves the role and can then push notifications through the shared hub, e.g.
+ * from the accounts web UI's maintenance control.
  */
-const ADMIN_ACCOUNT_IDS = new Set([1, 2])
+const ADMIN_ROLES = new Set(['developer', 'moderator'])
 
 /**
- * Gates the `/internal/*` endpoints on a valid Bearer token whose `sub` is an
- * allowed admin account. 401 for a missing/invalid token, 403 for a valid token
- * that isn't an admin.
+ * Gates the `/internal/*` endpoints on a valid Bearer token that carries one of the
+ * {@link ADMIN_ROLES} in its `role` claim. 401 for a missing/invalid token, 403 for a
+ * valid token that lacks an admin role.
  */
 const requireAdmin: MiddlewareHandler<App> = async (c, next) => {
-	const accountId = await validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
-	if (accountId === null) return c.json({ error: 'Unauthorized' }, 401)
-	if (!ADMIN_ACCOUNT_IDS.has(accountId)) return c.json({ error: 'Forbidden' }, 403)
+	const roles = await validateAndGetRoles(c.req.raw, await c.env.JWT_SECRET.get())
+	if (roles === null) return c.json({ error: 'Unauthorized' }, 401)
+	if (!roles.some((role) => ADMIN_ROLES.has(role))) return c.json({ error: 'Forbidden' }, 403)
 	await next()
 }
 
@@ -119,6 +121,16 @@ const app = new Hono<App>()
 			body.notificationType,
 			body.data
 		)
+		return c.json({ success: true, ...result })
+	})
+
+	// Send a coach/system direct message to every currently-online player.
+	.post('/internal/coach-message-all', async (c) => {
+		const body = await c.req.json<{ messageContent?: string }>().catch(() => null)
+		const content = typeof body?.messageContent === 'string' ? body.messageContent.trim() : ''
+		if (content === '') return c.json({ error: 'messageContent is required' }, 400)
+		const result =
+			await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).coachMessageAll(content)
 		return c.json({ success: true, ...result })
 	})
 

@@ -1065,6 +1065,7 @@ describe('images', () => {
 	test('POST /api/images/v4/uploadsaved stores the file in R2 and returns its name', async () => {
 		const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])
 		const fd = new FormData()
+		fd.append('imgMeta', JSON.stringify({ savedImageType: 1 })) // ShareCamera
 		fd.append('image', new File([bytes], 'avatar.png', { type: 'image/png' }))
 
 		const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
@@ -1074,8 +1075,9 @@ describe('images', () => {
 		})
 		expect(res.status).toBe(200)
 		const { ImageName } = (await res.json()) as { ImageName: string }
+		// Keyed by <type>/<date>/<uuid>.<ext> (the type folder mirrors the CDN layout).
 		expect(ImageName).toMatch(
-			/^\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/
+			/^sharecamera\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/
 		)
 
 		// The object is in the shared bucket under that key.
@@ -1093,10 +1095,7 @@ describe('images', () => {
 		expect(meta.CheerCount).toBe(0)
 	})
 
-	test('GET /api/images/v1/slideshow is auth-gated and joins username + room name', async () => {
-		// No token → 401.
-		expect((await exports.default.fetch(`${ORIGIN}/api/images/v1/slideshow`)).status).toBe(401)
-
+	test('GET /api/images/v1/slideshow is public and joins username + room name', async () => {
 		// Seed a public image (Accessibility 1) taken in RecCenter (room 2) by account 42.
 		await env.DB.prepare('INSERT INTO image (data) VALUES (?1)')
 			.bind(
@@ -1118,9 +1117,8 @@ describe('images', () => {
 			)
 			.run()
 
-		const res = await exports.default.fetch(`${ORIGIN}/api/images/v1/slideshow`, {
-			headers: await bearer(),
-		})
+		// No token — the slideshow is public.
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v1/slideshow`)
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {
 			Images: Array<Record<string, unknown>>
@@ -1287,8 +1285,9 @@ describe('images', () => {
 		})
 		expect(res.status).toBe(200)
 		const { ImageName } = (await res.json()) as { ImageName: string }
+		// Type 4 → the `profile/` type folder, then <date>/<uuid>.<ext>.
 		expect(ImageName).toMatch(
-			/^\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/
+			/^profile\/\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/
 		)
 
 		// The account row now points its profileImage at the uploaded key.

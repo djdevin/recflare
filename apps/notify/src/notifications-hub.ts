@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { NotificationType } from './notification-types'
+
 import type { Env } from './context'
 
 /**
@@ -33,6 +35,12 @@ interface HubMessage {
 	invocationId?: string
 	arguments?: unknown[]
 }
+
+/** The Coach system account — the `FromPlayerId` on a coach message (see coachMessageAll). */
+const COACH_PLAYER_ID = 1
+
+/** The Message `Type` a coach/system message carries (a Message-model enum, not a NotificationType). */
+const COACH_MESSAGE_TYPE = 100
 
 export class NotificationsHub extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -227,7 +235,52 @@ export class NotificationsHub extends DurableObject<Env> {
 		data?: Record<string, unknown>
 	): Promise<{ delivered: number; queued: boolean }> {
 		const payload = this.buildNotificationPayload(notificationType, data)
+		const delivered = this.deliverToPlayer(playerId, payload)
 
+		if (delivered === 0) {
+			this.ctx.storage.sql.exec(
+				'INSERT INTO pending (playerId, payload) VALUES (?, ?)',
+				playerId,
+				payload
+			)
+			return { delivered: 0, queued: true }
+		}
+		return { delivered, queued: false }
+	}
+
+	/**
+	 * Send a "coach" message to every connected client (mirrors the reference
+	 * `SendCoachMessageAll`, using the hub's live connections as the online set): each
+	 * handshaken socket gets a `MessageReceived` notification carrying a Message from
+	 * the Coach account (player 1). Online-only — nothing is queued or persisted, and
+	 * it's a broadcast, so the Message has no per-recipient `ToPlayerId`. Returns how
+	 * many connected clients were messaged.
+	 */
+	async coachMessageAll(content: string): Promise<{ sent: number }> {
+		const payload = this.buildNotificationPayload(NotificationType.MessageReceived, {
+			FromPlayerId: COACH_PLAYER_ID,
+			Type: COACH_MESSAGE_TYPE,
+			Data: content,
+		})
+		return { sent: this.broadcastToConnected(payload) }
+	}
+
+	/** Broadcast a notification to every connected (handshaken) client. */
+	async broadcast(
+		notificationType: string | number,
+		data?: Record<string, unknown>
+	): Promise<{ delivered: number }> {
+		return { delivered: this.broadcastToConnected(this.buildNotificationPayload(notificationType, data)) }
+	}
+
+	// ---- Helpers -------------------------------------------------------------
+
+	/**
+	 * Send an already-built `Notification` payload to every live socket of a player's
+	 * subscribed connections; returns how many sockets received it (0 = offline). The
+	 * shared send path for {@link notifyPlayer} and {@link coachMessageAll}.
+	 */
+	private deliverToPlayer(playerId: number, payload: string): number {
 		const connectionIds = this.ctx.storage.sql
 			.exec<{ connectionId: string }>(
 				'SELECT DISTINCT connectionId FROM subscriptions WHERE playerId = ?',
@@ -243,24 +296,15 @@ export class NotificationsHub extends DurableObject<Env> {
 				delivered++
 			}
 		}
-
-		if (delivered === 0) {
-			this.ctx.storage.sql.exec(
-				'INSERT INTO pending (playerId, payload) VALUES (?, ?)',
-				playerId,
-				payload
-			)
-			return { delivered: 0, queued: true }
-		}
-		return { delivered, queued: false }
+		return delivered
 	}
 
-	/** Broadcast a notification to every connected (handshaken) client. */
-	async broadcast(
-		notificationType: string | number,
-		data?: Record<string, unknown>
-	): Promise<{ delivered: number }> {
-		const payload = this.buildNotificationPayload(notificationType, data)
+	/**
+	 * Send an already-built `Notification` payload to every connected (handshaken)
+	 * socket; returns how many received it. Shared by {@link broadcast} and
+	 * {@link coachMessageAll}.
+	 */
+	private broadcastToConnected(payload: string): number {
 		let delivered = 0
 		for (const ws of this.ctx.getWebSockets()) {
 			const state = ws.deserializeAttachment() as SocketState | null
@@ -268,10 +312,8 @@ export class NotificationsHub extends DurableObject<Env> {
 			ws.send(this.invocation('Notification', [payload]))
 			delivered++
 		}
-		return { delivered }
+		return delivered
 	}
-
-	// ---- Helpers -------------------------------------------------------------
 
 	/**
 	 * Build the `Notification` argument: a JSON string `{ Id, Msg }`
