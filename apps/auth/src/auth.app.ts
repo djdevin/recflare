@@ -207,6 +207,20 @@ const app = new Hono<App>()
 			})(c, next)
 	)
 
+	// DEBUG: dump every incoming request (method, url, headers, body). Clone the raw
+	// request so reading the body here doesn't consume the stream the handlers need.
+	.use('*', async (c, next) => {
+		const clone = c.req.raw.clone()
+		const body = await clone.text().catch(() => '')
+		logger.info('incoming request', {
+			method: c.req.method,
+			url: c.req.url,
+			headers: Object.fromEntries(c.req.raw.headers),
+			body,
+		})
+		await next()
+	})
+
 	.onError(withOnError())
 	.notFound(withNotFound())
 
