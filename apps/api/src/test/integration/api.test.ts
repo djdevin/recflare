@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../api.app'
 
-import { createImage, SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
+import { createImage, getImageByName, SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
 import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL } from '../../inventions-db'
 import { SCHEMA_DDL as RELATIONSHIPS_SCHEMA_DDL } from '../../relationships-db'
 
@@ -1295,6 +1295,62 @@ describe('images', () => {
 			data: string
 		}>()
 		expect(JSON.parse(row!.data).profileImage).toBe(ImageName)
+	})
+
+	test('DELETE /api/images/v1/deletesaved removes the owner’s image (row + cheers + R2)', async () => {
+		const ImageName = 'sharecamera/2026-07-17/delete-me.jpg'
+		await env.IMAGES.put(ImageName, new Uint8Array([1, 2, 3]))
+		await env.DB.prepare('INSERT INTO image (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					Id: 8100,
+					Type: 1,
+					Accessibility: 1,
+					AccessibilityLocked: false,
+					ImageName,
+					Description: null,
+					PlayerId: 42, // owned by the default bearer account
+					TaggedPlayerIds: [],
+					RoomId: null,
+					PlayerEventId: null,
+					CreatedAt: new Date().toISOString(),
+					CheerCount: 1,
+					CommentCount: 0,
+				})
+			)
+			.run()
+		await env.DB.prepare(
+			'INSERT INTO image_interaction (player_id, saved_image_id, cheered) VALUES (99, 8100, 1)'
+		).run()
+
+		const del = (headers: Record<string, string>) =>
+			exports.default.fetch(`${ORIGIN}/api/images/v1/deletesaved`, {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json', ...headers },
+				body: JSON.stringify({ ImageName }),
+			})
+
+		// No token → 401; a different account → 403 (still present afterwards).
+		expect((await del({})).status).toBe(401)
+		expect((await del(await bearer('43'))).status).toBe(403)
+		expect(await getImageByName(env.DB, ImageName)).not.toBeNull()
+
+		// Unknown image → 404.
+		const unknown = await exports.default.fetch(`${ORIGIN}/api/images/v1/deletesaved`, {
+			method: 'DELETE',
+			headers: { 'Content-Type': 'application/json', ...(await bearer('42')) },
+			body: JSON.stringify({ ImageName: 'sharecamera/nope.jpg' }),
+		})
+		expect(unknown.status).toBe(404)
+
+		// Owner → 200, and the row, its cheers, and the R2 object are all gone.
+		expect((await del(await bearer('42'))).status).toBe(200)
+		expect(await getImageByName(env.DB, ImageName)).toBeNull()
+		expect(await env.IMAGES.get(ImageName)).toBeNull()
+		const cheers = await env.DB.prepare(
+			'SELECT COUNT(*) AS n FROM image_interaction WHERE saved_image_id = 8100'
+		).first<{ n: number }>()
+		expect(cheers!.n).toBe(0)
 	})
 
 	test('POST /api/images/v4/uploadsaved 401s without a bearer token', async () => {

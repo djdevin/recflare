@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 
 import {
 	createImage,
+	deleteImage,
 	getCheeredImageIds,
 	getImageByName,
 	getImagesByPlayer,
@@ -99,6 +100,30 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		})
 
 		return c.json({ ImageName: name })
+	})
+
+	// Delete one of the caller's saved images ({ ImageName }). Auth-gated. Looks the
+	// image up by name, refuses unless the caller took it (PlayerId), then removes the
+	// metadata row (and its cheers) and the object from R2. 404 for an unknown image,
+	// 403 for someone else's.
+	.delete('/api/images/v1/deletesaved', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return unauthorized(c)
+
+		const body = (await c.req.json().catch(() => null)) as { ImageName?: unknown } | null
+		const imageName = typeof body?.ImageName === 'string' ? body.ImageName : ''
+		if (imageName === '') return c.json({ error: 'ImageName is required' }, 400)
+
+		const image = await getImageByName(c.env.DB, imageName)
+		if (!image) return c.notFound()
+		if (image.PlayerId !== id) return c.json({ error: 'Not your image' }, 403)
+
+		// Drop the metadata (and cheers) first, then the object. An R2 delete is
+		// idempotent, so a missing object is fine.
+		await deleteImage(c.env.DB, image)
+		await c.env.IMAGES.delete(imageName)
+
+		return c.json({ success: true })
 	})
 
 	// A room's photo feed — the public images taken in that room. `sort` orders the

@@ -182,6 +182,19 @@ export async function getImageByName(db: D1Database, name: string): Promise<Save
 }
 
 /**
+ * Delete an image's metadata row plus any per-player interactions (cheers) recorded
+ * against it, in one batch — the row keyed by ImageName (the R2 key), its interactions
+ * by the image's `Id`. Authorization and removing the object from R2 are the caller's
+ * responsibility (see the deletesaved route).
+ */
+export async function deleteImage(db: D1Database, image: SavedImage): Promise<void> {
+	await db.batch([
+		db.prepare('DELETE FROM image WHERE image_name = ?1').bind(image.ImageName),
+		db.prepare('DELETE FROM image_interaction WHERE saved_image_id = ?1').bind(image.Id),
+	])
+}
+
+/**
  * The public images taken in a room, for the room's photo feed. Only publicly
  * accessible images (Accessibility === 1) are returned. `filter` narrows by
  * `SavedImageType` (0 = all types); `sort` orders the feed — `1` puts the most
