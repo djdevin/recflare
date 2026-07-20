@@ -582,7 +582,7 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toBeTruthy()
 	})
 
-	// Item 73 in sf3.json — "Class of 2016", 4500 RecCenterTokens (CurrencyType 2).
+	// Item 73 in sf3.json — "Bowtie (White)", 450 RecCenterTokens (CurrencyType 2).
 	test('POST /api/storefronts/v2/buyItem 401s without a token', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
 			method: 'POST',
@@ -591,7 +591,7 @@ describe('econ endpoints', () => {
 				StorefrontType: 3,
 				PurchasableItemId: 73,
 				CurrencyType: 2,
-				RequestedPrice: 4500,
+				RequestedPrice: 450,
 			}),
 		})
 		expect(res.status).toBe(401)
@@ -606,7 +606,7 @@ describe('econ endpoints', () => {
 				StorefrontType: 3,
 				PurchasableItemId: 73,
 				CurrencyType: 2,
-				RequestedPrice: 4500,
+				RequestedPrice: 450,
 			}),
 		})
 		expect(res.status).toBe(200)
@@ -619,25 +619,25 @@ describe('econ endpoints', () => {
 			}>
 		}
 		// `Balance` is the change applied (the negated price), not the resulting total.
-		expect(body.Balance).toBe(-4500)
+		expect(body.Balance).toBe(-450)
 		expect(body.CurrencyType).toBe(2)
 		expect(body.BalanceType).toBe(-2)
 		const gift = body.BalanceUpdates[0].Data[0]
 		expect(gift.AvatarItemDesc).not.toBe('')
 		expect(gift.Id).toBeGreaterThan(0)
 
-		// The balance endpoint reflects the debit (this is the resulting total, 10000 - 4500).
+		// The balance endpoint reflects the debit (this is the resulting total, 10000 - 450).
 		const bal = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
 			headers: await bearer('20'),
 		})
-		expect(await bal.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 5500 }])
+		expect(await bal.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 9550 }])
 
 		// The item is now owned — it leads the v4/items list (owned items prepend the catalog).
 		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
 			headers: await bearer('20'),
 		})
 		const list = (await items.json()) as Array<{ AvatarItemDesc: string; FriendlyName: string }>
-		expect(list[0].FriendlyName).toBe('Class of 2016')
+		expect(list[0].FriendlyName).toBe('Bowtie (White)')
 		expect(list[0].AvatarItemDesc).toBe(gift.AvatarItemDesc)
 
 		// And a pending gift box is waiting to be opened.
@@ -759,7 +759,7 @@ describe('econ endpoints', () => {
 				StorefrontType: 3,
 				PurchasableItemId: 9999999,
 				CurrencyType: 2,
-				RequestedPrice: 4500,
+				RequestedPrice: 450,
 			}),
 		})
 		expect(res.status).toBe(404)
@@ -777,7 +777,7 @@ describe('econ endpoints', () => {
 				StorefrontType: 3,
 				PurchasableItemId: 73,
 				CurrencyType: 2,
-				RequestedPrice: 4500,
+				RequestedPrice: 450,
 			}),
 		})
 		expect(res.status).toBe(400)
@@ -786,7 +786,7 @@ describe('econ endpoints', () => {
 			headers: await bearer('23'),
 		})
 		const list = (await items.json()) as Array<{ FriendlyName: string }>
-		expect(list.every((i) => i.FriendlyName !== 'Class of 2016')).toBe(true)
+		expect(list.every((i) => i.FriendlyName !== 'Bowtie (White)')).toBe(true)
 	})
 
 	test('POST /api/avatar/v2/gifts/consume opens the box the way the client sends it', async () => {
@@ -799,7 +799,7 @@ describe('econ endpoints', () => {
 				StorefrontType: 3,
 				PurchasableItemId: 73,
 				CurrencyType: 2,
-				RequestedPrice: 4500,
+				RequestedPrice: 450,
 			}),
 		})
 		const bought = (await buy.json()) as {
@@ -827,7 +827,7 @@ describe('econ endpoints', () => {
 			headers: await bearer('24'),
 		})
 		const list = (await items.json()) as Array<{ FriendlyName: string }>
-		expect(list.some((i) => i.FriendlyName === 'Class of 2016')).toBe(true)
+		expect(list.some((i) => i.FriendlyName === 'Bowtie (White)')).toBe(true)
 
 		// Opening it again is a harmless no-op — still 200.
 		const again = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume/`, {
@@ -855,8 +855,9 @@ describe('econ endpoints', () => {
 			}),
 		})
 		expect(buy.status).toBe(200)
-		const giftId = ((await buy.json()) as { BalanceUpdates: Array<{ Data: Array<{ Id: number }> }> })
-			.BalanceUpdates[0].Data[0].Id
+		const giftId = (
+			(await buy.json()) as { BalanceUpdates: Array<{ Data: Array<{ Id: number }> }> }
+		).BalanceUpdates[0].Data[0].Id
 
 		// Opening the box succeeds and fires the ConsumableMappingAdded push (which no-ops
 		// against the test hub stub — this asserts the notify path doesn't throw).
@@ -871,7 +872,9 @@ describe('econ endpoints', () => {
 		// The box is gone; the consumable stays owned (granted at purchase).
 		expect(
 			await (
-				await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, { headers: await bearer('26') })
+				await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`, {
+					headers: await bearer('26'),
+				})
 			).json()
 		).toEqual([])
 		const unlocked = (await (
@@ -891,11 +894,12 @@ describe('econ endpoints', () => {
 				StorefrontType: 3,
 				PurchasableItemId: 73,
 				CurrencyType: 2,
-				RequestedPrice: 4500,
+				RequestedPrice: 450,
 			}),
 		})
-		const giftId = ((await buy.json()) as { BalanceUpdates: Array<{ Data: Array<{ Id: number }> }> })
-			.BalanceUpdates[0].Data[0].Id
+		const giftId = (
+			(await buy.json()) as { BalanceUpdates: Array<{ Data: Array<{ Id: number }> }> }
+		).BalanceUpdates[0].Data[0].Id
 
 		// Account 28 trying to open 27's box is forbidden — and 27 keeps it.
 		const forbidden = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts/consume`, {
@@ -1001,5 +1005,71 @@ describe('econ endpoints', () => {
 	test('unknown path returns 404', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/nope`)
 		expect(res.status).toBe(404)
+	})
+
+	test('GET /openapi.json documents every route', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		expect(res.status).toBe(200)
+		const spec = (await res.json()) as {
+			openapi: string
+			paths: Record<string, Record<string, { summary?: string }>>
+		}
+		expect(spec.openapi).toMatch(/^3\.1/)
+
+		// The spec route hides itself.
+		expect(spec.paths['/openapi.json']).toBeUndefined()
+
+		// Every route the worker serves is described. This is the drift guard: adding a
+		// route without a describeRoute() block fails here rather than silently shipping
+		// an incomplete spec. Hono's `:param` syntax becomes OpenAPI's `{param}`; the
+		// `.on(['GET','POST'], …)` cleargroup route contributes both methods.
+		const documented = new Set(
+			Object.entries(spec.paths).flatMap(([path, ops]) =>
+				Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+			)
+		)
+		expect([...documented].sort()).toEqual([
+			'GET /api/avatar/v1/defaultbaseavataritems',
+			'GET /api/avatar/v1/defaultunlocked',
+			'GET /api/avatar/v2',
+			'GET /api/avatar/v2/gifts',
+			'GET /api/avatar/v2/{id}',
+			'GET /api/avatar/v3/saved',
+			'GET /api/avatar/v4/items',
+			'GET /api/challenge/v2/getCurrent',
+			'GET /api/checklist/v1/current',
+			'GET /api/consumables/v2/getUnlocked',
+			'GET /api/equipment/v2/getUnlocked',
+			'GET /api/gamerewards/v1/pending',
+			'GET /api/itemWishlists/v1/wishlist/me',
+			'GET /api/objectives/v1/cleargroup',
+			'GET /api/objectives/v1/myprogress',
+			'GET /api/roomconsumables/v1/roomConsumable/room/{roomId}',
+			'GET /api/roomconsumables/v1/roomConsumable/room/{roomId}/me',
+			'GET /api/roomcurrencies/v1/currencies',
+			'GET /api/roomcurrencies/v1/getAllBalances',
+			'GET /api/roomkeys/v1/mine',
+			'GET /api/roomkeys/v1/room',
+			'GET /api/storefronts/v1/adcarouselitems',
+			'GET /api/storefronts/v3/giftdropstore/{id}',
+			'GET /api/storefronts/v4/balance/{currencyType}',
+			'GET /econ/customAvatarItems/v1/owned',
+			'POST /api/CampusCard/v1/UpdateAndGetSubscription',
+			'POST /api/avatar/v2/gifts/consume',
+			'POST /api/avatar/v2/set',
+			'POST /api/avatar/v3/saved/set',
+			'POST /api/challenge/v2/updateProgress',
+			'POST /api/consumables/v1/consume',
+			'POST /api/gamerewards/v1/request',
+			'POST /api/objectives/v1/cleargroup',
+			'POST /api/settings/v2/set',
+			'POST /api/storefronts/v2/buyItem',
+		])
+
+		// Every operation carries a summary — a path present but undescribed is not
+		// documentation.
+		for (const ops of Object.values(spec.paths)) {
+			for (const op of Object.values(ops)) expect(op.summary).toBeTruthy()
+		}
 	})
 })
