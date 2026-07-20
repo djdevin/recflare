@@ -624,4 +624,41 @@ describe('auth worker routes', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/nope`)
 		expect(res.status).toBe(404)
 	})
+
+	test('GET /openapi.json documents every route', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		expect(res.status).toBe(200)
+		const spec = (await res.json()) as {
+			openapi: string
+			paths: Record<string, Record<string, { summary?: string }>>
+		}
+		expect(spec.openapi).toMatch(/^3\.1/)
+
+		// The spec route hides itself.
+		expect(spec.paths['/openapi.json']).toBeUndefined()
+
+		// Every route the worker serves is described. This is the drift guard: adding a
+		// route without a describeRoute() block fails here rather than silently shipping
+		// an incomplete spec. Hono's `:param` syntax becomes OpenAPI's `{param}`.
+		const documented = new Set(
+			Object.entries(spec.paths).flatMap(([path, ops]) =>
+				Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+			)
+		)
+		expect([...documented].sort()).toEqual([
+			'GET /cachedlogin/forplatformid/{platform}/{id}',
+			'GET /eac/challenge',
+			'GET /role/developer/{id}',
+			'GET /role/moderator/{id}',
+			'POST /account/me/changepassword',
+			'POST /cachedlogin/forplatformids',
+			'POST /connect/token',
+		])
+
+		// Every operation carries a summary — a path present but undescribed is not
+		// documentation.
+		for (const ops of Object.values(spec.paths)) {
+			for (const op of Object.values(ops)) expect(op.summary).toBeTruthy()
+		}
+	})
 })
