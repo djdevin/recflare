@@ -13,6 +13,9 @@
  *   http://localhost:8787/match/player/login  -> match app sees /player/login
  *   http://localhost:8787/api/api/config/v2   -> api app sees /api/config/v2
  *
+ * A bare hit to the facade's own host (mono.<domain>) has no service subdomain and no
+ * prefix, so it falls back to the `ns` discovery worker — clients bootstrap from there.
+ *
  * NOT mounted here: `www`, `img`, `econ`. Each binds a static `assets` directory and
  * Cloudflare allows only one static-assets binding per Worker. Resolve that (serve
  * their static trees from R2, or keep those three as their own Workers) before adding.
@@ -79,6 +82,10 @@ function resolve(request: Request): { name: ServiceName; request: Request } | un
 		url.pathname = `/${rest.join('/')}`
 		return { name: first as ServiceName, request: new Request(url, request) }
 	}
+
+	// The facade's own host (mono.<domain>) carries no service subdomain. Fall back to
+	// the `ns` discovery worker so a bare hit returns the service map, like the apex/ns host.
+	if (sub === 'mono') return { name: 'ns', request }
 
 	return undefined
 }
