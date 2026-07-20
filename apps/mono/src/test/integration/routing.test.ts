@@ -21,8 +21,8 @@ describe('mono routing', () => {
 		expect(res.headers.get('content-type')).toContain('application/json')
 	})
 
-	test('the facade host (mono.<domain>) falls back to the ns discovery worker', async () => {
-		const res = await exports.default.fetch('https://mono.recflare.net/')
+	test('root path (no service, no prefix) serves the ns discovery document', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/`)
 		expect(res.status).toBe(200)
 		// The ns worker serves the service-discovery document.
 		expect(await res.json()).toHaveProperty('Auth')
