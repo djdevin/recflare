@@ -712,29 +712,6 @@ const app = new Hono<App>({ strict: false })
 		c.json([])
 	)
 
-	// Persist player settings. [Authorize]; would replace the player's settings.
-	// No DB binding yet, so accept-and-ack.
-	.post(
-		'/api/settings/v2/set',
-		describeRoute({
-			tags: ['Econ'],
-			summary: 'Persist player settings',
-			description: 'Accept-and-ack — no settings store yet. Empty 200.',
-			security: AUTHED,
-			requestBody: jsonBody(OpaqueJsonBody, 'The settings payload (currently ignored)'),
-			responses: {
-				200: { description: 'Acknowledged (empty body)' },
-				401: UNAUTHORIZED_RESPONSE,
-			},
-		}),
-		async (c) => {
-			const id = await authedId(c)
-			if (id === null) return unauthorized(c)
-			// TODO: replace stored settings for `id` once a DB binding exists.
-			return c.body(null, 200)
-		}
-	)
-
 	// Unlocked consumables. [Authorize]. The consumables the player has bought (from
 	// `buyItem`, stored in the `consumable` table), grouped by item into the client's
 	// unlocked-consumable DTO. A player who has bought none gets an empty list.
