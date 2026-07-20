@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
@@ -13,6 +14,29 @@ import {
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
+import {
+	AccountDto,
+	BioRequest,
+	BioResponse,
+	CreateAccountRequest,
+	CreateAccountResult,
+	DisplayNameRequest,
+	EmailRequest,
+	form,
+	HealthResponse,
+	IdentityFlagsRequest,
+	json,
+	ParentalControl,
+	PhoneRequest,
+	PrivacySettings,
+	ProfileImageRequest,
+	PronounsRequest,
+	SelfAccountDto,
+	SuccessResponse,
+	UsernameRequest,
+	UsernameResult,
+} from './openapi'
+
 import type { Context } from 'hono'
 import type { Account } from '@repo/domain'
 import type { App } from './context'
@@ -21,9 +45,10 @@ import type { App } from './context'
  * Account reads/writes are backed by the shared `accounts` table in D1 (schema
  * owned by the `auth` worker). Accounts not in the table fall back to a
  * synthesized default (every column has a fallback anyway). Profile mutations
- * still accept-and-ack (marked `TODO`).
+ * persist to the account row and push an AccountUpdate through the notifications
+ * hub (see `pushAccountUpdate`).
  *
- * Auth-gated routes still validate the Bearer JWT issued by the `auth` worker.
+ * Auth-gated routes validate the Bearer JWT issued by the `auth` worker.
  */
 
 /**
@@ -117,6 +142,12 @@ async function pushAccountUpdate(c: Context<App>, account: Account): Promise<voi
 	}
 }
 
+/** The empty-body 401 every auth-gated route returns; reused across their specs. */
+const UNAUTHORIZED_RESPONSE = { description: 'Missing or invalid bearer token (empty body)' }
+
+/** Bearer-JWT security requirement, for the auth-gated routes. */
+const AUTHED = [{ bearerAuth: [] }]
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -132,203 +163,511 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	// Root health check.
-	.get('/', (c) => c.json({ service: 'accounts', status: 'ok' }))
+	.get(
+		'/',
+		describeRoute({
+			tags: ['Meta'],
+			summary: 'Health check',
+			responses: { 200: json(HealthResponse, 'Service is up') },
+		}),
+		(c) => c.json({ service: 'accounts', status: 'ok' })
+	)
 
 	// ---- Self account --------------------------------------------------------
-	.get('/account/me', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		// Load the stored account, falling back to a synthesized default.
-		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
-		return c.json(toSelfAccountDto(account))
-	})
+	.get(
+		'/account/me',
+		describeRoute({
+			tags: ['Self'],
+			summary: 'The caller’s own account',
+			description:
+				'The private self DTO, including owner-only fields (email, remaining username ' +
+				'changes). An account with no stored row falls back to a synthesized default.',
+			security: AUTHED,
+			responses: {
+				200: json(SelfAccountDto, 'The caller’s account'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			// Load the stored account, falling back to a synthesized default.
+			const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
+			return c.json(toSelfAccountDto(account))
+		}
+	)
 
 	// ---- Search --------------------------------------------------------------
 	// Prefix-search accounts by username (`?name=`). Returns a bare array of public
 	// account DTOs, ordered alphabetically. Registered before `/account/:id` so the
 	// static `search` path wins over the param route.
-	.get('/account/search', async (c) => {
-		const name = c.req.query('name') ?? ''
-		const accounts = await searchAccounts(c.env.DB, name)
-		return c.json(accounts.map(toAccountDto))
-	})
+	.get(
+		'/account/search',
+		describeRoute({
+			tags: ['Lookup'],
+			summary: 'Prefix-search accounts by username',
+			description: 'Case-insensitive prefix match on username, ordered alphabetically.',
+			parameters: [
+				{
+					name: 'name',
+					in: 'query',
+					required: false,
+					description: 'Username prefix; empty matches nothing meaningful',
+					schema: { type: 'string' },
+				},
+			],
+			responses: { 200: json(AccountDto.array(), 'Matching public accounts') },
+		}),
+		async (c) => {
+			const name = c.req.query('name') ?? ''
+			const accounts = await searchAccounts(c.env.DB, name)
+			return c.json(accounts.map(toAccountDto))
+		}
+	)
 
 	// ---- Bulk / single lookup ------------------------------------------------
 	// Register the static `bulk` path before the `/account/:id` param route.
-	.get('/account/bulk', async (c) => {
-		// Reads repeated `id` query params; also accept a comma-separated list.
-		const ids =
-			c.req
-				.queries('id')
-				?.flatMap((v) => v.split(','))
-				.map((s) => Number.parseInt(s.trim(), 10))
-				.filter((n) => !Number.isNaN(n)) ?? []
-		// Resolve stored accounts, synthesizing a default for any id not in the DB
-		// so every requested id is present in the response.
-		const stored = new Map((await getAccountsByIds(c.env.DB, ids)).map((a) => [a.accountId, a]))
-		return c.json(ids.map((id) => toAccountDto(stored.get(id) ?? defaultAccount(id))))
-	})
+	.get(
+		'/account/bulk',
+		describeRoute({
+			tags: ['Lookup'],
+			summary: 'Look up many accounts by id',
+			description:
+				'Accepts repeated `id` query params and/or comma-separated lists. Every requested ' +
+				'id appears in the response — ids with no stored row get a synthesized default.',
+			parameters: [
+				{
+					name: 'id',
+					in: 'query',
+					required: false,
+					description: 'Repeatable; each value may be a comma-separated list of ids',
+					schema: { type: 'array', items: { type: 'string' } },
+				},
+			],
+			responses: { 200: json(AccountDto.array(), 'One public account per requested id') },
+		}),
+		async (c) => {
+			// Reads repeated `id` query params; also accept a comma-separated list.
+			const ids =
+				c.req
+					.queries('id')
+					?.flatMap((v) => v.split(','))
+					.map((s) => Number.parseInt(s.trim(), 10))
+					.filter((n) => !Number.isNaN(n)) ?? []
+			// Resolve stored accounts, synthesizing a default for any id not in the DB
+			// so every requested id is present in the response.
+			const stored = new Map((await getAccountsByIds(c.env.DB, ids)).map((a) => [a.accountId, a]))
+			return c.json(ids.map((id) => toAccountDto(stored.get(id) ?? defaultAccount(id))))
+		}
+	)
 
-	.get('/account/:id/bio', async (c) => {
-		const accountId = Number.parseInt(c.req.param('id'), 10)
-		if (Number.isNaN(accountId)) return c.body(null, 400)
-		// Bio is stored on the account JSON (set via PUT /account/me/bio).
-		const account = await getAccount(c.env.DB, accountId)
-		return c.json({ accountId, bio: account?.bio ?? '' })
-	})
+	.get(
+		'/account/:id/bio',
+		describeRoute({
+			tags: ['Lookup'],
+			summary: 'A player’s bio',
+			parameters: [
+				{
+					name: 'id',
+					in: 'path',
+					required: true,
+					description: 'Account id; non-numeric is 400',
+					schema: { type: 'string' },
+				},
+			],
+			responses: {
+				200: json(BioResponse, 'The bio (empty string when unset)'),
+				400: { description: 'Non-numeric id (empty body)' },
+			},
+		}),
+		async (c) => {
+			const accountId = Number.parseInt(c.req.param('id'), 10)
+			if (Number.isNaN(accountId)) return c.body(null, 400)
+			// Bio is stored on the account JSON (set via PUT /account/me/bio).
+			const account = await getAccount(c.env.DB, accountId)
+			return c.json({ accountId, bio: account?.bio ?? '' })
+		}
+	)
 
-	.get('/account/:id', async (c) => {
-		const accountId = Number.parseInt(c.req.param('id'), 10)
-		if (Number.isNaN(accountId)) return c.body(null, 400)
-		// Load the stored account, falling back to a synthesized default.
-		return c.json(
-			toAccountDto((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId))
-		)
-	})
+	.get(
+		'/account/:id',
+		describeRoute({
+			tags: ['Lookup'],
+			summary: 'A single public account',
+			description: 'An id with no stored row falls back to a synthesized default account.',
+			parameters: [
+				{
+					name: 'id',
+					in: 'path',
+					required: true,
+					description: 'Account id; non-numeric is 400',
+					schema: { type: 'string' },
+				},
+			],
+			responses: {
+				200: json(AccountDto, 'The public account'),
+				400: { description: 'Non-numeric id (empty body)' },
+			},
+		}),
+		async (c) => {
+			const accountId = Number.parseInt(c.req.param('id'), 10)
+			if (Number.isNaN(accountId)) return c.body(null, 400)
+			// Load the stored account, falling back to a synthesized default.
+			return c.json(
+				toAccountDto((await getAccount(c.env.DB, accountId)) ?? defaultAccount(accountId))
+			)
+		}
+	)
 
 	// ---- Create --------------------------------------------------------------
-	.post('/account/create', async (c) => {
-		// Parsed for fidelity; unused until there's a DB to persist CachedLogins.
-		const platform = await formField(c, 'platform')
-		await formField(c, 'platformId')
+	.post(
+		'/account/create',
+		describeRoute({
+			tags: ['Self'],
+			summary: 'Create an account',
+			description:
+				'Mints a new account with an auto-assigned random username (players don’t choose ' +
+				'one initially). Not auth-gated. `platformId` is parsed but not yet persisted.',
+			requestBody: form(CreateAccountRequest, 'Platform fields'),
+			responses: { 200: json(CreateAccountResult, 'The created account, in a result envelope') },
+		}),
+		async (c) => {
+			// Parsed for fidelity; unused until there's a DB to persist CachedLogins.
+			const platform = await formField(c, 'platform')
+			await formField(c, 'platformId')
 
-		// Persist a new account with an auto-assigned random username (players
-		// don't choose one initially).
-		const platforms = Number.parseInt(platform, 10)
-		const account = await createAccount(c.env.DB, {
-			platforms: Number.isNaN(platforms) ? 0 : platforms,
-		})
-		// TODO: also create a dorm Room/SubRoom for the new account.
-		return c.json({ success: true, value: toAccountDto(account) })
-	})
+			// Persist a new account with an auto-assigned random username (players
+			// don't choose one initially).
+			const platforms = Number.parseInt(platform, 10)
+			const account = await createAccount(c.env.DB, {
+				platforms: Number.isNaN(platforms) ? 0 : platforms,
+			})
+			// TODO: also create a dorm Room/SubRoom for the new account.
+			return c.json({ success: true, value: toAccountDto(account) })
+		}
+	)
 
 	// ---- Parental control ----------------------------------------------------
-	.get('/parentalcontrol/me', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		return c.json({ accountId: id, disallowInAppPurchases: false })
-	})
+	.get(
+		'/parentalcontrol/me',
+		describeRoute({
+			tags: ['Self'],
+			summary: 'The caller’s parental-control flags',
+			description: 'Nothing stores parental controls yet; purchases are always allowed.',
+			security: AUTHED,
+			responses: {
+				200: json(ParentalControl, 'Parental-control flags'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			return c.json({ accountId: id, disallowInAppPurchases: false })
+		}
+	)
 
 	// Privacy settings for an account. A bare `{}` fails the client's deserializer
 	// ("Deserialization returned null") — it needs the fields, so echo the id back and
 	// report recent history as visible. Nothing stores per-player privacy yet.
-	.get('/accountprivacysettings/:id{[0-9]+}', (c) =>
-		c.json({
-			accountId: Number.parseInt(c.req.param('id'), 10),
-			isRecentHistoryVisible: true,
-		})
+	.get(
+		'/accountprivacysettings/:id{[0-9]+}',
+		describeRoute({
+			tags: ['Lookup'],
+			summary: 'An account’s privacy settings',
+			description:
+				'Nothing stores per-player privacy yet; the id is echoed and recent history is ' +
+				'reported visible (a bare `{}` fails the client’s deserializer).',
+			parameters: [
+				{
+					name: 'id',
+					in: 'path',
+					required: true,
+					description: 'Account id (digits only)',
+					schema: { type: 'string', pattern: '^[0-9]+$' },
+				},
+			],
+			responses: { 200: json(PrivacySettings, 'Privacy settings') },
+		}),
+		(c) =>
+			c.json({
+				accountId: Number.parseInt(c.req.param('id'), 10),
+				isRecentHistoryVisible: true,
+			})
 	)
 
 	// ---- Profile mutations ---------------------------------------------------
 	// Set the player's display name (persisted on the account row).
-	.put('/account/me/displayname', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const displayName = (await formField(c, 'displayName')).trim()
-		if (displayName === '') return c.body(null, 400)
-		const account = await updateAccount(c.env.DB, id, { displayName })
-		await pushAccountUpdate(c, account)
-		return c.json({ success: true })
-	})
+	.put(
+		'/account/me/displayname',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set display name',
+			description: 'Persisted and broadcast via an AccountUpdate notification.',
+			security: AUTHED,
+			requestBody: form(DisplayNameRequest, 'The new display name'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				400: { description: 'Empty display name (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const displayName = (await formField(c, 'displayName')).trim()
+			if (displayName === '') return c.body(null, 400)
+			const account = await updateAccount(c.env.DB, id, { displayName })
+			await pushAccountUpdate(c, account)
+			return c.json({ success: true })
+		}
+	)
 
 	// Change the caller's username. Rejects a name already taken by another account,
 	// and requires the account to have username changes remaining. On success the
 	// new name is persisted and the remaining-changes counter is decremented.
-	.put('/account/me/username', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.put(
+		'/account/me/username',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Change username',
+			description:
+				'Rejects a name taken by another account and requires a remaining change; on ' +
+				'success the name is persisted and the counter decremented. Always HTTP 200 — ' +
+				'failures carry a message in `error` (see the UsernameResult envelope).',
+			security: AUTHED,
+			requestBody: form(UsernameRequest, 'The desired username'),
+			responses: {
+				200: json(UsernameResult, 'Result envelope (success or a validation error)'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const username = (await formField(c, 'username')).trim()
-		if (username === '') return usernameResult(c, 'You must enter a username.')
+			const username = (await formField(c, 'username')).trim()
+			if (username === '') return usernameResult(c, 'You must enter a username.')
 
-		// Duplicate check first (case-insensitive); keeping your own name is allowed.
-		const existing = await getAccountByUsername(c.env.DB, username)
-		if (existing && existing.accountId !== id) {
-			return usernameResult(c, 'That username is already taken.')
+			// Duplicate check first (case-insensitive); keeping your own name is allowed.
+			const existing = await getAccountByUsername(c.env.DB, username)
+			if (existing && existing.accountId !== id) {
+				return usernameResult(c, 'That username is already taken.')
+			}
+
+			// Then require a remaining change.
+			const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
+			const remaining = account.availableUsernameChanges ?? DEFAULT_USERNAME_CHANGES
+			if (remaining <= 0) {
+				return usernameResult(c, 'You have no username changes remaining.')
+			}
+
+			const updated = await updateAccount(c.env.DB, id, {
+				username,
+				availableUsernameChanges: remaining - 1,
+			})
+			await pushAccountUpdate(c, updated)
+			return usernameResult(c, '', toAccountDto(updated))
 		}
-
-		// Then require a remaining change.
-		const account = (await getAccount(c.env.DB, id)) ?? defaultAccount(id)
-		const remaining = account.availableUsernameChanges ?? DEFAULT_USERNAME_CHANGES
-		if (remaining <= 0) {
-			return usernameResult(c, 'You have no username changes remaining.')
-		}
-
-		const updated = await updateAccount(c.env.DB, id, {
-			username,
-			availableUsernameChanges: remaining - 1,
-		})
-		await pushAccountUpdate(c, updated)
-		return usernameResult(c, '', toAccountDto(updated))
-	})
+	)
 
 	// Set the player's email (persisted on the account row; surfaced by /account/me).
-	.post('/account/me/email', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const email = (await formField(c, 'email')).trim()
-		if (!email.includes('@')) return c.body(null, 400)
-		await updateAccount(c.env.DB, id, { email })
-		return c.json({ success: true })
-	})
+	.post(
+		'/account/me/email',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set email',
+			description: 'Persisted; surfaced only by `/account/me`. Not broadcast.',
+			security: AUTHED,
+			requestBody: form(EmailRequest, 'The new email'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				400: { description: 'Email without an “@” (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const email = (await formField(c, 'email')).trim()
+			if (!email.includes('@')) return c.body(null, 400)
+			await updateAccount(c.env.DB, id, { email })
+			return c.json({ success: true })
+		}
+	)
 
 	// Set the player's phone (persisted on the account row).
-	.post('/account/me/phone', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const phone = (await formField(c, 'phone')).trim()
-		if (phone === '') return c.body(null, 400)
-		await updateAccount(c.env.DB, id, { phone })
-		return c.json({ success: true })
-	})
+	.post(
+		'/account/me/phone',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set phone number',
+			description: 'Persisted on the account row. Not broadcast.',
+			security: AUTHED,
+			requestBody: form(PhoneRequest, 'The new phone number'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				400: { description: 'Empty phone (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const phone = (await formField(c, 'phone')).trim()
+			if (phone === '') return c.body(null, 400)
+			await updateAccount(c.env.DB, id, { phone })
+			return c.json({ success: true })
+		}
+	)
 
 	// Set the player's identityFlags bitmask (persisted; surfaced by /account/me).
 	// `identityFlags` is part of the public account DTO, so the update has to be pushed
 	// — see the note on personalpronouns below.
-	.put('/account/me/identityflags', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const identityFlags = Number.parseInt((await formField(c, 'identityFlags')).trim(), 10)
-		if (Number.isNaN(identityFlags)) return c.body(null, 400)
-		const account = await updateAccount(c.env.DB, id, { identityFlags })
-		await pushAccountUpdate(c, account)
-		return c.json({ success: true })
-	})
+	.put(
+		'/account/me/identityflags',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set identity flags',
+			description:
+				'`identityFlags` bitmask. In the public DTO, so the update is broadcast via ' +
+				'AccountUpdate.',
+			security: AUTHED,
+			requestBody: form(IdentityFlagsRequest, 'The identityFlags bitmask'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				400: { description: 'Non-numeric identityFlags (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const identityFlags = Number.parseInt((await formField(c, 'identityFlags')).trim(), 10)
+			if (Number.isNaN(identityFlags)) return c.body(null, 400)
+			const account = await updateAccount(c.env.DB, id, { identityFlags })
+			await pushAccountUpdate(c, account)
+			return c.json({ success: true })
+		}
+	)
 
 	// Set the player's personalPronouns (posted as `pronounFlags`; persisted).
 	// The response body carries no account, so the client only learns the new value from
 	// the `SelfAccountUpdate`/`AccountUpdate` the hub pushes — without it the player's own
 	// UI (and every other client, since personalPronouns is in the public DTO) keeps
 	// showing the old pronouns until something else refetches the account.
-	.put('/account/me/personalpronouns', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const personalPronouns = Number.parseInt((await formField(c, 'pronounFlags')).trim(), 10)
-		if (Number.isNaN(personalPronouns)) return c.body(null, 400)
-		const account = await updateAccount(c.env.DB, id, { personalPronouns })
-		await pushAccountUpdate(c, account)
-		return c.json({ success: true })
-	})
+	.put(
+		'/account/me/personalpronouns',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set personal pronouns',
+			description:
+				'Posted as `pronounFlags`. The response carries no account, so the client learns ' +
+				'the new value only from the broadcast AccountUpdate.',
+			security: AUTHED,
+			requestBody: form(PronounsRequest, 'The pronounFlags bitmask'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				400: { description: 'Non-numeric pronounFlags (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const personalPronouns = Number.parseInt((await formField(c, 'pronounFlags')).trim(), 10)
+			if (Number.isNaN(personalPronouns)) return c.body(null, 400)
+			const account = await updateAccount(c.env.DB, id, { personalPronouns })
+			await pushAccountUpdate(c, account)
+			return c.json({ success: true })
+		}
+	)
 
-	.put('/account/me/bio', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const bio = await formField(c, 'bio')
-		const account = await updateAccount(c.env.DB, id, { bio })
-		await pushAccountUpdate(c, account)
-		return c.json({ success: true })
-	})
+	.put(
+		'/account/me/bio',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set bio',
+			description: 'Free text; empty is allowed. Persisted and broadcast.',
+			security: AUTHED,
+			requestBody: form(BioRequest, 'The new bio'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const bio = await formField(c, 'bio')
+			const account = await updateAccount(c.env.DB, id, { bio })
+			await pushAccountUpdate(c, account)
+			return c.json({ success: true })
+		}
+	)
 
-	.put('/account/me/profileimage', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const imageName = await formField(c, 'imageName')
-		if (!imageName) return c.body(null, 400)
-		// Persist the new avatar key on the account row and fire the AccountUpdate
-		// websocket (the new profileImage rides along in the DTO payload).
-		const account = await updateAccount(c.env.DB, id, { profileImage: imageName })
-		await pushAccountUpdate(c, account)
-		return c.json({ success: true })
+	.put(
+		'/account/me/profileimage',
+		describeRoute({
+			tags: ['Profile'],
+			summary: 'Set profile image',
+			description: 'Persists the avatar object key and broadcasts it in the AccountUpdate payload.',
+			security: AUTHED,
+			requestBody: form(ProfileImageRequest, 'The avatar object key'),
+			responses: {
+				200: json(SuccessResponse, 'Updated'),
+				400: { description: 'Empty imageName (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const imageName = await formField(c, 'imageName')
+			if (!imageName) return c.body(null, 400)
+			// Persist the new avatar key on the account row and fire the AccountUpdate
+			// websocket (the new profileImage rides along in the DTO payload).
+			const account = await updateAccount(c.env.DB, id, { profileImage: imageName })
+			await pushAccountUpdate(c, account)
+			return c.json({ success: true })
+		}
+	)
+
+// The generated spec. Documentation only — no request is validated against it (see
+// openapi.ts). `hide: true` keeps this route out of its own output.
+app.get(
+	'/openapi.json',
+	describeRoute({ hide: true }),
+	openAPIRouteHandler(app, {
+		documentation: {
+			info: {
+				title: 'recflare accounts',
+				version: '1.0.0',
+				description: [
+					'Account reads, profile mutations and lookups for recflare, a private-server',
+					'reimplementation of the Rec Room backend. Accounts live in the shared `recflare`',
+					'D1 database, whose `account` schema is owned by the `auth` worker.',
+					'',
+					'The shapes here are **reverse-engineered from the game client**, which is the only',
+					'real consumer. They record observed behaviour, not a designed contract; the handlers',
+					'are lenient and reads fall back to a synthesized default account rather than 404.',
+					'Nothing in this spec is enforced at runtime — treat a field marked required as "the',
+					'client always sends it", not "the server rejects it if absent".',
+				].join('\n'),
+			},
+			servers: [{ url: 'https://accounts.recflare.net', description: 'Production' }],
+			components: {
+				securitySchemes: {
+					bearerAuth: {
+						type: 'http',
+						scheme: 'bearer',
+						bearerFormat: 'JWT',
+						description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+					},
+				},
+			},
+		},
 	})
+)
 
 export default app
