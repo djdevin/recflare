@@ -5,6 +5,7 @@ import {
 	canManageRoom,
 	cloneRoom,
 	cloneSubRoom,
+	deleteRoom,
 	findSubRoom,
 	getBaseRooms,
 	getFavoritedRooms,
@@ -579,6 +580,45 @@ const app = new Hono<App>()
 		// Notify the owner so their client refreshes the room (RoomUpdate carries the
 		// updated room). The reference sends the post-update room, so merge the change.
 		await pushRoomUpdate(c, accountId, { ...room, ImageName: imageName })
+		return roomResult(c, { Success: true })
+	})
+
+	// Delete a room. Auth-gated (401) and owner-only (the room's CreatorAccountId).
+	// Removes the room record (and per-player interactions with it) and the room's
+	// image object from the shared CDN bucket. Images players *took* in the room are
+	// left alone — they live in the api/img world and outlast the room.
+	.delete('/rooms/:roomId{[0-9]+}', async (c) => {
+		const accountId = await authedAccountId(c)
+		if (accountId === null) return unauthorized(c)
+
+		const roomId = Number.parseInt(c.req.param('roomId'), 10)
+		const room = await getRoomById(c.env.DB, roomId)
+		if (!room) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.DoesntExist',
+				Error: 'This room does not exist!',
+			})
+		}
+		if (room.CreatorAccountId !== accountId) {
+			return roomResult(c, {
+				Success: false,
+				ErrorId: 'Rooms.NotOwner',
+				Error: 'You are not the owner of this room!',
+			})
+		}
+
+		await deleteRoom(c.env.DB, roomId)
+
+		// Remove the room image from the CDN bucket. The stored ImageName is the
+		// un-prefixed key the `cdn` worker serves back under `room/` (see storage
+		// upload + the `GET /room/:dataBlob` route), so the object key is `room/<name>`.
+		// R2 deletes are idempotent, so a canonical/static or already-gone image is fine.
+		const imageName = typeof room.ImageName === 'string' ? room.ImageName : ''
+		if (imageName !== '') {
+			await c.env.CDN_ASSETS.delete(`room/${imageName}`)
+		}
+
 		return roomResult(c, { Success: true })
 	})
 

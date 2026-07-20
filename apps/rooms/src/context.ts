@@ -16,6 +16,10 @@ export type Env = SharedHonoEnv & {
 	// SignalR notifications hub (DO owned by the `notify` worker). Bound here to
 	// push RoomUpdate notifications when a room is mutated.
 	RECFLARE_NOTIFICATIONS_HUB: DurableObjectNamespace<NotificationsHub>
+	// Shared `recflare-cdn` R2 bucket (the `cdn`/`storage` workers own it). Room
+	// images/files live here under the `room/` key prefix; bound so deleting a room
+	// can remove its image object.
+	CDN_ASSETS: R2Bucket
 }
 
 /** Variables can be extended */

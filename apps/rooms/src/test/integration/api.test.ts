@@ -582,6 +582,51 @@ describe('rooms endpoints', () => {
 		expect(room.ImageName).toBe(imageName)
 	})
 
+	it('DELETE /rooms/:id is auth-gated, owner-only, and removes the room + its CDN image', async () => {
+		// Throwaway room owned by account 1, with its image object in the CDN bucket and
+		// a player interaction row.
+		const ImageName = 'test/2026-07-17/delete-me.jpg'
+		await env.DB.prepare('INSERT INTO room (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					RoomId: 9500,
+					Name: 'DeleteMe',
+					CreatorAccountId: 1,
+					IsDorm: false,
+					Accessibility: 1,
+					ImageName,
+					SubRooms: [],
+				})
+			)
+			.run()
+		await env.CDN_ASSETS.put(`room/${ImageName}`, new Uint8Array([1, 2, 3]))
+		await env.DB.prepare(
+			'INSERT INTO interaction (player_id, room_id, cheered, favorited) VALUES (7, 9500, 1, 1)'
+		).run()
+
+		const del = async (sub?: string) =>
+			SELF.fetch(`${ORIGIN}/rooms/9500`, {
+				method: 'DELETE',
+				headers: sub ? await bearer(sub) : {},
+			})
+		const roomExists = async () =>
+			(await env.DB.prepare('SELECT 1 FROM room WHERE room_id = 9500').first()) !== null
+
+		// No token → 401. A non-owner → Success:false (room untouched).
+		expect((await del()).status).toBe(401)
+		expect(await bodyOf(await del('2'))).toMatchObject({ Success: false, ErrorId: 'Rooms.NotOwner' })
+		expect(await roomExists()).toBe(true)
+
+		// Owner → Success:true; the room, its interactions, and the CDN image are gone.
+		expect(await bodyOf(await del('1'))).toMatchObject({ Success: true })
+		expect(await roomExists()).toBe(false)
+		expect(await env.CDN_ASSETS.get(`room/${ImageName}`)).toBeNull()
+		const interactions = await env.DB.prepare(
+			'SELECT COUNT(*) AS n FROM interaction WHERE room_id = 9500'
+		).first<{ n: number }>()
+		expect(interactions!.n).toBe(0)
+	})
+
 	it('PUT /rooms/:id/roles/:accountId is auth-gated, owner/co-owner-only, and persists', async () => {
 		const rolesOf = async (): Promise<Array<{ AccountId: number; Role: number }>> => {
 			const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {

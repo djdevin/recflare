@@ -400,6 +400,20 @@ export async function getRoomById(db: D1Database, roomId: number): Promise<Room 
 	)
 }
 
+/**
+ * Delete a room and every player's interaction (cheer/favorite/visit) with it, in one
+ * batch. Deliberately leaves transient `room_instance`/`presence` rows (they expire on
+ * their own) and any images taken in the room (those live in the api/img world and
+ * outlast the room). Authorization and removing the room image from the CDN bucket are
+ * the caller's responsibility (see the DELETE /rooms/:id route).
+ */
+export async function deleteRoom(db: D1Database, roomId: number): Promise<void> {
+	await db.batch([
+		db.prepare('DELETE FROM room WHERE room_id = ?1').bind(roomId),
+		db.prepare('DELETE FROM interaction WHERE room_id = ?1').bind(roomId),
+	])
+}
+
 /** Look up a single room by name (case-insensitive exact match). */
 export async function getRoomByName(db: D1Database, name: string): Promise<Room | null> {
 	return parseOne(
