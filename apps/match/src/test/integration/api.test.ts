@@ -15,7 +15,7 @@ import {
 	ROOM_INSTANCE_SCHEMA_DDL,
 } from '@repo/domain'
 
-import worker from '../../match.app'
+import { scheduled } from '../../match.app'
 
 import type { Env } from '../../context'
 
@@ -737,7 +737,7 @@ describe('auth-gated endpoints', () => {
 		// Driven through the module's own export rather than the `exports` proxy — a
 		// ScheduledController can't cross the isolate boundary the proxy serializes over.
 		const ctx = createExecutionContext()
-		await worker.scheduled(createScheduledController(), env, ctx)
+		await scheduled(createScheduledController(), env, ctx)
 		await waitOnExecutionContext(ctx)
 
 		// Expired row gone, and the instance is joinable again.
@@ -867,5 +867,55 @@ describe('auth-gated endpoints', () => {
 		})
 		expect(coOwner.status).toBe(200)
 		expect((await coOwner.json()) as unknown[]).toHaveLength(instances.length)
+	})
+
+	test('GET /openapi.json documents every route', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		expect(res.status).toBe(200)
+		const spec = (await res.json()) as {
+			openapi: string
+			paths: Record<string, Record<string, { summary?: string }>>
+		}
+		expect(spec.openapi).toMatch(/^3\.1/)
+
+		// The spec route hides itself.
+		expect(spec.paths['/openapi.json']).toBeUndefined()
+
+		// Every route the worker serves is described. This is the drift guard: adding a
+		// route without a describeRoute() block fails here rather than silently shipping
+		// an incomplete spec. Hono's `:param` syntax becomes OpenAPI's `{param}`.
+		const documented = new Set(
+			Object.entries(spec.paths).flatMap(([path, ops]) =>
+				Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+			)
+		)
+		expect([...documented].sort()).toEqual([
+			'GET /player',
+			'GET /room/{roomId}/instances',
+			'GET /rooms/requiring/developer',
+			'GET /rooms/requiring/rrplus',
+			'POST /goto/none',
+			'POST /goto/room/{room}',
+			'POST /matchmake/none',
+			'POST /matchmake/room/{roomId}',
+			'POST /matchmake/room/{roomId}/{subRoomId}',
+			'POST /matchmake/{room}',
+			'POST /player/exclusivelogin',
+			'POST /player/heartbeat',
+			'POST /player/login',
+			'POST /player/logout',
+			'POST /player/notifydisconnect',
+			'POST /roominstance/{id}/reportjoinresult',
+			'PUT /player/gameserverregionpings',
+			'PUT /player/photonregionpings',
+			'PUT /player/statusvisibility',
+			'PUT /roominstance/{id}/inprogress',
+		])
+
+		// Every operation carries a summary — a path present but undescribed is not
+		// documentation.
+		for (const ops of Object.values(spec.paths)) {
+			for (const op of Object.values(ops)) expect(op.summary).toBeTruthy()
+		}
 	})
 })

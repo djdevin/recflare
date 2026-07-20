@@ -60,94 +60,83 @@ export const PlatformType = z
 	)
 
 /** One entry on the client's login screen, from `toCachedLogin`. */
-export const CachedLogin = z
-	.object({
-		platform: PlatformType,
-		platformId: z.string().describe('Platform-native id (a SteamID64 for Steam); "" if unlinked'),
-		accountId: z.int().describe('Post this back as `account_id` on a cached_login grant'),
-		lastLoginTime: z.iso.datetime().describe("Falls back to the account's createdAt"),
-		requirePassword: z
-			.literal(false)
-			.describe('Always false — platform ownership is the credential for a cached login'),
-	})
-	.meta({ id: 'CachedLogin' })
+export const CachedLogin = z.object({
+	platform: PlatformType,
+	platformId: z.string().describe('Platform-native id (a SteamID64 for Steam); "" if unlinked'),
+	accountId: z.int().describe('Post this back as `account_id` on a cached_login grant'),
+	lastLoginTime: z.iso.datetime().describe("Falls back to the account's createdAt"),
+	requirePassword: z
+		.literal(false)
+		.describe('Always false — platform ownership is the credential for a cached login'),
+})
 
 /** OAuth-shaped error body. Always HTTP 400 except `server_error` (500). */
-export const OAuthError = z
-	.object({
-		error: z.enum(['invalid_grant', 'invalid_request', 'server_error']),
-		error_description: z.string(),
-	})
-	.meta({ id: 'OAuthError' })
+export const OAuthError = z.object({
+	error: z.enum(['invalid_grant', 'invalid_request', 'server_error']),
+	error_description: z.string(),
+})
 
 /** Successful `POST /connect/token` body. */
-export const TokenResponse = z
-	.object({
-		access_token: z.string().describe('Signed JWT; `sub` is the account id'),
-		expires_in: z.int().describe('Access-token lifetime in seconds (TOKEN_TTL_SECONDS)'),
-		token_type: z.literal('Bearer'),
-		refresh_token: z
-			.string()
-			.describe('Single-use; redeem via grant_type=refresh_token, which rotates it'),
-		scope: z.string().describe('Space-separated granted scopes'),
-		key: z.string().describe('@kludge Constant the client appears to require. Purpose unknown.'),
-	})
-	.meta({ id: 'TokenResponse' })
+export const TokenResponse = z.object({
+	access_token: z.string().describe('Signed JWT; `sub` is the account id'),
+	expires_in: z.int().describe('Access-token lifetime in seconds (TOKEN_TTL_SECONDS)'),
+	token_type: z.literal('Bearer'),
+	refresh_token: z
+		.string()
+		.describe('Single-use; redeem via grant_type=refresh_token, which rotates it'),
+	scope: z.string().describe('Space-separated granted scopes'),
+	key: z.string().describe('@kludge Constant the client appears to require. Purpose unknown.'),
+})
 
 /**
  * `POST /connect/token` form body — the union of every grant's fields, since
  * OpenAPI cannot express "these fields iff grant_type=X" without splitting the
  * endpoint. Per-grant requirements are spelled out in the route description.
  */
-export const TokenRequest = z
-	.object({
-		grant_type: z
-			.enum(['create_account', 'cached_login', 'refresh_token', 'password'])
-			.describe('Anything unrecognised (including absent) is treated as a password grant'),
-		account_id: z.string().optional().describe('Numeric account id, as a string'),
-		username: z
-			.string()
-			.optional()
-			.describe('Password grant alternative to account_id; case-insensitive, trimmed'),
-		password: z
-			.string()
-			.optional()
-			.describe('Required on a password grant. On create_account, sets the initial password'),
-		platform: z.string().optional().describe('PlatformType as an integer string'),
-		platform_id: z
-			.string()
-			.optional()
-			.describe(
-				'Unverified; ignored in favour of the Steam-verified id where a ticket is required'
-			),
-		platform_auth: z
-			.string()
-			.optional()
-			.describe('Steam session ticket. Required for cached_login and platform create_account'),
-		refresh_token: z.string().optional().describe('Required on a refresh_token grant'),
-		device_id: z
-			.string()
-			.optional()
-			.describe('Client-chosen, unverified. Recorded on the account, never trusted'),
-		device_class: z.string().optional().describe('Integer string; defaults to 0'),
-	})
-	.meta({ id: 'TokenRequest' })
+export const TokenRequest = z.object({
+	grant_type: z
+		.enum(['create_account', 'cached_login', 'refresh_token', 'password'])
+		.describe('Anything unrecognised (including absent) is treated as a password grant'),
+	account_id: z.string().optional().describe('Numeric account id, as a string'),
+	username: z
+		.string()
+		.optional()
+		.describe('Password grant alternative to account_id; case-insensitive, trimmed'),
+	password: z
+		.string()
+		.optional()
+		.describe('Required on a password grant. On create_account, sets the initial password'),
+	platform: z.string().optional().describe('PlatformType as an integer string'),
+	platform_id: z
+		.string()
+		.optional()
+		.describe('Unverified; ignored in favour of the Steam-verified id where a ticket is required'),
+	platform_auth: z
+		.string()
+		.optional()
+		.describe('Steam session ticket. Required for cached_login and platform create_account'),
+	refresh_token: z.string().optional().describe('Required on a refresh_token grant'),
+	device_id: z
+		.string()
+		.optional()
+		.describe('Client-chosen, unverified. Recorded on the account, never trusted'),
+	device_class: z.string().optional().describe('Integer string; defaults to 0'),
+})
 
 /** `POST /account/me/changepassword` form body. */
-export const ChangePasswordRequest = z
-	.object({
-		newPassword: z.string().describe('Required; empty is rejected'),
-		oldPassword: z
-			.string()
-			.optional()
-			.describe('Must match when the account already has a password; empty when first setting it'),
-	})
-	.meta({ id: 'ChangePasswordRequest' })
+export const ChangePasswordRequest = z.object({
+	newPassword: z.string().describe('Required; empty is rejected'),
+	oldPassword: z
+		.string()
+		.optional()
+		.describe('Must match when the account already has a password; empty when first setting it'),
+})
 
 /** `POST /account/me/changepassword` response body. */
-export const ChangePasswordResponse = z
-	.object({ success: z.boolean(), error: z.string().optional() })
-	.meta({ id: 'ChangePasswordResponse' })
+export const ChangePasswordResponse = z.object({
+	success: z.boolean(),
+	error: z.string().optional(),
+})
 
 /**
  * Spec for the `/role/:role/:id` lookups, which are identical apart from the role.
@@ -179,6 +168,6 @@ export function roleLookup(role: 'developer' | 'moderator') {
 }
 
 /** Bulk cached-login lookup form body: repeated `id=` fields. */
-export const PlatformIdsRequest = z
-	.object({ id: z.union([z.string(), z.array(z.string())]).describe('Repeated `id=` form fields') })
-	.meta({ id: 'PlatformIdsRequest' })
+export const PlatformIdsRequest = z.object({
+	id: z.union([z.string(), z.array(z.string())]).describe('Repeated `id=` form fields'),
+})

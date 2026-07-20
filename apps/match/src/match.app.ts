@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
@@ -22,6 +23,23 @@ import {
 } from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
+
+import {
+	AUTHED,
+	EMPTY_OK,
+	ExclusiveLoginResponse,
+	form,
+	HeartbeatRequest as HeartbeatRequestSchema,
+	InProgressRequest,
+	JoinModeRequest,
+	json,
+	jsonBody,
+	MatchmakeResponse,
+	PlayerDto,
+	RoomInstanceDto,
+	StatusVisibilityRequest,
+	UNAUTHORIZED_RESPONSE,
+} from './openapi'
 
 import type { Context } from 'hono'
 import type { Room, StoredPresence } from '@repo/domain'
@@ -399,8 +417,28 @@ const app = new Hono<App>()
 	// fires exclusivelogin when going online, and clearing presence there would bounce
 	// the player to the dorm. Presence is overwritten by matchmake/goto and expires on
 	// its own TTL.
-	.post('/player/login', (c) => c.body(null, 200))
-	.post('/player/exclusivelogin', (c) => c.json({ errorCode: 0 }))
+	.post(
+		'/player/login',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Login ack (no-op)',
+			description:
+				'A no-op ack. Must NOT touch presence — the client fires this going online, and ' +
+				'clearing presence here would bounce the player to the dorm.',
+			responses: { 200: EMPTY_OK },
+		}),
+		(c) => c.body(null, 200)
+	)
+	.post(
+		'/player/exclusivelogin',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Exclusive-login ack (no-op)',
+			description: 'A no-op ack returning a zero error code. Like login, must not touch presence.',
+			responses: { 200: json(ExclusiveLoginResponse, 'errorCode 0') },
+		}),
+		(c) => c.json({ errorCode: 0 })
+	)
 
 	// Logout clears the player's presence so they read offline immediately and the
 	// instance they were in frees up (rather than waiting out the presence TTL).
@@ -411,262 +449,551 @@ const app = new Hono<App>()
 	// the seed and bounces the new player to the dorm — so a logout that still points
 	// at Orientation is left as a no-op ack. An unauthenticated logout is also a no-op
 	// (no player to clear).
-	.post('/player/logout', async (c) => {
-		const id = await authedId(c)
-		if (id !== null) {
-			const presence = await getPresence<RoomInstance>(c.env.DB, id)
-			const instanceId = presence?.roomInstance?.roomInstanceId
-			if (presence && instanceId !== ORIENTATION_INSTANCE_ID) {
-				await deletePresence(c.env.DB, id)
-				// The instance they were in lost a player — recompute its fullness so a
-				// full room frees up. No-op for the synthetic dorm/orientation instances.
-				if (instanceId != null) await refreshInstanceFullness(c.env.DB, instanceId)
+	.post(
+		'/player/logout',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Clear presence on logout',
+			description:
+				'Clears the player’s presence so they read offline immediately and the instance ' +
+				'they were in frees up. EXCEPTION: a logout whose presence still points at the ' +
+				'Orientation seed (instance -2) is left as a no-op, so the account-creation ' +
+				'bootstrap isn’t wiped. An unauthenticated logout is also a no-op.',
+			responses: { 200: EMPTY_OK },
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id !== null) {
+				const presence = await getPresence<RoomInstance>(c.env.DB, id)
+				const instanceId = presence?.roomInstance?.roomInstanceId
+				if (presence && instanceId !== ORIENTATION_INSTANCE_ID) {
+					await deletePresence(c.env.DB, id)
+					// The instance they were in lost a player — recompute its fullness so a
+					// full room frees up. No-op for the synthetic dorm/orientation instances.
+					if (instanceId != null) await refreshInstanceFullness(c.env.DB, instanceId)
+				}
 			}
+			return c.body(null, 200)
 		}
-		return c.body(null, 200)
-	})
+	)
 
 	// Fire-and-forget disconnect notification (form body `PlayerId`/`RoomInstanceId`).
 	// The client posts this when it drops a room; we don't act on it — presence is
 	// cleared by logout and otherwise expires on its own TTL — so just ack with 200.
-	.post('/player/notifydisconnect', (c) => c.body(null, 200))
+	.post(
+		'/player/notifydisconnect',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Disconnect notification (no-op ack)',
+			description:
+				'Posted when the client drops a room. Not acted on — presence is cleared by logout ' +
+				'and otherwise expires on its TTL.',
+			responses: { 200: EMPTY_OK },
+		}),
+		(c) => c.body(null, 200)
+	)
 
-	.get('/player', async (c) => {
-		// Returns each requested player's presence. Reads the `id` query param(s);
-		// with none it serves the static getplayer.json default.
-		const ids = c.req
-			.queries('id')
-			?.flatMap((v) => v.split(','))
-			.map((s) => Number.parseInt(s.trim(), 10))
-			.filter((n) => !Number.isNaN(n))
-		if (!ids || ids.length === 0) return c.json(DEFAULT_GET_PLAYER)
+	.get(
+		'/player',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Batch player presence lookup',
+			description:
+				'Returns each requested player’s presence. `id` is repeatable and each value may ' +
+				'be a comma-separated list. With no ids, serves a single default (online) player.',
+			parameters: [
+				{
+					name: 'id',
+					in: 'query',
+					required: false,
+					description: 'Repeatable; each value may be a comma-separated list of player ids',
+					schema: { type: 'array', items: { type: 'string' } },
+				},
+			],
+			responses: { 200: json(PlayerDto.array(), 'One entry per requested player') },
+		}),
+		async (c) => {
+			// Returns each requested player's presence. Reads the `id` query param(s);
+			// with none it serves the static getplayer.json default.
+			const ids = c.req
+				.queries('id')
+				?.flatMap((v) => v.split(','))
+				.map((s) => Number.parseInt(s.trim(), 10))
+				.filter((n) => !Number.isNaN(n))
+			if (!ids || ids.length === 0) return c.json(DEFAULT_GET_PLAYER)
 
-		// One query for the whole batch (D1 `WHERE account_id IN (…)`), rather than a
-		// point read per id as the KV store required.
-		const presences = await getPresences<RoomInstance>(c.env.DB, ids)
-		return c.json(ids.map((playerId) => playerPayload(playerId, presences.get(playerId))))
-	})
-
-	.post('/player/heartbeat', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-
-		// Body may be a JSON HeartbeatRequest or a form post (LoginLock); only JSON
-		// carries presence/status fields.
-		const raw = await c.req.text().catch(() => '')
-		let hb: HeartbeatRequest = {}
-		if (raw.trimStart().startsWith('{')) {
-			try {
-				hb = JSON.parse(raw) as HeartbeatRequest
-			} catch {
-				hb = {}
-			}
+			// One query for the whole batch (D1 `WHERE account_id IN (…)`), rather than a
+			// point read per id as the KV store required.
+			const presences = await getPresences<RoomInstance>(c.env.DB, ids)
+			return c.json(ids.map((playerId) => playerPayload(playerId, presences.get(playerId))))
 		}
+	)
 
-		// Return the player's stored presence (set by matchmake/goto), mirroring the
-		// reference server's HeartbeatDB.GetPlayerHeartbeat. No presence → the player
-		// isn't in a room yet, so roomInstance=null / isOnline=false. Posted status
-		// fields are merged back; the row is re-written (refreshing the TTL) only when
-		// something changed or its TTL is close to lapsing — see below.
-		const presence = await getPresence<RoomInstance>(c.env.DB, id)
-		if (presence) {
-			// Merge the posted status fields, tracking whether any actually changed.
-			let changed = false
-			const apply = <K extends keyof Presence>(key: K, value: Presence[K]) => {
-				if (presence[key] !== value) {
-					presence[key] = value
-					changed = true
+	.post(
+		'/player/heartbeat',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Presence heartbeat',
+			description:
+				'Merges the posted status fields into stored presence and echoes back the player ' +
+				'payload. Re-writes the row (refreshing its TTL) only when something changed or the ' +
+				'TTL is close to lapsing, so a still player isn’t written on every beat. With no ' +
+				'stored presence the player isn’t in a room yet (roomInstance null, isOnline false).',
+			security: AUTHED,
+			requestBody: jsonBody(
+				HeartbeatRequestSchema,
+				'JSON status fields. A non-JSON (LoginLock) body is accepted and ignored.'
+			),
+			responses: {
+				200: json(PlayerDto, 'The player’s current presence payload'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+
+			// Body may be a JSON HeartbeatRequest or a form post (LoginLock); only JSON
+			// carries presence/status fields.
+			const raw = await c.req.text().catch(() => '')
+			let hb: HeartbeatRequest = {}
+			if (raw.trimStart().startsWith('{')) {
+				try {
+					hb = JSON.parse(raw) as HeartbeatRequest
+				} catch {
+					hb = {}
 				}
 			}
-			if (hb.statusVisibility !== undefined) apply('statusVisibility', hb.statusVisibility)
-			if (hb.deviceClass !== undefined) apply('deviceClass', hb.deviceClass)
-			if (hb.vrMovementMode !== undefined) apply('vrMovementMode', hb.vrMovementMode)
-			if (hb.platform !== undefined) apply('platform', hb.platform)
-			if (hb.appVersion) apply('appVersion', hb.appVersion)
-			if (!presence.appVersion) apply('appVersion', GAME_VERSION)
 
-			// Extending the TTL means re-writing the row, so skip the write on an
-			// unchanged heartbeat until the TTL is within PRESENCE_REFRESH_THRESHOLD
-			// (s) of lapsing — a still player is refreshed periodically rather than on
-			// every beat. `expiresAt` is epoch seconds (set by setPresence).
-			const nowSeconds = Math.floor(Date.now() / 1000)
-			const dueForRefresh = presence.expiresAt - nowSeconds <= PRESENCE_REFRESH_THRESHOLD
-			if (changed || dueForRefresh) {
-				await setPresence(c.env.DB, presence)
-			}
-		}
-
-		// The heartbeat echoes the same player payload `/player` serves; with no stored
-		// presence it falls back to what the client just posted.
-		return c.json({
-			...playerPayload(hb.playerId ? hb.playerId : id, presence),
-			statusVisibility: presence?.statusVisibility ?? hb.statusVisibility ?? 0,
-			deviceClass: presence?.deviceClass ?? hb.deviceClass ?? 0,
-			vrMovementMode: presence?.vrMovementMode ?? (hb.vrMovementMode ? hb.vrMovementMode : 1),
-			appVersion: presence?.appVersion || hb.appVersion || GAME_VERSION,
-			platform: presence?.platform ?? hb.platform ?? 0,
-		})
-	})
-
-	.put('/player/statusvisibility', async (c) => {
-		const id = await authedId(c)
-		if (id !== null) {
-			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-			const sv =
-				typeof body.statusVisibility === 'string' ? Number.parseInt(body.statusVisibility, 10) : NaN
+			// Return the player's stored presence (set by matchmake/goto), mirroring the
+			// reference server's HeartbeatDB.GetPlayerHeartbeat. No presence → the player
+			// isn't in a room yet, so roomInstance=null / isOnline=false. Posted status
+			// fields are merged back; the row is re-written (refreshing the TTL) only when
+			// something changed or its TTL is close to lapsing — see below.
 			const presence = await getPresence<RoomInstance>(c.env.DB, id)
-			if (presence && !Number.isNaN(sv)) {
-				presence.statusVisibility = sv
-				await setPresence(c.env.DB, presence)
+			if (presence) {
+				// Merge the posted status fields, tracking whether any actually changed.
+				let changed = false
+				const apply = <K extends keyof Presence>(key: K, value: Presence[K]) => {
+					if (presence[key] !== value) {
+						presence[key] = value
+						changed = true
+					}
+				}
+				if (hb.statusVisibility !== undefined) apply('statusVisibility', hb.statusVisibility)
+				if (hb.deviceClass !== undefined) apply('deviceClass', hb.deviceClass)
+				if (hb.vrMovementMode !== undefined) apply('vrMovementMode', hb.vrMovementMode)
+				if (hb.platform !== undefined) apply('platform', hb.platform)
+				if (hb.appVersion) apply('appVersion', hb.appVersion)
+				if (!presence.appVersion) apply('appVersion', GAME_VERSION)
+
+				// Extending the TTL means re-writing the row, so skip the write on an
+				// unchanged heartbeat until the TTL is within PRESENCE_REFRESH_THRESHOLD
+				// (s) of lapsing — a still player is refreshed periodically rather than on
+				// every beat. `expiresAt` is epoch seconds (set by setPresence).
+				const nowSeconds = Math.floor(Date.now() / 1000)
+				const dueForRefresh = presence.expiresAt - nowSeconds <= PRESENCE_REFRESH_THRESHOLD
+				if (changed || dueForRefresh) {
+					await setPresence(c.env.DB, presence)
+				}
 			}
+
+			// The heartbeat echoes the same player payload `/player` serves; with no stored
+			// presence it falls back to what the client just posted.
+			return c.json({
+				...playerPayload(hb.playerId ? hb.playerId : id, presence),
+				statusVisibility: presence?.statusVisibility ?? hb.statusVisibility ?? 0,
+				deviceClass: presence?.deviceClass ?? hb.deviceClass ?? 0,
+				vrMovementMode: presence?.vrMovementMode ?? (hb.vrMovementMode ? hb.vrMovementMode : 1),
+				appVersion: presence?.appVersion || hb.appVersion || GAME_VERSION,
+				platform: presence?.platform ?? hb.platform ?? 0,
+			})
 		}
-		return c.body(null, 200)
-	})
+	)
+
+	.put(
+		'/player/statusvisibility',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Set status visibility',
+			description:
+				'Updates the stored presence’s status visibility. No-op when the player has no live ' +
+				'presence or an unauthenticated/invalid token — always acks 200.',
+			requestBody: form(StatusVisibilityRequest, 'The statusVisibility value'),
+			responses: { 200: EMPTY_OK },
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id !== null) {
+				const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+				const sv =
+					typeof body.statusVisibility === 'string'
+						? Number.parseInt(body.statusVisibility, 10)
+						: NaN
+				const presence = await getPresence<RoomInstance>(c.env.DB, id)
+				if (presence && !Number.isNaN(sv)) {
+					presence.statusVisibility = sv
+					await setPresence(c.env.DB, presence)
+				}
+			}
+			return c.body(null, 200)
+		}
+	)
 
 	// ---- Room navigation -----------------------------------------------------
 	// Each matchmake/goto persists the resulting instance as the player's presence
 	// so the heartbeat can replay it (keeping client presence in sync).
-	.post('/goto/room/:room', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.post(
+		'/goto/room/:room',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Go to a room',
+			description:
+				'Resolves the room (numeric id or name; `dormroom` → the player’s personal dorm), ' +
+				'finds or creates an instance, and stores it as presence. `JoinMode=2` requests a ' +
+				'private instance.',
+			security: AUTHED,
+			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			parameters: [
+				{
+					name: 'room',
+					in: 'path',
+					required: true,
+					description: 'Room id, room name, or `dormroom`',
+					schema: { type: 'string' },
+				},
+			],
+			responses: {
+				200: json(MatchmakeResponse, 'The instance (or errorCode 20 with null on unknown room)'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const room = c.req.param('room')
-		const joinMode = await readJoinMode(c)
-		const instance =
-			room.toLowerCase() === 'dormroom'
-				? await playerDormInstance(c, id)
-				: await resolveRoomInstance(c, room, joinMode === 2, id)
-		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
-		await enterRoom(c, id, instance)
-		return c.json({ errorCode: 0, roomInstance: instance })
-	})
+			const room = c.req.param('room')
+			const joinMode = await readJoinMode(c)
+			const instance =
+				room.toLowerCase() === 'dormroom'
+					? await playerDormInstance(c, id)
+					: await resolveRoomInstance(c, room, joinMode === 2, id)
+			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
 
 	// Register the static `none` route before the `:room` param route so it
 	// isn't swallowed by the auth-gated matchmake handler.
-	.post('/matchmake/none', async (c) => {
-		const id = await authedId(c)
-		// Return the player's *current* heartbeat here rather than forcing the dorm.
-		// Orientation is a solo room the client establishes via matchmake/none; if we
-		// force the dorm, the new player is warped out of Orientation within seconds.
-		// So: preserve existing presence; only fall back to the offline dorm when the
-		// player has none (e.g. the title screen before they've entered any room).
-		if (id !== null) {
-			const presence = await getPresence<RoomInstance>(c.env.DB, id)
-			if (presence?.roomInstance) {
-				return c.json({ errorCode: 0, roomInstance: presence.roomInstance })
+	.post(
+		'/matchmake/none',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Matchmake with no target (preserve or dorm)',
+			description:
+				'Returns the player’s current instance if they have one (so Orientation isn’t warped ' +
+				'away), else their personal dorm when authed, or the shared offline dorm when not. ' +
+				'Not auth-gated.',
+			responses: {
+				200: json(MatchmakeResponse, 'Current, personal-dorm, or offline-dorm instance'),
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			// Return the player's *current* heartbeat here rather than forcing the dorm.
+			// Orientation is a solo room the client establishes via matchmake/none; if we
+			// force the dorm, the new player is warped out of Orientation within seconds.
+			// So: preserve existing presence; only fall back to the offline dorm when the
+			// player has none (e.g. the title screen before they've entered any room).
+			if (id !== null) {
+				const presence = await getPresence<RoomInstance>(c.env.DB, id)
+				if (presence?.roomInstance) {
+					return c.json({ errorCode: 0, roomInstance: presence.roomInstance })
+				}
 			}
+			// Authed but no presence → their personal dorm; unauthenticated → offline dorm.
+			const instance = id !== null ? await playerDormInstance(c, id) : dormRoomInstance()
+			if (id !== null) await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
 		}
-		// Authed but no presence → their personal dorm; unauthenticated → offline dorm.
-		const instance = id !== null ? await playerDormInstance(c, id) : dormRoomInstance()
-		if (id !== null) await enterRoom(c, id, instance)
-		return c.json({ errorCode: 0, roomInstance: instance })
-	})
+	)
 	// Matchmake into a specific subroom of a room (`/matchmake/room/{roomId}/{subRoomId}`
 	// — the client uses this to enter a room's other scenes). The subroom decides the
 	// scene the client loads and which instances are joinable, so it must be carried
 	// through; an unknown subroom falls back to the room's first.
-	.post('/matchmake/room/:roomId/:subRoomId{[0-9]+}', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const joinMode = await readJoinMode(c)
-		const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
-		const instance = await resolveRoomInstance(
-			c,
-			c.req.param('roomId'),
-			joinMode === 2,
-			id,
-			subRoomId
-		)
-		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
-		await enterRoom(c, id, instance)
-		return c.json({ errorCode: 0, roomInstance: instance })
-	})
+	.post(
+		'/matchmake/room/:roomId/:subRoomId{[0-9]+}',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Matchmake into a specific subroom',
+			description:
+				'Enters a specific subroom (scene) of a room. The subroom decides the scene loaded ' +
+				'and which instances are joinable; an unknown subroom falls back to the room’s first.',
+			security: AUTHED,
+			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			parameters: [
+				{ name: 'roomId', in: 'path', required: true, schema: { type: 'string' } },
+				{
+					name: 'subRoomId',
+					in: 'path',
+					required: true,
+					description: 'Subroom id (digits only)',
+					schema: { type: 'string', pattern: '^[0-9]+$' },
+				},
+			],
+			responses: {
+				200: json(MatchmakeResponse, 'The instance (or errorCode 20 with null on unknown room)'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const joinMode = await readJoinMode(c)
+			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+			const instance = await resolveRoomInstance(
+				c,
+				c.req.param('roomId'),
+				joinMode === 2,
+				id,
+				subRoomId
+			)
+			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
 
 	// The 2023 client uses a two-segment matchmake/room/{roomId}. Look the room up
 	// in D1 so the instance carries its real scene, and store it as presence.
-	.post('/matchmake/room/:roomId', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		const joinMode = await readJoinMode(c)
-		const instance = await resolveRoomInstance(c, c.req.param('roomId'), joinMode === 2, id)
-		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
-		await enterRoom(c, id, instance)
-		return c.json({ errorCode: 0, roomInstance: instance })
-	})
-	.post('/matchmake/:room', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.post(
+		'/matchmake/room/:roomId',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Matchmake into a room (default subroom)',
+			description:
+				'The 2023 client’s two-segment matchmake. Resolves the room from D1 so the instance ' +
+				'carries its real scene, and stores it as presence.',
+			security: AUTHED,
+			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			parameters: [{ name: 'roomId', in: 'path', required: true, schema: { type: 'string' } }],
+			responses: {
+				200: json(MatchmakeResponse, 'The instance (or errorCode 20 with null on unknown room)'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const joinMode = await readJoinMode(c)
+			const instance = await resolveRoomInstance(c, c.req.param('roomId'), joinMode === 2, id)
+			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
+	.post(
+		'/matchmake/:room',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Matchmake into a room by id or name',
+			description:
+				'Single-segment matchmake. `dorm` → the player’s personal dorm; otherwise resolves ' +
+				'the room by id or name. (Note: this dorm keyword is `dorm`, while goto/room uses ' +
+				'`dormroom`.)',
+			security: AUTHED,
+			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			parameters: [
+				{
+					name: 'room',
+					in: 'path',
+					required: true,
+					description: 'Room id, room name, or `dorm`',
+					schema: { type: 'string' },
+				},
+			],
+			responses: {
+				200: json(MatchmakeResponse, 'The instance (or errorCode 20 with null on unknown room)'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const room = c.req.param('room')
-		const joinMode = await readJoinMode(c)
-		// The dorm check here is "dorm" (goto/room uses "dormroom").
-		const instance =
-			room.toLowerCase() === 'dorm'
-				? await playerDormInstance(c, id)
-				: await resolveRoomInstance(c, room, joinMode === 2, id)
-		if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
-		await enterRoom(c, id, instance)
-		return c.json({ errorCode: 0, roomInstance: instance })
-	})
+			const room = c.req.param('room')
+			const joinMode = await readJoinMode(c)
+			// The dorm check here is "dorm" (goto/room uses "dormroom").
+			const instance =
+				room.toLowerCase() === 'dorm'
+					? await playerDormInstance(c, id)
+					: await resolveRoomInstance(c, room, joinMode === 2, id)
+			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
 
 	// Offline dorm — also persisted as presence so the heartbeat stays in sync.
-	.post('/goto/none', async (c) => {
-		const id = await authedId(c)
-		// Authed → their personal dorm; unauthenticated → the offline dorm.
-		const instance = id !== null ? await playerDormInstance(c, id) : dormRoomInstance()
-		if (id !== null) await enterRoom(c, id, instance)
-		return c.json({ errorCode: 0, roomInstance: instance })
-	})
+	.post(
+		'/goto/none',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Go to the dorm',
+			description:
+				'Authed → the player’s personal dorm (persisted as presence); unauthenticated → the ' +
+				'shared offline dorm. Unlike matchmake/none, this always goes to the dorm.',
+			responses: { 200: json(MatchmakeResponse, 'The dorm instance') },
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			// Authed → their personal dorm; unauthenticated → the offline dorm.
+			const instance = id !== null ? await playerDormInstance(c, id) : dormRoomInstance()
+			if (id !== null) await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
 
 	// Region ping reports — accept-and-ack (the reference returns Ok()).
-	.put('/player/photonregionpings', (c) => c.body(null, 200))
-	.put('/player/gameserverregionpings', (c) => c.body(null, 200))
+	.put(
+		'/player/photonregionpings',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Photon region pings (no-op ack)',
+			description: 'Region latency report; accepted and ignored.',
+			responses: { 200: EMPTY_OK },
+		}),
+		(c) => c.body(null, 200)
+	)
+	.put(
+		'/player/gameserverregionpings',
+		describeRoute({
+			tags: ['Presence'],
+			summary: 'Game-server region pings (no-op ack)',
+			description: 'Region latency report; accepted and ignored.',
+			responses: { 200: EMPTY_OK },
+		}),
+		(c) => c.body(null, 200)
+	)
 
 	// ---- Room instance -------------------------------------------------------
-	.post('/roominstance/:id/reportjoinresult', (c) => c.body(null, 200))
+	.post(
+		'/roominstance/:id/reportjoinresult',
+		describeRoute({
+			tags: ['Room instance'],
+			summary: 'Report join result (no-op ack)',
+			description: 'The client reports how a join went; accepted and ignored.',
+			parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+			responses: { 200: EMPTY_OK },
+		}),
+		(c) => c.body(null, 200)
+	)
 
 	// The room owner flips the instance's in-progress flag once the session starts
 	// (e.g. a game round begins). Body is a form post: `inProgress=True|False`.
-	.put('/roominstance/:id/inprogress', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.put(
+		'/roominstance/:id/inprogress',
+		describeRoute({
+			tags: ['Room instance'],
+			summary: 'Set instance in-progress flag',
+			description:
+				'The room owner flips the instance’s in-progress flag when a session starts (e.g. a ' +
+				'round begins). Body is `inProgress=True|False`.',
+			security: AUTHED,
+			requestBody: form(InProgressRequest, 'The inProgress flag'),
+			parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+			responses: {
+				200: EMPTY_OK,
+				401: UNAUTHORIZED_RESPONSE,
+				404: { description: 'Non-numeric id or no such instance (empty body)' },
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const instanceId = Number.parseInt(c.req.param('id'), 10)
-		if (Number.isNaN(instanceId)) return c.body(null, 404)
+			const instanceId = Number.parseInt(c.req.param('id'), 10)
+			if (Number.isNaN(instanceId)) return c.body(null, 404)
 
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const inProgress =
-			typeof body.inProgress === 'string' && body.inProgress.toLowerCase() === 'true'
+			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+			const inProgress =
+				typeof body.inProgress === 'string' && body.inProgress.toLowerCase() === 'true'
 
-		const instance = await setRoomInstanceInProgress(c.env.DB, instanceId, inProgress)
-		if (!instance) return c.body(null, 404)
-		return c.body(null, 200)
-	})
+			const instance = await setRoomInstanceInProgress(c.env.DB, instanceId, inProgress)
+			if (!instance) return c.body(null, 404)
+			return c.body(null, 200)
+		}
+	)
 
 	// The room's live instances — the owner's view of active sessions of their room.
 	// Auth-gated (401) and owner/co-owner-only (403): the caller must be the room's
 	// creator or hold a Creator/CoOwner role on it. Unknown room → 404. Returns the
 	// bare RoomInstance DTO array (empty when the room has no live instances).
-	.get('/room/:roomId{[0-9]+}/instances', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.get(
+		'/room/:roomId{[0-9]+}/instances',
+		describeRoute({
+			tags: ['Room instance'],
+			summary: 'A room’s live instances',
+			description:
+				'The owner’s view of active sessions of their room. Auth-gated and gated to the ' +
+				'room’s creator or a co-owner (403 otherwise). Unknown room → 404.',
+			security: AUTHED,
+			parameters: [
+				{
+					name: 'roomId',
+					in: 'path',
+					required: true,
+					description: 'Room id (digits only)',
+					schema: { type: 'string', pattern: '^[0-9]+$' },
+				},
+			],
+			responses: {
+				200: json(RoomInstanceDto.array(), 'Live instances (empty when none)'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: { description: 'Not the room’s creator or a co-owner (empty body)' },
+				404: { description: 'No such room (empty body)' },
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const roomId = Number.parseInt(c.req.param('roomId'), 10)
-		const room = await getRoomById(c.env.DB, roomId)
-		if (!room) return c.body(null, 404)
-		// The room's creator *or* a co-owner (Role 30) may see its live instances —
-		// same owner-or-co-owner gate the rooms worker uses for room-admin actions.
-		if (!canManageRoom(room, id)) return c.body(null, 403)
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			const room = await getRoomById(c.env.DB, roomId)
+			if (!room) return c.body(null, 404)
+			// The room's creator *or* a co-owner (Role 30) may see its live instances —
+			// same owner-or-co-owner gate the rooms worker uses for room-admin actions.
+			if (!canManageRoom(room, id)) return c.body(null, 403)
 
-		return c.json(await getRoomInstancesByRoom(c.env.DB, roomId))
-	})
+			return c.json(await getRoomInstancesByRoom(c.env.DB, roomId))
+		}
+	)
 
 	// Rooms flagged as needing a developer/moderator to spawn in. No such queue
 	// yet → empty list.
-	.get('/rooms/requiring/developer', (c) => c.json([]))
+	.get(
+		'/rooms/requiring/developer',
+		describeRoute({
+			tags: ['Room instance'],
+			summary: 'Rooms requiring a developer',
+			description: 'Rooms flagged as needing a developer/moderator to spawn in. No queue yet → [].',
+			responses: { 200: json(RoomInstanceDto.array(), 'Always empty for now') },
+		}),
+		(c) => c.json([])
+	)
 
 	// Rooms flagged as requiring an RR+ subscription. No such queue yet → empty list.
-	.get('/rooms/requiring/rrplus', (c) => c.json([]))
+	.get(
+		'/rooms/requiring/rrplus',
+		describeRoute({
+			tags: ['Room instance'],
+			summary: 'Rooms requiring RR+',
+			description: 'Rooms flagged as requiring an RR+ subscription. No queue yet → [].',
+			responses: { 200: json(RoomInstanceDto.array(), 'Always empty for now') },
+		}),
+		(c) => c.json([])
+	)
 
 /**
  * Cron: sweep presence that has aged past its TTL. Reads already ignore expired rows,
@@ -690,9 +1017,55 @@ async function sweepExpiredPresence(env: Env): Promise<void> {
 	)
 }
 
-export default {
-	fetch: app.fetch,
-	scheduled: async (_controller, env, ctx) => {
-		ctx.waitUntil(sweepExpiredPresence(env))
-	},
-} satisfies ExportedHandler<Env>
+// The generated spec. Documentation only — no request is validated against it (see
+// openapi.ts). `hide: true` keeps this route out of its own output. Registered on
+// `app` before it's wrapped in the exported handler below.
+app.get(
+	'/openapi.json',
+	describeRoute({ hide: true }),
+	openAPIRouteHandler(app, {
+		documentation: {
+			info: {
+				title: 'recflare match',
+				version: '1.0.0',
+				description: [
+					'Matchmaking and presence for recflare, a private-server reimplementation of the Rec',
+					'Room backend. Rooms and room instances are D1-backed (matchmaking finds or creates a',
+					'`room_instance` per session); presence — the instance each player is currently in —',
+					'lives in the shared `presence` table and expires on a TTL. A cron sweep clears',
+					'expired presence and frees up instances a crashed player never left.',
+					'',
+					'The shapes here are **reverse-engineered from the game client**, which is the only',
+					'real consumer. They record observed behaviour, not a designed contract; the handlers',
+					'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
+					'runtime — treat a field marked required as "the client always sends it", not "the',
+					'server rejects it if absent".',
+				].join('\n'),
+			},
+			servers: [{ url: 'https://match.recflare.net', description: 'Production' }],
+			components: {
+				securitySchemes: {
+					bearerAuth: {
+						type: 'http',
+						scheme: 'bearer',
+						bearerFormat: 'JWT',
+						description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+					},
+				},
+			},
+		},
+	})
+)
+
+// The HTTP surface is a standard Hono app, exported by name so it can be mounted
+// uniformly like every other worker (e.g. by a combined/facade worker). The cron
+// that sweeps expired presence is exported alongside it.
+export { app }
+
+export const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) => {
+	ctx.waitUntil(sweepExpiredPresence(env))
+}
+
+// Standalone entry: a Worker only runs `scheduled` when it's on the default export,
+// so match keeps the object form the runtime requires to fire its `*/5 * * * *` cron.
+export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Env>

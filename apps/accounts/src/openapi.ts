@@ -47,19 +47,17 @@ export function form(schema: z.ZodType, description: string): OpenAPIV3_1.Reques
  * account, with private fields (email, birthday) excluded. Fields the client parses
  * as enums are numbers here.
  */
-export const AccountDto = z
-	.object({
-		accountId: z.int(),
-		username: z.string(),
-		displayName: z.string(),
-		profileImage: z.string().describe('Avatar object key'),
-		isJunior: z.boolean(),
-		platforms: z.int().describe('PlatformType bitmask of linked platforms'),
-		personalPronouns: z.int().describe('Pronoun flags bitmask'),
-		identityFlags: z.int().describe('Identity flags bitmask'),
-		createdAt: z.iso.datetime(),
-	})
-	.meta({ id: 'AccountDto' })
+export const AccountDto = z.object({
+	accountId: z.int(),
+	username: z.string(),
+	displayName: z.string(),
+	profileImage: z.string().describe('Avatar object key'),
+	isJunior: z.boolean(),
+	platforms: z.int().describe('PlatformType bitmask of linked platforms'),
+	personalPronouns: z.int().describe('Pronoun flags bitmask'),
+	identityFlags: z.int().describe('Identity flags bitmask'),
+	createdAt: z.iso.datetime(),
+})
 
 /**
  * The private self DTO (`toSelfAccountDto`, the `/account/me` shape) — the public DTO
@@ -71,27 +69,24 @@ export const SelfAccountDto = AccountDto.extend({
 	email: z.string().nullable(),
 	birthday: z.null().describe('Always null — birthday is not stored'),
 	availableUsernameChanges: z.int().describe('Remaining username changes'),
-}).meta({ id: 'SelfAccountDto' })
+})
 
 /** Player bio, from `GET /account/:id/bio`. */
-export const BioResponse = z
-	.object({ accountId: z.int(), bio: z.string().describe('"" when unset') })
-	.meta({ id: 'BioResponse' })
+export const BioResponse = z.object({
+	accountId: z.int(),
+	bio: z.string().describe('"" when unset'),
+})
 
 /** A bare `{ success: true }` ack, returned by most profile mutations. */
-export const SuccessResponse = z
-	.object({ success: z.literal(true) })
-	.meta({ id: 'SuccessResponse' })
+export const SuccessResponse = z.object({ success: z.literal(true) })
 
 /** The RecNet result envelope `{ success, value }` used by create + username change. */
-export function envelope(value: z.ZodType, id: string) {
-	return z
-		.object({
-			success: z.boolean(),
-			value,
-			error: z.string().optional().describe('Present (with success:false) on failure'),
-		})
-		.meta({ id })
+export function envelope(value: z.ZodType) {
+	return z.object({
+		success: z.boolean(),
+		value,
+		error: z.string().optional().describe('Present (with success:false) on failure'),
+	})
 }
 
 /**
@@ -99,72 +94,61 @@ export function envelope(value: z.ZodType, id: string) {
  * a message in `error` and `value` an empty string; on success `value` is the updated
  * public account.
  */
-export const UsernameResult = envelope(
-	z.union([AccountDto, z.literal('')]),
-	'UsernameResult'
-).describe('value is the updated account on success, "" on failure')
+export const UsernameResult = envelope(z.union([AccountDto, z.literal('')])).describe(
+	'value is the updated account on success, "" on failure'
+)
 
 /** `POST /account/create` response. */
-export const CreateAccountResult = envelope(AccountDto, 'CreateAccountResult')
+export const CreateAccountResult = envelope(AccountDto)
 
 /** `GET /parentalcontrol/me` response. */
-export const ParentalControl = z
-	.object({ accountId: z.int(), disallowInAppPurchases: z.boolean() })
-	.meta({ id: 'ParentalControl' })
+export const ParentalControl = z.object({ accountId: z.int(), disallowInAppPurchases: z.boolean() })
 
 /**
  * `GET /accountprivacysettings/:id` response. A bare `{}` fails the client's
  * deserializer, so the id is echoed back and recent history reported visible; nothing
  * stores per-player privacy yet.
  */
-export const PrivacySettings = z
-	.object({ accountId: z.int(), isRecentHistoryVisible: z.boolean() })
-	.meta({ id: 'PrivacySettings' })
+export const PrivacySettings = z.object({ accountId: z.int(), isRecentHistoryVisible: z.boolean() })
 
 /** Root health check. */
-export const HealthResponse = z
-	.object({ service: z.literal('accounts'), status: z.literal('ok') })
-	.meta({ id: 'HealthResponse' })
+export const HealthResponse = z.object({ service: z.literal('accounts'), status: z.literal('ok') })
 
 // ---- Request bodies --------------------------------------------------------
 
 /** `POST /account/create` form body. Both fields are parsed but not yet persisted. */
-export const CreateAccountRequest = z
-	.object({
-		platform: z.string().optional().describe('PlatformType integer string; defaults to 0'),
-		platformId: z.string().optional().describe('Parsed for fidelity; currently unused'),
-	})
-	.meta({ id: 'CreateAccountRequest' })
+export const CreateAccountRequest = z.object({
+	platform: z.string().optional().describe('PlatformType integer string; defaults to 0'),
+	platformId: z.string().optional().describe('Parsed for fidelity; currently unused'),
+})
 
 /** Single-string form bodies, one per profile mutation. */
-export const DisplayNameRequest = z
-	.object({ displayName: z.string().describe('Trimmed; empty is rejected (400)') })
-	.meta({ id: 'DisplayNameRequest' })
+export const DisplayNameRequest = z.object({
+	displayName: z.string().describe('Trimmed; empty is rejected (400)'),
+})
 
-export const UsernameRequest = z
-	.object({ username: z.string().describe('Trimmed; must be unique and changes must remain') })
-	.meta({ id: 'UsernameRequest' })
+export const UsernameRequest = z.object({
+	username: z.string().describe('Trimmed; must be unique and changes must remain'),
+})
 
-export const EmailRequest = z
-	.object({ email: z.string().describe('Must contain "@"; otherwise 400') })
-	.meta({ id: 'EmailRequest' })
+export const EmailRequest = z.object({
+	email: z.string().describe('Must contain "@"; otherwise 400'),
+})
 
-export const PhoneRequest = z
-	.object({ phone: z.string().describe('Trimmed; empty is rejected (400)') })
-	.meta({ id: 'PhoneRequest' })
+export const PhoneRequest = z.object({
+	phone: z.string().describe('Trimmed; empty is rejected (400)'),
+})
 
-export const IdentityFlagsRequest = z
-	.object({ identityFlags: z.string().describe('Integer string bitmask; non-numeric is 400') })
-	.meta({ id: 'IdentityFlagsRequest' })
+export const IdentityFlagsRequest = z.object({
+	identityFlags: z.string().describe('Integer string bitmask; non-numeric is 400'),
+})
 
-export const PronounsRequest = z
-	.object({ pronounFlags: z.string().describe('Integer string bitmask; non-numeric is 400') })
-	.meta({ id: 'PronounsRequest' })
+export const PronounsRequest = z.object({
+	pronounFlags: z.string().describe('Integer string bitmask; non-numeric is 400'),
+})
 
-export const BioRequest = z
-	.object({ bio: z.string().describe('Free text; empty is allowed') })
-	.meta({ id: 'BioRequest' })
+export const BioRequest = z.object({ bio: z.string().describe('Free text; empty is allowed') })
 
-export const ProfileImageRequest = z
-	.object({ imageName: z.string().describe('Avatar object key; empty is rejected (400)') })
-	.meta({ id: 'ProfileImageRequest' })
+export const ProfileImageRequest = z.object({
+	imageName: z.string().describe('Avatar object key; empty is rejected (400)'),
+})
