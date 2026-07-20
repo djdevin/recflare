@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withOnError } from '@repo/hono-helpers'
 
+import { docsPage, fetchSpec } from './docs'
 import { accountsBase, apiBase, authBase, imgBase, notifyBase, postForm } from './upstream'
 
 import type { Context } from 'hono'
@@ -253,7 +254,11 @@ const app = new Hono<App>()
 		if (!res.ok) return relay(c, res)
 
 		const result = (await res.json()) as { delivered?: number }
-		return c.json({ success: true, starts_in_minutes: startsIn, connections: result.delivered ?? 0 })
+		return c.json({
+			success: true,
+			starts_in_minutes: startsIn,
+			connections: result.delivered ?? 0,
+		})
 	})
 
 	// Send a coach/system message to every online player. Like maintenance, this
@@ -277,6 +282,22 @@ const app = new Hono<App>()
 
 		const result = (await res.json()) as { sent?: number }
 		return c.json({ success: true, sent: result.sent ?? 0 })
+	})
+
+	// ---- Aggregated API docs ------------------------------------------------
+	// `/docs` serves the self-hosted Scalar UI; `/docs/openapi/:service.json` proxies
+	// each worker's spec same-origin (see docs.ts). The Scalar bundle itself
+	// (`/docs/scalar.standalone.js`) is a static asset emitted by the vite build, so it
+	// falls through to the ASSETS catch-all below.
+	.get('/docs', (c) => c.html(docsPage()))
+	.get('/docs/openapi/:service', async (c) => {
+		// Scalar requests `auth.json`; strip the suffix to get the service slug. The
+		// param is a single path segment, and fetchSpec allowlists it (so this can't be
+		// coerced into an open proxy).
+		const slug = c.req.param('service').replace(/\.json$/, '')
+		const spec = await fetchSpec(c.env, slug)
+		if (spec === null) return c.notFound()
+		return spec
 	})
 
 	// ---- Static SPA ---------------------------------------------------------
