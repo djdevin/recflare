@@ -15,6 +15,7 @@ import {
 	spendCurrency,
 } from '../../balance-db'
 import { CONSUMABLE_SCHEMA_DDL, grantConsumable } from '../../consumables-db'
+import { EQUIPMENT_SCHEMA_DDL } from '../../equipment-db'
 import { INVENTORY_SCHEMA_DDL } from '../../inventory-db'
 import { OUTFIT_SCHEMA_DDL } from '../../outfit-db'
 
@@ -36,6 +37,7 @@ beforeAll(async () => {
 	for (const stmt of OUTFIT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of INVENTORY_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of CONSUMABLE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of EQUIPMENT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of RECEIVED_GIFT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(JSON.stringify({ accountId: 42, username: 'Tester', displayName: 'Tester' }))
@@ -364,8 +366,13 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('GET /api/equipment/v2/getUnlocked returns [] (no auth)', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/equipment/v2/getUnlocked`)
+	test('GET /api/equipment/v2/getUnlocked 401s without a token, returns [] when none owned', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/equipment/v2/getUnlocked`)
+		expect(anon.status).toBe(401)
+		// Account 30 has bought no equipment → empty list.
+		const res = await exports.default.fetch(`${ORIGIN}/api/equipment/v2/getUnlocked`, {
+			headers: await bearer('30'),
+		})
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
 	})
@@ -730,6 +737,64 @@ describe('econ endpoints', () => {
 		expect(second[0].InitialCount).toBe(2)
 		expect(second[0].Ids).toHaveLength(2)
 		expect(second[0].CreatedAts).toHaveLength(2)
+	})
+
+	test('POST /api/storefronts/v2/buyItem grants equipment, read back by getUnlocked, no re-buy dupe', async () => {
+		// Item 1950 (Disc Skin (Coop)) in storefront 3 is a pure equipment drop — its
+		// gift-drop carries an EquipmentModificationGuid but no avatar/consumable desc.
+		const guid = '19ef59c7-f74b-4c63-935a-1d4b1abd8518'
+		const buy = async () =>
+			exports.default.fetch(`${ORIGIN}/api/storefronts/v2/buyItem`, {
+				method: 'POST',
+				headers: { ...(await bearer('31')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					StorefrontType: 3,
+					PurchasableItemId: 1950,
+					CurrencyType: 2,
+					RequestedPrice: 3500,
+				}),
+			})
+
+		const res = await buy()
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Balance: number
+			BalanceUpdates: Array<{
+				Data: Array<{ Id: number; EquipmentModificationGuid: string; EquipmentPrefabName: string }>
+			}>
+		}
+		expect(body.Balance).toBe(-3500)
+		const gift = body.BalanceUpdates[0].Data[0]
+		expect(gift.EquipmentModificationGuid).toBe(guid)
+		expect(gift.EquipmentPrefabName).toBe('[DiscGolfDisc]')
+
+		const unlocked = async () => {
+			const r = await exports.default.fetch(`${ORIGIN}/api/equipment/v2/getUnlocked`, {
+				headers: await bearer('31'),
+			})
+			expect(r.status).toBe(200)
+			return (await r.json()) as Array<{
+				EquipmentModificationGuid: string
+				EquipmentPrefabName: string
+				FriendlyName: string
+			}>
+		}
+		const first = await unlocked()
+		expect(first).toHaveLength(1)
+		expect(first[0].EquipmentModificationGuid).toBe(guid)
+		expect(first[0].EquipmentPrefabName).toBe('[DiscGolfDisc]')
+		expect(first[0].FriendlyName).toBe('Disc Skin (Coop)')
+
+		// Equipment is not an avatar item — it does not show up in v4/items.
+		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
+			headers: await bearer('31'),
+		})
+		const list = (await items.json()) as Array<{ FriendlyName: string }>
+		expect(list.every((i) => i.FriendlyName !== 'Disc Skin (Coop)')).toBe(true)
+
+		// Owning equipment is boolean: re-buying upserts, it does not add a second row.
+		expect((await buy()).status).toBe(200)
+		expect(await unlocked()).toHaveLength(1)
 	})
 
 	test('POST /api/storefronts/v2/buyItem 409s when the sent price no longer matches', async () => {

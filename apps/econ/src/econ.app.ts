@@ -28,6 +28,7 @@ import {
 	getConsumables,
 	grantConsumable,
 } from './consumables-db'
+import { getEquipment, grantEquipment } from './equipment-db'
 import { getInventory, grantItem } from './inventory-db'
 import {
 	AUTHED,
@@ -59,6 +60,7 @@ import type { GiftContent, StoredGift } from '@repo/domain'
 import type { Avatar } from './avatar-db'
 import type { ConsumeResult } from './consumables-db'
 import type { App } from './context'
+import type { Equipment } from './equipment-db'
 import type { AvatarItem } from './inventory-db'
 import type { Outfit } from './outfit-db'
 
@@ -269,6 +271,17 @@ function toAvatarItem(giftDrop: StoreGiftDrop): AvatarItem {
 		AvatarItemType: giftDrop.AvatarItemType,
 		AvatarItemDesc: giftDrop.AvatarItemDesc,
 		PlatformMask: -1,
+		FriendlyName: giftDrop.FriendlyName,
+		Tooltip: giftDrop.Tooltip,
+		Rarity: giftDrop.Rarity,
+	}
+}
+
+/** Build the owned equipment DTO granted into the buyer's inventory from a gift-drop. */
+function toEquipment(giftDrop: StoreGiftDrop): Equipment {
+	return {
+		EquipmentModificationGuid: giftDrop.EquipmentModificationGuid,
+		EquipmentPrefabName: giftDrop.EquipmentPrefabName,
 		FriendlyName: giftDrop.FriendlyName,
 		Tooltip: giftDrop.Tooltip,
 		Rarity: giftDrop.Rarity,
@@ -688,9 +701,17 @@ const app = new Hono<App>({ strict: false })
 		}
 	)
 
-	// Unlocked equipment. Returns "[]" with no auth.
-	.get('/api/equipment/v2/getUnlocked', listRoute('Unlocked equipment', 'Empty for now'), (c) =>
-		c.json([])
+	// Unlocked equipment. [Authorize]. The equipment skins the player has bought (from
+	// `buyItem`, stored in the `equipment` table). A player who has bought none gets an
+	// empty list.
+	.get(
+		'/api/equipment/v2/getUnlocked',
+		listRoute('Unlocked equipment', 'The equipment skins the player has bought', true),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			return c.json(await getEquipment(c.env.DB, id))
+		}
 	)
 
 	// Room consumables/currencies for a given room. Stubbed as empty lists so the
@@ -951,9 +972,16 @@ const app = new Hono<App>({ strict: false })
 			if (!paid) return c.json({ error: 'Insufficient balance' }, 400)
 
 			// Grant the item to the recipient. A gift-drop carries an avatar item, a consumable,
-			// or neither (currency/xp drops aren't granted yet); grant whichever it actually has.
+			// an equipment skin, or none of these (currency/xp drops aren't granted yet); grant
+			// whichever it actually has.
 			if (typeof item.GiftDrop.AvatarItemDesc === 'string' && item.GiftDrop.AvatarItemDesc !== '') {
 				await grantItem(c.env.DB, receiverId, toAvatarItem(item.GiftDrop))
+			}
+			if (
+				typeof item.GiftDrop.EquipmentModificationGuid === 'string' &&
+				item.GiftDrop.EquipmentModificationGuid !== ''
+			) {
+				await grantEquipment(c.env.DB, receiverId, toEquipment(item.GiftDrop))
 			}
 			const isConsumable =
 				typeof item.GiftDrop.ConsumableItemDesc === 'string' &&
