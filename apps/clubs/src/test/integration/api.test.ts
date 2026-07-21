@@ -325,6 +325,25 @@ describe('clubs endpoints', () => {
 			body: 'name=Ghost',
 		})
 		expect(missing.status).toBe(404)
+
+		// /modify is the same endpoint under the client's shorter name.
+		const short = async (sub: string) =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}/modify`, {
+				method: 'PUT',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'name=my%20club&description=rock%20out&category=Casual',
+			})
+		const renamed = (await (await short('6000')).json()) as Details
+		expect(renamed.value.Club).toMatchObject({
+			Name: 'my club',
+			Description: 'rock out',
+			Category: 'Casual',
+		})
+		// ...and it's gated the same way.
+		expect((await short('6001')).status).toBe(403)
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/club/${clubId}/modify`, { method: 'PUT' })).status
+		).toBe(401)
 	})
 
 	test('GET/PUT /club/:id/mainimage reads and sets the club image, co-owner only', async () => {
@@ -473,22 +492,77 @@ describe('clubs endpoints', () => {
 		// Give it a clubhouse → the home club now resolves.
 		const clubhouse = await form(`/club/${clubId}/clubhouse`, 'PUT', 'roomId=77', '9100')
 		expect(clubhouse.status).toBe(200)
-		expect(await clubhouse.json()).toEqual({ error: '', success: true, value: null })
+		// The details envelope carries the new room back — the client re-renders from it.
+		const setRoom = (await clubhouse.json()) as {
+			error: string
+			success: boolean
+			value: { Club: { ClubhouseRoomId: number | null } }
+		}
+		expect(setRoom).toMatchObject({ error: '', success: true })
+		expect(setRoom.value.Club.ClubhouseRoomId).toBe(77)
 
 		const home = await exports.default.fetch(`${ORIGIN}/club/home/me`, {
 			headers: await bearer('9100'),
 		})
 		expect((await home.json()) as Club).toMatchObject({ ClubId: clubId, ClubhouseRoomId: 77 })
 
-		// Clearing the clubhouse takes the home club away again.
-		await form(`/club/${clubId}/clubhouse`, 'PUT', '', '9100')
+		// Clearing the clubhouse takes the home club away again — and reports the cleared
+		// room, so the client doesn't keep showing the old one.
+		const clear = (await (await form(`/club/${clubId}/clubhouse`, 'PUT', '', '9100')).json()) as {
+			value: { Club: { ClubhouseRoomId: number | null } }
+		}
+		expect(clear.value.Club.ClubhouseRoomId).toBeNull()
 		const cleared = await exports.default.fetch(`${ORIGIN}/club/home/me`, {
 			headers: await bearer('9100'),
 		})
 		expect(cleared.status).toBe(404)
 
-		// Only co-owners may set the clubhouse; signed out is a 401 on both.
+		// DELETE clears it too, ignoring any body it's sent.
+		await form(`/club/${clubId}/clubhouse`, 'PUT', 'roomId=88', '9100')
+		const deleted = (await (
+			await form(`/club/${clubId}/clubhouse`, 'DELETE', 'roomId=99', '9100')
+		).json()) as { success: boolean; value: { Club: { ClubhouseRoomId: number | null } } }
+		expect(deleted.success).toBe(true)
+		expect(deleted.value.Club.ClubhouseRoomId).toBeNull()
+
+		// DELETE /club/home/me drops the home club without touching the membership, and
+		// is idempotent when there's none set.
+		await form(`/club/${clubId}/clubhouse`, 'PUT', 'roomId=77', '9100')
+		await form('/club/home/me', 'PUT', `clubId=${clubId}`, '9100')
+		const dropped = await exports.default.fetch(`${ORIGIN}/club/home/me`, {
+			method: 'DELETE',
+			headers: await bearer('9100'),
+		})
+		expect(dropped.status).toBe(200)
+		expect(await dropped.json()).toEqual({ error: '', success: true, value: null })
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/club/home/me`, { headers: await bearer('9100') }))
+				.status
+		).toBe(404)
+		// Still a member of the club they'd made their home.
+		const mine = (await (
+			await exports.default.fetch(`${ORIGIN}/club/mine/member`, { headers: await bearer('9100') })
+		).json()) as Club[]
+		expect(mine.map((c) => c.ClubId)).toContain(clubId)
+		// Clearing again, and clearing when nothing was set, both succeed.
+		for (const sub of ['9100', '9101']) {
+			const again = await exports.default.fetch(`${ORIGIN}/club/home/me`, {
+				method: 'DELETE',
+				headers: await bearer(sub),
+			})
+			expect(again.status).toBe(200)
+		}
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/club/home/me`, { method: 'DELETE' })).status
+		).toBe(401)
+
+		// Only co-owners may set or clear the clubhouse; signed out is a 401 on both.
 		expect((await form(`/club/${clubId}/clubhouse`, 'PUT', 'roomId=1', '9101')).status).toBe(403)
+		expect((await form(`/club/${clubId}/clubhouse`, 'DELETE', '', '9101')).status).toBe(403)
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/club/${clubId}/clubhouse`, { method: 'DELETE' }))
+				.status
+		).toBe(401)
 		const anon = await exports.default.fetch(`${ORIGIN}/club/home/me`, { method: 'PUT' })
 		expect(anon.status).toBe(401)
 	})
@@ -874,5 +948,178 @@ describe('clubs endpoints', () => {
 			await exports.default.fetch(`${ORIGIN}/club/mine/member`, { headers: await bearer('811') })
 		).json()) as Club[]
 		expect(member811.map((c) => c.ClubId)).not.toContain(club.ClubId)
+	})
+
+	test('requesttojoin follows the club joinability', async () => {
+		const create = async (sub: string, fields: Record<string, string>) =>
+			(
+				(await (
+					await exports.default.fetch(`${ORIGIN}/club/create`, {
+						method: 'POST',
+						headers: {
+							...(await bearer(sub)),
+							'Content-Type': 'application/x-www-form-urlencoded',
+						},
+						body: new URLSearchParams(fields).toString(),
+					})
+				).json()) as { value: { Club: { ClubId: number } } }
+			).value.Club.ClubId
+		const request = async (clubId: number, sub: string) =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}/members/requesttojoin`, {
+				method: 'PUT',
+				headers: await bearer(sub),
+			})
+		type Details = { error: string; success: boolean; value: { MyMembershipType: number } | null }
+
+		const open = await create('820', { name: 'Open Doors', joinability: 'Open' })
+		const ask = await create('821', { name: 'Ask First', joinability: 'AskToJoin' })
+		const invite = await create('822', { name: 'Invite Only', joinability: 'InviteOnly' })
+
+		// Open → straight in as a Member (10).
+		const joined = (await (await request(open, '830')).json()) as Details
+		expect(joined).toMatchObject({ success: true })
+		expect(joined.value?.MyMembershipType).toBe(10)
+
+		// AskToJoin → PendingRequested (1), and a repeat request leaves it there.
+		const asked = (await (await request(ask, '830')).json()) as Details
+		expect(asked.value?.MyMembershipType).toBe(1)
+		expect(
+			(((await (await request(ask, '830')).json()) as Details).value ?? {}).MyMembershipType
+		).toBe(1)
+
+		// InviteOnly → refused, with no membership row created.
+		const refused = await request(invite, '830')
+		expect(refused.status).toBe(400)
+		expect(((await refused.json()) as Details).success).toBe(false)
+
+		// No token, and an unknown club.
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/club/${open}/members/requesttojoin`, {
+					method: 'PUT',
+				})
+			).status
+		).toBe(401)
+		expect((await request(99999, '830')).status).toBe(404)
+	})
+
+	test('members/leave drops a membership and withdraws a pending request', async () => {
+		const create = async (sub: string, fields: Record<string, string>) =>
+			(
+				(await (
+					await exports.default.fetch(`${ORIGIN}/club/create`, {
+						method: 'POST',
+						headers: {
+							...(await bearer(sub)),
+							'Content-Type': 'application/x-www-form-urlencoded',
+						},
+						body: new URLSearchParams(fields).toString(),
+					})
+				).json()) as { value: { Club: { ClubId: number } } }
+			).value.Club.ClubId
+		const call = async (clubId: number, sub: string, action: 'requesttojoin' | 'leave') =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}/members/${action}`, {
+				method: action === 'leave' ? 'POST' : 'PUT',
+				headers: await bearer(sub),
+			})
+		type Details = {
+			success: boolean
+			value: { Club: { MemberCount: number }; MyMembershipType: number } | null
+		}
+
+		const open = await create('840', { name: 'Revolving', joinability: 'Open' })
+		const ask = await create('841', { name: 'Waitlist', joinability: 'AskToJoin' })
+
+		// A member leaves → membership 0, and the count drops back to the creator alone.
+		await call(open, '850', 'requesttojoin')
+		const left = (await (await call(open, '850', 'leave')).json()) as Details
+		expect(left.success).toBe(true)
+		expect(left.value?.MyMembershipType).toBe(0)
+		expect(left.value?.Club.MemberCount).toBe(1)
+
+		// Leaving again is a no-op, not an error.
+		expect(
+			(((await (await call(open, '850', 'leave')).json()) as Details).value ?? {}).MyMembershipType
+		).toBe(0)
+
+		// Leaving withdraws a pending request too.
+		expect(
+			(((await (await call(ask, '850', 'requesttojoin')).json()) as Details).value ?? {})
+				.MyMembershipType
+		).toBe(1)
+		expect(
+			(((await (await call(ask, '850', 'leave')).json()) as Details).value ?? {}).MyMembershipType
+		).toBe(0)
+
+		// The creator can't leave their own club — they'd leave it ownerless.
+		for (const path of [`/club/${open}/members/leave`, `/club/${open}/leave`]) {
+			const res = await exports.default.fetch(`${ORIGIN}${path}`, {
+				method: 'POST',
+				headers: await bearer('840'),
+			})
+			expect(res.status).toBe(403)
+		}
+		// ...and they're still the creator afterwards.
+		const stillIn = (await (
+			await exports.default.fetch(`${ORIGIN}/club/${open}/details`, {
+				headers: await bearer('840'),
+			})
+		).json()) as { MyMembershipType: number }
+		expect(stillIn.MyMembershipType).toBe(100)
+
+		// No token, and an unknown club.
+		expect(
+			(await exports.default.fetch(`${ORIGIN}/club/${open}/members/leave`, { method: 'POST' }))
+				.status
+		).toBe(401)
+		expect((await call(99999, '850', 'leave')).status).toBe(404)
+	})
+
+	test('DELETE /club/:id is the creator’s only, and takes the memberships with it', async () => {
+		const create = async (sub: string, fields: Record<string, string>) =>
+			(
+				(await (
+					await exports.default.fetch(`${ORIGIN}/club/create`, {
+						method: 'POST',
+						headers: {
+							...(await bearer(sub)),
+							'Content-Type': 'application/x-www-form-urlencoded',
+						},
+						body: new URLSearchParams(fields).toString(),
+					})
+				).json()) as { value: { Club: { ClubId: number } } }
+			).value.Club.ClubId
+		const del = async (clubId: number, sub?: string) =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}`, {
+				method: 'DELETE',
+				...(sub === undefined ? {} : { headers: await bearer(sub) }),
+			})
+
+		const clubId = await create('860', { name: 'Doomed', joinability: 'Open' })
+		await exports.default.fetch(`${ORIGIN}/club/${clubId}/members/requesttojoin`, {
+			method: 'PUT',
+			headers: await bearer('861'),
+		})
+
+		// Signed out, a plain member, and an unknown club.
+		expect((await del(clubId)).status).toBe(401)
+		expect((await del(clubId, '861')).status).toBe(403)
+		expect((await del(99999, '860')).status).toBe(404)
+
+		// The creator can. The club, and its members, are gone.
+		const res = await del(clubId, '860')
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ error: '', success: true, value: null })
+		expect((await exports.default.fetch(`${ORIGIN}/club/${clubId}`)).status).toBe(404)
+		expect(
+			await (await exports.default.fetch(`${ORIGIN}/club/${clubId}/members`)).json()
+		).toMatchObject({ value: [] })
+		const member861 = (await (
+			await exports.default.fetch(`${ORIGIN}/club/mine/member`, { headers: await bearer('861') })
+		).json()) as Array<{ ClubId: number }>
+		expect(member861.map((c) => c.ClubId)).not.toContain(clubId)
+
+		// Deleting twice 404s rather than reporting success.
+		expect((await del(clubId, '860')).status).toBe(404)
 	})
 })

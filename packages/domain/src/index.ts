@@ -1,5 +1,6 @@
 export { RoomInstanceType, Accessibility, Role } from './enums'
 export * from './accounts-db'
+export * from './clubs-db'
 export * from './password'
 export * from './rooms-db'
 export * from './room-instance-db'

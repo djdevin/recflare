@@ -519,6 +519,17 @@ export async function setHomeClub(
 		.run()
 }
 
+/**
+ * Drop the player's home club (the field is removed from their account row, not set
+ * to 0 — `getHomeClub` reads a missing field as "no home club"). Idempotent.
+ */
+export async function clearHomeClub(db: D1Database, accountId: number): Promise<void> {
+	await db
+		.prepare("UPDATE account SET data = json_remove(data, '$.homeClubId') WHERE account_id = ?1")
+		.bind(accountId)
+		.run()
+}
+
 /** A club membership row, as the members list serves it (mirror of the Go `ClubMember`). */
 export interface ClubMember {
 	ClubMemberId: number
@@ -660,6 +671,30 @@ export async function getClub(db: D1Database, clubId: number): Promise<Club | nu
 }
 
 /**
+ * Delete a club and everything hanging off it — its memberships and announcements —
+ * and clear it from the home club of anyone who'd set it. Returns false when there
+ * was no such club. Batched so a half-deleted club can't be left behind.
+ */
+export async function deleteClub(db: D1Database, clubId: number): Promise<boolean> {
+	if ((await getClub(db, clubId)) === null) return false
+	await db.batch([
+		db.prepare('DELETE FROM club_member WHERE club_id = ?1').bind(clubId),
+		db.prepare('DELETE FROM club_announcement WHERE club_id = ?1').bind(clubId),
+		// The account table belongs to the auth worker; a dangling homeClubId already
+		// reads as "no home club" (getHomeClub), but leaving it would point at whatever
+		// club later reuses the id.
+		db
+			.prepare(
+				`UPDATE account SET data = json_remove(data, '$.homeClubId')
+				 WHERE json_extract(data, '$.homeClubId') = ?1`
+			)
+			.bind(clubId),
+		db.prepare('DELETE FROM club WHERE club_id = ?1').bind(clubId),
+	])
+	return true
+}
+
+/**
  * Subscription clubs (`ClubType` 1) are a creator's paid-subscriber club, not a
  * club you browse or list among your own — they're excluded from the "my clubs"
  * lists (the client reaches them through the `/subscription/*` endpoints instead).
@@ -741,18 +776,69 @@ export async function joinClub(
 }
 
 /**
+ * How a request to join resolved. `joined` is an Open club (no approval needed),
+ * `requested` an AskToJoin club (now PendingRequested), `alreadyPending` a repeat
+ * request, `alreadyMember` someone who's already in. `inviteOnly` and `banned` are
+ * refusals — the caller can't get in this way.
+ */
+export type JoinRequestResult =
+	'joined' | 'requested' | 'alreadyPending' | 'alreadyMember' | 'inviteOnly' | 'banned'
+
+/**
+ * Ask to join a club. Unlike `joinClub` this honours the club's Joinability strictly:
+ * an InviteOnly club can only be entered through an invite, so a request is refused
+ * rather than parked as pending. Returns the outcome plus the club with its refreshed
+ * MemberCount, or null when the club doesn't exist.
+ */
+export async function requestToJoinClub(
+	db: D1Database,
+	clubId: number,
+	accountId: number
+): Promise<{ result: JoinRequestResult; club: Club } | null> {
+	const club = await getClub(db, clubId)
+	if (!club) return null
+
+	const current = await getMembership(db, clubId, accountId)
+	// A ban can't be shed by asking again, and existing members/requests stay as-is.
+	if (current === ClubMembershipType.Banned) return { result: 'banned', club }
+	if (current >= MEMBER_THRESHOLD) return { result: 'alreadyMember', club }
+	if (current === ClubMembershipType.PendingRequested) return { result: 'alreadyPending', club }
+
+	if (club.Joinability === ClubJoinability.InviteOnly) return { result: 'inviteOnly', club }
+
+	const open = club.Joinability === ClubJoinability.Open
+	await setMembership(
+		db,
+		clubId,
+		accountId,
+		open ? ClubMembershipType.Member : ClubMembershipType.PendingRequested
+	)
+
+	const count = await syncMemberCount(db, clubId)
+	return { result: open ? 'joined' : 'requested', club: { ...club, MemberCount: count } }
+}
+
+/**
  * Remove `accountId`'s membership of a club (idempotent). A ban is preserved — you
  * can't clear it by leaving — but any member/pending row is dropped. Returns the
- * club with its refreshed MemberCount, or null when the club doesn't exist. The
- * club itself is left in place even when the last member leaves.
+ * outcome plus the club with its refreshed MemberCount, or null when the club doesn't
+ * exist. The club itself is left in place even when the last member leaves.
+ *
+ * The creator can't leave: a club with no owner has no one who can administer it, and
+ * there's no ownership transfer, so they have to delete the club instead. `creator`
+ * reports that refusal, with the club unchanged.
  */
 export async function leaveClub(
 	db: D1Database,
 	clubId: number,
 	accountId: number
-): Promise<Club | null> {
+): Promise<{ result: 'left' | 'creator'; club: Club } | null> {
 	const club = await getClub(db, clubId)
 	if (!club) return null
+
+	const current = await getMembership(db, clubId, accountId)
+	if (current === ClubMembershipType.Creator) return { result: 'creator', club }
+
 	await db
 		.prepare(
 			'DELETE FROM club_member WHERE club_id = ?1 AND account_id = ?2 AND membership_type <> ?3'
@@ -760,5 +846,5 @@ export async function leaveClub(
 		.bind(clubId, accountId, ClubMembershipType.Banned)
 		.run()
 	const count = await syncMemberCount(db, clubId)
-	return { ...club, MemberCount: count }
+	return { result: 'left', club: { ...club, MemberCount: count } }
 }

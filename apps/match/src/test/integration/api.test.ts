@@ -108,6 +108,40 @@ beforeAll(async () => {
 		insertAccount.bind(JSON.stringify({ accountId: 42, username: 'Tester' })),
 		insertAccount.bind(JSON.stringify({ accountId: 43, username: 'Roomie' })),
 	])
+
+	// Club tables (owned by the clubs worker) — matchmake/club reads the clubhouse
+	// room and the caller's membership from them.
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS club (
+			data TEXT NOT NULL,
+			club_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.ClubId')) VIRTUAL
+		)`
+	).run()
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS club_member (
+			club_member_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			club_id INTEGER NOT NULL,
+			account_id INTEGER NOT NULL,
+			membership_type INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT
+		)`
+	).run()
+	const insertClub = env.DB.prepare('INSERT OR IGNORE INTO club (data) VALUES (?1)')
+	await env.DB.batch([
+		// Club 4 has room 2 as its clubhouse; club 5 has none set.
+		insertClub.bind(JSON.stringify({ ClubId: 4, Name: 'Clubbers', ClubhouseRoomId: 2 })),
+		insertClub.bind(JSON.stringify({ ClubId: 5, Name: 'Homeless', ClubhouseRoomId: null })),
+	])
+	const insertMember = env.DB.prepare(
+		'INSERT INTO club_member (club_id, account_id, membership_type) VALUES (?1, ?2, ?3)'
+	)
+	await env.DB.batch([
+		insertMember.bind(4, 120, 100), // creator
+		insertMember.bind(4, 121, 10), // member
+		insertMember.bind(4, 122, 1), // pending request — not a member yet
+		insertMember.bind(4, 123, -1), // banned
+		insertMember.bind(5, 120, 100),
+	])
 })
 
 // Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
@@ -307,6 +341,58 @@ describe('public endpoints', () => {
 		// An unknown subroom falls back to the room's first (its default entrance).
 		const unknown = await matchmake('/matchmake/room/77/999', '93')
 		expect(unknown).toMatchObject({ subRoomId: 34, location: RECCENTER_SCENE })
+	})
+
+	test('POST /matchmake/club/:clubId places members into the clubhouse', async () => {
+		const matchmake = async (path: string, sub?: string) =>
+			exports.default.fetch(`${ORIGIN}${path}`, {
+				method: 'POST',
+				headers: {
+					...(sub === undefined ? {} : await bearer(sub)),
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body: 'JoinMode=0',
+			})
+		type Body = {
+			errorCode: number
+			roomInstance: { roomId: number; location: string; roomInstanceId: number } | null
+		}
+
+		// A member lands in an instance of the club's clubhouse (room 2)...
+		const res = await matchmake('/matchmake/club/4', '121')
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Body
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).toMatchObject({ roomId: 2, location: RECCENTER_SCENE })
+
+		// ...and it's recorded as their presence, like any other matchmake.
+		const row = await env.DB.prepare('SELECT data FROM presence WHERE account_id = ?1')
+			.bind(121)
+			.first<{ data: string }>()
+		const presence = JSON.parse(row!.data) as { roomInstance: { roomInstanceId: number } }
+		expect(presence.roomInstance.roomInstanceId).toBe(body.roomInstance!.roomInstanceId)
+
+		// The creator is a member too, and joins the same public instance.
+		const creator = (await (await matchmake('/matchmake/club/4', '120')).json()) as Body
+		expect(creator.roomInstance?.roomInstanceId).toBe(body.roomInstance!.roomInstanceId)
+
+		// Everyone who isn't a member is turned away with the same answer: a non-member,
+		// a pending request, a banned account, a club with no clubhouse, an unknown club.
+		for (const [path, sub] of [
+			['/matchmake/club/4', '199'],
+			['/matchmake/club/4', '122'],
+			['/matchmake/club/4', '123'],
+			['/matchmake/club/5', '120'],
+			['/matchmake/club/9999', '120'],
+		] as const) {
+			expect(await (await matchmake(path, sub)).json()).toEqual({
+				errorCode: 20,
+				roomInstance: null,
+			})
+		}
+
+		// Signed out is a 401, not a matchmaking error.
+		expect((await matchmake('/matchmake/club/4')).status).toBe(401)
 	})
 
 	test('POST /matchmake/room/:roomId returns NoSuchRoom for an unknown room', async () => {
@@ -896,6 +982,7 @@ describe('auth-gated endpoints', () => {
 			'GET /rooms/requiring/rrplus',
 			'POST /goto/none',
 			'POST /goto/room/{room}',
+			'POST /matchmake/club/{clubId}',
 			'POST /matchmake/none',
 			'POST /matchmake/room/{roomId}',
 			'POST /matchmake/room/{roomId}/{subRoomId}',

@@ -8,6 +8,7 @@ import {
 	deleteExpiredPresence,
 	deletePresence,
 	getAccount,
+	getClubSummary,
 	getExpiredPresenceInstanceIds,
 	getJoinableInstance,
 	getOrCreateDormRoom,
@@ -16,6 +17,7 @@ import {
 	getRoomById,
 	getRoomByName,
 	getRoomInstancesByRoom,
+	isClubMember,
 	refreshInstanceFullness,
 	RoomInstanceType,
 	setPresence,
@@ -718,6 +720,65 @@ const app = new Hono<App>()
 			return c.json({ errorCode: 0, roomInstance: instance })
 		}
 	)
+	// Matchmake into a club's clubhouse (`/matchmake/club/{clubId}`). Registered before
+	// the single-segment `/matchmake/:room` route so `club` isn't read as a room name.
+	// Members only: the clubhouse is the club's private space, so a non-member (or
+	// someone with a pending request, or banned) is refused rather than let in.
+	.post(
+		'/matchmake/club/:clubId{[0-9]+}',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Matchmake into a club’s clubhouse',
+			description:
+				'Looks the club up, checks the caller is a member of it, and places them into an ' +
+				'instance of its clubhouse room. Returns errorCode 20 with a null instance when the ' +
+				'club is unknown, has no clubhouse set, or the caller isn’t a member.',
+			security: AUTHED,
+			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			parameters: [
+				{
+					name: 'clubId',
+					in: 'path',
+					required: true,
+					description: 'Club id (digits only)',
+					schema: { type: 'string', pattern: '^[0-9]+$' },
+				},
+			],
+			responses: {
+				200: json(
+					MatchmakeResponse,
+					'The clubhouse instance (or errorCode 20 with null when it can’t be entered)'
+				),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+
+			const clubId = Number.parseInt(c.req.param('clubId'), 10)
+			const club = await getClubSummary(c.env.DB, clubId)
+			// One response for "no such club", "no clubhouse", and "not a member": the
+			// client only needs "you're not going there", and a distinct code for the last
+			// case would tell a non-member which clubs exist and have a clubhouse.
+			if (!club?.clubhouseRoomId) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			if (!(await isClubMember(c.env.DB, clubId, id))) {
+				return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			}
+
+			const joinMode = await readJoinMode(c)
+			const instance = await resolveRoomInstance(
+				c,
+				String(club.clubhouseRoomId),
+				joinMode === 2,
+				id
+			)
+			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
+
 	// Matchmake into a specific subroom of a room (`/matchmake/room/{roomId}/{subRoomId}`
 	// — the client uses this to enter a room's other scenes). The subroom decides the
 	// scene the client loads and which instances are joinable, so it must be carried

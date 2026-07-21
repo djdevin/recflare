@@ -5,11 +5,13 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import {
+	clearHomeClub,
 	ClubJoinability,
 	ClubMembershipType,
 	ClubVisibility,
 	createClub,
 	createClubAnnouncement,
+	deleteClub,
 	getClub,
 	getClubAnnouncements,
 	getClubDetails,
@@ -20,6 +22,7 @@ import {
 	getMembership,
 	joinClub,
 	leaveClub,
+	requestToJoinClub,
 	searchClubs,
 	setHomeClub,
 	updateClub,
@@ -162,6 +165,17 @@ const app = new Hono<App>()
 
 		await setHomeClub(c.env.DB, id, clubId)
 		return c.json({ error: '', success: true, value: club })
+	})
+
+	// Clear the player's home club — they spawn into the default hub again instead of a
+	// clubhouse. No body, idempotent (clearing when there's none set is a no-op, not a
+	// 404), and it doesn't touch their membership of the club. The envelope's value is
+	// null because there's no home club left to describe; GET goes back to 404ing.
+	.delete('/club/home/me', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+		await clearHomeClub(c.env.DB, id)
+		return c.json({ error: '', success: true, value: null })
 	})
 
 	// A real Rec Room client endpoint with no backing implementation yet. The
@@ -334,7 +348,10 @@ const app = new Hono<App>()
 	// and absent fields keep their stored value. `customTags` may repeat; when present
 	// it replaces the club's tag set wholesale. Co-owner or above only. Answers the
 	// same `{ error, success, value }` envelope create does.
-	.put('/club/:clubId{[0-9]+}/modifydetails', async (c) => {
+	//
+	// `/modify` is the same endpoint under the shorter name the client also PUTs to
+	// (`name=…&description=…&category=…`); one handler, so the two can't drift.
+	.on('PUT', ['/club/:clubId{[0-9]+}/modifydetails', '/club/:clubId{[0-9]+}/modify'], async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)
 
@@ -472,8 +489,14 @@ const app = new Hono<App>()
 
 	// Set (or clear) the club's clubhouse room — the room players spawn into when the
 	// club is their home. `roomId` sets it; omitting it clears the clubhouse. Co-owner
-	// or above only. Answers the envelope with a null value, as the reference does.
-	.put('/club/:clubId{[0-9]+}/clubhouse', async (c) => {
+	// or above only. Answers the details envelope (the reference returns a null value
+	// here, but the client re-renders from the response and leaves the old clubhouse
+	// on screen unless it gets the updated club back).
+	//
+	// DELETE is the same thing with the clearing spelled out — it ignores any body and
+	// always unsets the room, so "remove the clubhouse" doesn't depend on the client
+	// remembering to send an empty PUT.
+	.on(['PUT', 'DELETE'], '/club/:clubId{[0-9]+}/clubhouse', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)
 
@@ -486,17 +509,24 @@ const app = new Hono<App>()
 			return c.json({ error: 'Insufficient permissions.', success: false, value: null }, 403)
 		}
 
-		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
-		const key = Object.keys(body).find((k) => k.toLowerCase() === 'roomid')
-		const raw = typeof body[key ?? ''] === 'string' ? String(body[key ?? '']).trim() : ''
-		if (raw !== '' && Number.isNaN(Number.parseInt(raw, 10))) {
-			return clubError(c, 'Invalid roomId.')
+		let roomId: number | null = null
+		if (c.req.method !== 'DELETE') {
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const key = Object.keys(body).find((k) => k.toLowerCase() === 'roomid')
+			const raw = typeof body[key ?? ''] === 'string' ? String(body[key ?? '']).trim() : ''
+			if (raw !== '' && Number.isNaN(Number.parseInt(raw, 10))) {
+				return clubError(c, 'Invalid roomId.')
+			}
+			roomId = raw === '' ? null : Number.parseInt(raw, 10)
 		}
 
-		await updateClub(c.env.DB, clubId, {
-			clubhouseRoomId: raw === '' ? null : Number.parseInt(raw, 10),
+		const updated = await updateClub(c.env.DB, clubId, { clubhouseRoomId: roomId })
+		if (updated === null) return c.notFound()
+		return c.json({
+			error: '',
+			success: true,
+			value: await getClubDetails(c.env.DB, updated, id),
 		})
-		return c.json({ error: '', success: true, value: null })
 	})
 
 	// The club's main image. PUT sets it from an uploaded image's `imageName` (the
@@ -548,6 +578,87 @@ const app = new Hono<App>()
 		return club ? c.json(club) : c.notFound()
 	})
 
+	// Delete a club, along with its memberships and announcements. The creator only —
+	// not co-owners, who can edit a club but can't destroy one — which is also the way
+	// out for a creator, since they aren't allowed to leave (see /members/leave).
+	// Answers the envelope with a null value; the club is gone, so there are no details
+	// left to return.
+	.delete('/club/:clubId{[0-9]+}', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const clubId = Number.parseInt(c.req.param('clubId'), 10)
+		const club = await getClub(c.env.DB, clubId)
+		if (club === null) return c.notFound()
+
+		const membership = await getMembership(c.env.DB, clubId, id)
+		if (membership < ClubMembershipType.Creator) {
+			return c.json({ error: 'Insufficient permissions.', success: false, value: null }, 403)
+		}
+
+		await deleteClub(c.env.DB, clubId)
+		return c.json({ error: '', success: true, value: null })
+	})
+
+	// Ask to join a club. No body — the club id and the Bearer token are the whole
+	// request. What it does depends on the club's Joinability: an Open club takes the
+	// caller straight in as a Member, an AskToJoin club records a PendingRequested row
+	// for a co-owner to approve, and an InviteOnly club refuses (you can only get in
+	// through an invite). Repeats are idempotent; a banned account stays out. Answers
+	// the details envelope so the client can read its new `MyMembershipType`.
+	.put('/club/:clubId{[0-9]+}/members/requesttojoin', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const clubId = Number.parseInt(c.req.param('clubId'), 10)
+		const outcome = await requestToJoinClub(c.env.DB, clubId, id)
+		if (outcome === null) return c.notFound()
+
+		if (outcome.result === 'inviteOnly') {
+			return clubError(c, 'This club is invite only.')
+		}
+		if (outcome.result === 'banned') {
+			return c.json({ error: 'You are banned from this club.', success: false, value: null }, 403)
+		}
+
+		return c.json({
+			error: '',
+			success: true,
+			value: await getClubDetails(c.env.DB, outcome.club, id),
+		})
+	})
+
+	// Leave a club. No body, like requesttojoin — the club id and the Bearer token are
+	// the whole request. Idempotent (leaving a club you're not in is a no-op), and it
+	// also withdraws a pending request; a ban is preserved, since you can't clear one
+	// by leaving. The creator is refused — they'd leave the club ownerless, so they
+	// have to delete it instead. Answers the details envelope so the client sees
+	// `MyMembershipType` drop to 0 (or stay at -1 for a banned account).
+	.post('/club/:clubId{[0-9]+}/members/leave', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const clubId = Number.parseInt(c.req.param('clubId'), 10)
+		const outcome = await leaveClub(c.env.DB, clubId, id)
+		if (outcome === null) return c.notFound()
+		if (outcome.result === 'creator') {
+			return c.json(
+				{
+					error: 'You created this club — delete it instead of leaving.',
+					success: false,
+					value: null,
+				},
+				403
+			)
+		}
+
+		return c.json({
+			error: '',
+			success: true,
+			value: await getClubDetails(c.env.DB, outcome.club, id),
+		})
+	})
+
 	// Join / leave a club (auth-gated, idempotent). Both return the club with its
 	// refreshed MemberCount; 404 when the club doesn't exist.
 	.post('/club/:clubId{[0-9]+}/join', async (c) => {
@@ -556,11 +667,24 @@ const app = new Hono<App>()
 		const club = await joinClub(c.env.DB, Number.parseInt(c.req.param('clubId'), 10), id)
 		return club ? c.json(club) : c.notFound()
 	})
+	// Leaving is refused for the creator here too (see /members/leave), so the two
+	// routes can't disagree about who's still in the club.
 	.post('/club/:clubId{[0-9]+}/leave', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)
-		const club = await leaveClub(c.env.DB, Number.parseInt(c.req.param('clubId'), 10), id)
-		return club ? c.json(club) : c.notFound()
+		const outcome = await leaveClub(c.env.DB, Number.parseInt(c.req.param('clubId'), 10), id)
+		if (outcome === null) return c.notFound()
+		if (outcome.result === 'creator') {
+			return c.json(
+				{
+					error: 'You created this club — delete it instead of leaving.',
+					success: false,
+					value: null,
+				},
+				403
+			)
+		}
+		return c.json(outcome.club)
 	})
 
 export default app
