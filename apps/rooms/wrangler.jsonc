@@ -56,6 +56,10 @@
 			"head_sampling_rate": 1 // 100%
 		}
 	},
+	// The per-account cap (MAX_ROOMS_PER_ACCOUNT) is deliberately NOT set here. It's
+	// injected at deploy time from the gitignored .env (RECFLARE_MAX_ROOMS_PER_ACCOUNT, see
+	// .env.example), so tuning it never means editing a versioned file. Unset — the
+	// default — falls back to DEFAULT_MAX_ROOMS_PER_ACCOUNT in src/rooms.app.ts.
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown" // overridden during deployment

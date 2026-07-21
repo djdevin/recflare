@@ -778,6 +778,23 @@ export async function deleteClub(db: D1Database, clubId: number): Promise<boolea
  */
 const SUBSCRIPTION_CLUB_TYPE = 1
 
+/**
+ * How many clubs an account has made, for the per-account club cap. Subscription
+ * clubs don't count — they're provisioned for a creator's subscribers rather than
+ * made by hand, so they shouldn't eat a slot.
+ */
+export async function countClubsByCreator(db: D1Database, accountId: number): Promise<number> {
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM club
+			 WHERE creator_account_id = ?1
+			   AND json_extract(data, '$.ClubType') != ?2`
+		)
+		.bind(accountId, SUBSCRIPTION_CLUB_TYPE)
+		.first<{ n: number }>()
+	return row?.n ?? 0
+}
+
 /** All clubs created by an account (GetMyCreatedClubs), oldest first. */
 export async function getClubsByCreator(db: D1Database, accountId: number): Promise<Club[]> {
 	const { results } = await db

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import {
@@ -9,6 +9,7 @@ import {
 	ClubJoinability,
 	ClubMembershipType,
 	ClubVisibility,
+	countClubsByCreator,
 	createClub,
 	createClubAnnouncement,
 	deleteClub,
@@ -40,6 +41,14 @@ import type { App } from './context'
 async function authedId(c: Context<App>): Promise<number | null> {
 	return validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
 }
+
+/**
+ * How many clubs one account may create, when the `MAX_CLUBS_PER_ACCOUNT` var is
+ * unset. Counts the clubs the account created (subscription clubs excluded — those
+ * aren't made by hand). Setting the var to 0 lifts the cap entirely. Existing clubs
+ * are never touched: lowering the cap just stops new ones.
+ */
+const DEFAULT_MAX_CLUBS_PER_ACCOUNT = 10
 
 /** Longest a club name may be (the reference's MaxNameLength). */
 const MAX_CLUB_NAME_LENGTH = 16
@@ -322,6 +331,13 @@ const app = new Hono<App>()
 		}
 		if ([...name].length > MAX_CLUB_NAME_LENGTH) {
 			return clubError(c, `Club names can be at most ${MAX_CLUB_NAME_LENGTH} characters.`)
+		}
+		// The per-account cap, checked after the cheap validations so a rejected name
+		// costs no extra D1 read.
+		const maxClubs = intVar(c.env.MAX_CLUBS_PER_ACCOUNT, DEFAULT_MAX_CLUBS_PER_ACCOUNT)
+		if (maxClubs > 0 && (await countClubsByCreator(c.env.DB, id)) >= maxClubs) {
+			logger.info('club create rejected: per-account club limit', { accountId: id })
+			return clubError(c, `You can only have ${maxClubs} clubs.`)
 		}
 
 		const club = await createClub(c.env.DB, id, {

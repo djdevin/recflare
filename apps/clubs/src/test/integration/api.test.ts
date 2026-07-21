@@ -706,6 +706,51 @@ describe('clubs endpoints', () => {
 		).toBe(404)
 	})
 
+	test('POST /club/create enforces the per-account club cap', async () => {
+		const create = async (name: string) =>
+			exports.default.fetch(`${ORIGIN}/club/create`, {
+				method: 'POST',
+				headers: { ...(await bearer('7200')), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams({ name }).toString(),
+			})
+
+		// The cap an operator actually runs is the `MAX_CLUBS_PER_ACCOUNT` var; the
+		// constant in the worker is only the fallback.
+		const original = env.MAX_CLUBS_PER_ACCOUNT
+		try {
+			env.MAX_CLUBS_PER_ACCOUNT = 2
+			expect((await create('CapOne')).status).toBe(200)
+			expect((await create('CapTwo')).status).toBe(200)
+
+			const rejected = await create('CapThree')
+			expect(rejected.status).toBe(400)
+			const body = (await rejected.json()) as { error: string; success: boolean }
+			expect(body.success).toBe(false)
+			expect(body.error).toMatch(/only have 2 clubs/i)
+
+			// A subscription club doesn't count against the cap — it isn't made by hand.
+			await env.DB.prepare('INSERT INTO club (data) VALUES (?1)')
+				.bind(
+					JSON.stringify({
+						ClubId: 9500,
+						Name: 'Subs7200',
+						ClubType: 1,
+						CreatorAccountId: 7200,
+						CreatedAt: '2026-07-01T00:00:00Z',
+					})
+				)
+				.run()
+			env.MAX_CLUBS_PER_ACCOUNT = 3
+			expect((await create('CapThreeReal')).status).toBe(200)
+
+			// 0 lifts the cap entirely.
+			env.MAX_CLUBS_PER_ACCOUNT = 0
+			expect((await create('Uncapped')).status).toBe(200)
+		} finally {
+			env.MAX_CLUBS_PER_ACCOUNT = original
+		}
+	})
+
 	test('GET /club/search filters by category/query and sorts', async () => {
 		type Result = {
 			Clubs: Array<{ ClubId: number; Name: string; Category: string }>

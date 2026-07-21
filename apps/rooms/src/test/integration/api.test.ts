@@ -500,6 +500,56 @@ describe('rooms endpoints', () => {
 		expect(missing).toMatchObject({ success: false, value: null })
 	})
 
+	it('POST /rooms/:id/clone enforces the per-account room cap', async () => {
+		const headers = {
+			...(await bearer('803')),
+			'Content-Type': 'application/x-www-form-urlencoded',
+		}
+		const clone = async (name: string) =>
+			(await (
+				await SELF.fetch(`${ORIGIN}/rooms/24/clone`, {
+					method: 'POST',
+					headers,
+					body: new URLSearchParams({ name }).toString(),
+				})
+			).json()) as { success: boolean; error: string; value: unknown }
+
+		// The cap an operator actually runs is the `MAX_ROOMS_PER_ACCOUNT` var; the
+		// constant in the worker is only the fallback.
+		const original = env.MAX_ROOMS_PER_ACCOUNT
+		try {
+			env.MAX_ROOMS_PER_ACCOUNT = 2
+			expect(await clone('CapOne')).toMatchObject({ success: true })
+			expect(await clone('CapTwo')).toMatchObject({ success: true })
+
+			const rejected = await clone('CapThree')
+			expect(rejected).toMatchObject({ success: false, value: null })
+			expect(rejected.error).toMatch(/only have 2 rooms/i)
+
+			// A dorm doesn't count against the cap — it's auto-provisioned, not made.
+			await env.DB.prepare('INSERT INTO room (data) VALUES (?1)')
+				.bind(
+					JSON.stringify({
+						RoomId: 30303,
+						Name: '^Dorm803',
+						CreatorAccountId: 803,
+						IsDorm: true,
+						SubRooms: [],
+						Roles: [],
+					})
+				)
+				.run()
+			env.MAX_ROOMS_PER_ACCOUNT = 3
+			expect(await clone('CapThreeForReal')).toMatchObject({ success: true })
+
+			// 0 lifts the cap entirely.
+			env.MAX_ROOMS_PER_ACCOUNT = 0
+			expect(await clone('Uncapped')).toMatchObject({ success: true })
+		} finally {
+			env.MAX_ROOMS_PER_ACCOUNT = original
+		}
+	})
+
 	const putForm = async (path: string, fields: Record<string, string>, sub?: string) =>
 		SELF.fetch(`${ORIGIN}${path}`, {
 			method: 'PUT',
@@ -614,7 +664,10 @@ describe('rooms endpoints', () => {
 
 		// No token → 401. A non-owner → Success:false (room untouched).
 		expect((await del()).status).toBe(401)
-		expect(await bodyOf(await del('2'))).toMatchObject({ Success: false, ErrorId: 'Rooms.NotOwner' })
+		expect(await bodyOf(await del('2'))).toMatchObject({
+			Success: false,
+			ErrorId: 'Rooms.NotOwner',
+		})
 		expect(await roomExists()).toBe(true)
 
 		// Owner → Success:true; the room, its interactions, and the CDN image are gone.
@@ -656,7 +709,7 @@ describe('rooms endpoints', () => {
 		expect(ok.status).toBe(200)
 		const okBody = await envOf(ok)
 		expect(okBody).toMatchObject({ success: true, error: '' })
-		expect((okBody.value?.Roles as Array<{ AccountId: number; Role: number }>)).toContainEqual(
+		expect(okBody.value?.Roles as Array<{ AccountId: number; Role: number }>).toContainEqual(
 			expect.objectContaining({ AccountId: 5, Role: 20 })
 		)
 		expect(await rolesOf()).toContainEqual(expect.objectContaining({ AccountId: 5, Role: 20 }))
@@ -726,9 +779,7 @@ describe('rooms endpoints', () => {
 		// No token → 401.
 		expect((await putForm('/rooms/2/cloning', { cloningAllowed: 'False' })).status).toBe(401)
 		// A valid token but no role on the room → 403.
-		expect(
-			(await putForm('/rooms/2/cloning', { cloningAllowed: 'False' }, '999')).status
-		).toBe(403)
+		expect((await putForm('/rooms/2/cloning', { cloningAllowed: 'False' }, '999')).status).toBe(403)
 		// Unknown room → failure envelope.
 		expect(
 			await envOf(await putForm('/rooms/99999/cloning', { cloningAllowed: 'False' }, '1'))
@@ -736,14 +787,18 @@ describe('rooms endpoints', () => {
 
 		// Owner disables cloning; it persists as a real JSON boolean (not 0/1). The
 		// success envelope carries the updated room as `value`.
-		const disabled = await envOf(await putForm('/rooms/2/cloning', { cloningAllowed: 'False' }, '1'))
+		const disabled = await envOf(
+			await putForm('/rooms/2/cloning', { cloningAllowed: 'False' }, '1')
+		)
 		expect(disabled).toMatchObject({ success: true, error: '' })
 		expect(disabled.value?.CloningAllowed).toBe(false)
 		const raw = await env.DB.prepare('SELECT data FROM room WHERE room_id = ?1')
 			.bind(2)
 			.first<{ data: string }>()
 		expect(raw!.data).toContain('"CloningAllowed":false')
-		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { CloningAllowed: boolean }
+		const room = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as {
+			CloningAllowed: boolean
+		}
 		expect(room.CloningAllowed).toBe(false)
 
 		// The co-owner (account 2) may re-enable it.
@@ -842,7 +897,9 @@ describe('rooms endpoints', () => {
 	it('PUT /rooms/:id/accessibility sets the room-level Accessibility (auth-gated, owner/co-owner-only)', async () => {
 		// No token → 401; a valid token with no role → 403.
 		expect((await putForm('/rooms/2/accessibility', { accessibility: '1' })).status).toBe(401)
-		expect((await putForm('/rooms/2/accessibility', { accessibility: '1' }, '999')).status).toBe(403)
+		expect((await putForm('/rooms/2/accessibility', { accessibility: '1' }, '999')).status).toBe(
+			403
+		)
 		// Unknown room → failure envelope.
 		expect(
 			await envOf(await putForm('/rooms/99999/accessibility', { accessibility: '1' }, '1'))
@@ -956,7 +1013,11 @@ describe('rooms endpoints', () => {
 
 	it('PUT /rooms/:id/tags is auth-gated, owner-only, and toggles (add/remove)', async () => {
 		// The lowercase `{ success, error, value }` envelope this endpoint returns.
-		type TagResult = { success: boolean; error: string; value: { Tags?: Array<{ Tag: string }> } | null }
+		type TagResult = {
+			success: boolean
+			error: string
+			value: { Tags?: Array<{ Tag: string }> } | null
+		}
 		const envOf = async (res: Response) => (await res.json()) as TagResult
 		const tagsIn = (r: TagResult) => (r.value?.Tags ?? []).map((t) => t.Tag)
 

@@ -8,6 +8,12 @@ export type Env = SharedHonoEnv & {
 	JWT_SECRET: SecretsStoreSecret
 	// Shared `recflare` D1 database holding the club / club_member tables. See clubs-db.ts.
 	DB: D1Database
+	// How many clubs one account may create (optional). Unset falls back to
+	// DEFAULT_MAX_CLUBS_PER_ACCOUNT in clubs.app.ts; 0 lifts the cap. Typed
+	// `string | number` because a var declared in wrangler.jsonc `vars` arrives as a
+	// number while the same var set from the dashboard or `--var` arrives as a string —
+	// read it through `intVar`, never as a bare number.
+	MAX_CLUBS_PER_ACCOUNT?: string | number
 	// add additional Bindings here
 }
 

@@ -5,6 +5,7 @@ import {
 	canManageRoom,
 	cloneRoom,
 	cloneSubRoom,
+	countRoomsByCreator,
 	deleteRoom,
 	findSubRoom,
 	getBaseRooms,
@@ -30,12 +31,12 @@ import {
 	setRoomImage,
 	setRoomName,
 	setRoomRole,
-	updateRoomFields,
 	toggleCheer,
 	toggleFavorite,
 	toggleRoomTag,
+	updateRoomFields,
 } from '@repo/domain'
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import type { Context } from 'hono'
@@ -66,6 +67,15 @@ function allIds(idParam: string): number[] {
 		.map((s) => Number.parseInt(s.trim(), 10))
 		.filter((n) => !Number.isNaN(n))
 }
+
+/**
+ * How many rooms one account may create, when the `MAX_ROOMS_PER_ACCOUNT` var is
+ * unset. Cloning is the only way to make a room, so the cap is enforced there; it
+ * counts rooms the account created, minus their auto-provisioned dorm. Setting the
+ * var to 0 lifts the cap entirely, which a small private server will want. Existing
+ * rooms are never touched — lowering the cap just stops new ones.
+ */
+const DEFAULT_MAX_ROOMS_PER_ACCOUNT = 10
 
 /** Account ids granted the global (Role 0) maker pen — the reference server's
  * hardcoded moderator/dev accounts. */
@@ -430,6 +440,13 @@ const app = new Hono<App>()
 		if (await getRoomByName(c.env.DB, name)) {
 			return roomEnvelope(c, null, 'A room with that name already exists!')
 		}
+		// Cloning is how a player makes a room, so the per-account cap belongs here.
+		// Checked after the cheap validations so a rejected name costs no extra D1 read.
+		const maxRooms = intVar(c.env.MAX_ROOMS_PER_ACCOUNT, DEFAULT_MAX_ROOMS_PER_ACCOUNT)
+		if (maxRooms > 0 && (await countRoomsByCreator(c.env.DB, accountId)) >= maxRooms) {
+			logger.info('room create rejected: per-account room limit', { accountId })
+			return roomEnvelope(c, null, `You can only have ${maxRooms} rooms.`)
+		}
 		const room = await cloneRoom(
 			c.env.DB,
 			Number.parseInt(c.req.param('roomId'), 10),
@@ -670,7 +687,8 @@ const app = new Hono<App>()
 		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
 		const warningMask =
 			typeof body.warningMask === 'string' ? Number.parseInt(body.warningMask, 10) : Number.NaN
-		if (Number.isNaN(warningMask)) return roomEnvelope(c, null, 'You must provide a valid warning mask!')
+		if (Number.isNaN(warningMask))
+			return roomEnvelope(c, null, 'You must provide a valid warning mask!')
 
 		const patch: Record<string, unknown> = { WarningMask: warningMask }
 		// Only touch CustomWarning when the field is present (an empty string clears it).
@@ -702,7 +720,9 @@ const app = new Hono<App>()
 		}
 		const cloningAllowed = body.cloningAllowed.toLowerCase() === 'true'
 
-		const updated = await updateRoomFields(c.env.DB, roomId, room, { CloningAllowed: cloningAllowed })
+		const updated = await updateRoomFields(c.env.DB, roomId, room, {
+			CloningAllowed: cloningAllowed,
+		})
 		await pushRoomUpdate(c, accountId, updated)
 		return roomEnvelope(c, updated)
 	})

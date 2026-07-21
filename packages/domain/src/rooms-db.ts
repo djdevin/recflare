@@ -145,7 +145,11 @@ export async function setRoomName(db: D1Database, roomId: number, name: string):
 }
 
 /** Set a room's ImageName in place (the caller is responsible for the owner check). */
-export async function setRoomImage(db: D1Database, roomId: number, imageName: string): Promise<void> {
+export async function setRoomImage(
+	db: D1Database,
+	roomId: number,
+	imageName: string
+): Promise<void> {
 	await db
 		.prepare("UPDATE room SET data = json_set(data, '$.ImageName', ?2) WHERE room_id = ?1")
 		.bind(roomId, imageName)
@@ -442,6 +446,23 @@ export async function getRoomsByCreator(db: D1Database, accountId: number): Prom
 		.bind(accountId)
 		.all<RoomRow>()
 	return parseAll(results)
+}
+
+/**
+ * How many rooms an account has made, for the per-account room cap. Dorms don't
+ * count: every player gets one auto-provisioned, so counting it would silently cost
+ * them a slot they never asked for.
+ */
+export async function countRoomsByCreator(db: D1Database, accountId: number): Promise<number> {
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM room
+			 WHERE creator_account_id = ?1
+			   AND COALESCE(is_dorm, 0) = 0`
+		)
+		.bind(accountId)
+		.first<{ n: number }>()
+	return row?.n ?? 0
 }
 
 /**
@@ -900,7 +921,9 @@ export async function getOrCreateDormRoom(db: D1Database, accountId: number): Pr
 		Name: `@${username}'s Dorm`,
 		CreatorAccountId: accountId,
 		IsDorm: true,
-		Roles: [{ AccountId: accountId, Role: Role.Creator, LastChangedByAccountId: null, InvitedRole: 0 }],
+		Roles: [
+			{ AccountId: accountId, Role: Role.Creator, LastChangedByAccountId: null, InvitedRole: 0 },
+		],
 		SubRooms: [{ ...templateSub, CreatorAccountId: accountId }],
 		CreatedAt: new Date().toISOString(),
 	}

@@ -20,6 +20,12 @@ export type Env = SharedHonoEnv & {
 	// images/files live here under the `room/` key prefix; bound so deleting a room
 	// can remove its image object.
 	CDN_ASSETS: R2Bucket
+	// How many rooms one account may create (optional). Unset falls back to
+	// DEFAULT_MAX_ROOMS_PER_ACCOUNT in rooms.app.ts; 0 lifts the cap. Typed
+	// `string | number` because a var declared in wrangler.jsonc `vars` arrives as a
+	// number while the same var set from the dashboard or `--var` arrives as a string —
+	// read it through `intVar`, never as a bare number.
+	MAX_ROOMS_PER_ACCOUNT?: string | number
 }
 
 /** Variables can be extended */
