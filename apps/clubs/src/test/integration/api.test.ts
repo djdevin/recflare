@@ -655,6 +655,34 @@ describe('clubs endpoints', () => {
 		).json()) as { AdditionalImages: Image[] }
 		expect(names(details.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
 
+		// DELETE removes a slot's image, ignoring any body, and repeats are no-ops. The
+		// other slots keep their positions, so slot 2 is still slot 2.
+		const deleteImage = async (index: number, sub = '7100', body?: string) =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}/additionalimage/${index}`, {
+				method: 'DELETE',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body,
+			})
+		const dropped = (await (await deleteImage(0, '7100', 'imageName=sneaky.jpg')).json()) as Details
+		expect(dropped).toMatchObject({ error: '', success: true })
+		expect(names(dropped.value.AdditionalImages)).toEqual(['c.jpg'])
+		expect(
+			names(((await (await deleteImage(0)).json()) as Details).value.AdditionalImages)
+		).toEqual(['c.jpg'])
+		const refilled = (await (await setImage(0, 'a3.jpg')).json()) as Details
+		expect(names(refilled.value.AdditionalImages)).toEqual(['a3.jpg', 'c.jpg'])
+
+		// Same gate as the PUT.
+		expect((await deleteImage(0, '7101')).status).toBe(403)
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/club/${clubId}/additionalimage/0`, {
+					method: 'DELETE',
+				})
+			).status
+		).toBe(401)
+		expect((await deleteImage(3)).status).toBe(400)
+
 		// There are only three slots, and only co-owners may set them.
 		expect((await setImage(3, 'd.jpg')).status).toBe(400)
 		expect((await setImage(0, 'hijack.jpg', '7101')).status).toBe(403)

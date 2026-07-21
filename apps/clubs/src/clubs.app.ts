@@ -579,7 +579,11 @@ const app = new Hono<App>()
 	// `imageName` the `storage` worker handed back; an empty one clears that slot.
 	// Co-owner or above, like the main image. The slots are positional, so clearing
 	// one doesn't shift the others; they come back on `value.AdditionalImages`.
-	.put('/club/:clubId{[0-9]+}/additionalimage/:index{[0-9]+}', async (c) => {
+	//
+	// DELETE removes that slot's image — same thing as PUTting an empty name, with the
+	// intent spelled out. It ignores any body, so it can't accidentally set one, and
+	// deleting an already-empty slot is a no-op rather than an error.
+	.on(['PUT', 'DELETE'], '/club/:clubId{[0-9]+}/additionalimage/:index{[0-9]+}', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)
 
@@ -597,9 +601,12 @@ const app = new Hono<App>()
 			return clubError(c, `A club has ${MAX_ADDITIONAL_IMAGES} additional image slots (0-based).`)
 		}
 
-		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
-		const key = Object.keys(body).find((k) => k.toLowerCase() === 'imagename')
-		const imageName = typeof body[key ?? ''] === 'string' ? (body[key ?? ''] as string).trim() : ''
+		let imageName = ''
+		if (c.req.method !== 'DELETE') {
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const key = Object.keys(body).find((k) => k.toLowerCase() === 'imagename')
+			imageName = typeof body[key ?? ''] === 'string' ? (body[key ?? ''] as string).trim() : ''
+		}
 
 		const updated = await setClubAdditionalImage(c.env.DB, clubId, index, imageName)
 		if (updated === null) return c.notFound()
