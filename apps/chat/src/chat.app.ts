@@ -1,9 +1,217 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId } from '@repo/jwt'
 
+import { NotificationType } from '../../notify/src/notification-types'
+import { getThreadMessages } from './message-db'
+import {
+	addThreadMember,
+	getOrCreateThreadWithMembers,
+	getThreadForPlayer,
+	getThreadMemberIds,
+	getThreadsForPlayer,
+	isThreadMember,
+	leftChatContents,
+	markThreadRead,
+	postMessage,
+	removeThreadMember,
+	setThreadFavorited,
+	setThreadName,
+	setThreadSnoozed,
+	SYSTEM_SENDER_ID,
+} from './thread-db'
+
+import type { Context } from 'hono'
 import type { App } from './context'
+import type { ChatMessage } from './message-db'
+
+/**
+ * Resolve the account id from a Bearer token. Returns `null` when the header is
+ * missing, the token is invalid, or the `sub` claim isn't an integer.
+ */
+async function authedId(c: Context<App>): Promise<number | null> {
+	return validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
+}
+
+/**
+ * How many items a `MessageCount` query param asks for. The client sends 16; anything
+ * missing, unparseable, or out of range falls back to the default rather than 400ing,
+ * and the cap keeps a hand-written request from pulling a whole thread history.
+ */
+const DEFAULT_MESSAGE_COUNT = 16
+const MAX_MESSAGE_COUNT = 100
+
+/** What the client asks for when opening a thread (`messageCount=50`). */
+const DEFAULT_THREAD_MESSAGE_COUNT = 50
+
+function messageCount(c: Context<App>, fallback = DEFAULT_MESSAGE_COUNT): number {
+	// The GET routes spell it `MessageCount` in the query; the POST forms spell it
+	// `messageCount` in the body. Accept either, wherever it turns up.
+	const raw = Number.parseInt(c.req.query('MessageCount') ?? c.req.query('messageCount') ?? '', 10)
+	if (Number.isNaN(raw) || raw <= 0) return fallback
+	return Math.min(raw, MAX_MESSAGE_COUNT)
+}
+
+/** The page size a POST form asks for, which may also arrive in the body. */
+async function formMessageCount(c: Context<App>, fallback: number): Promise<number> {
+	const raw = Number.parseInt((await formField(c, 'messageCount')) ?? '', 10)
+	if (Number.isNaN(raw) || raw <= 0) return messageCount(c, fallback)
+	return Math.min(raw, MAX_MESSAGE_COUNT)
+}
+
+/**
+ * What a chat action reports back to the client alongside its payload — the reference's
+ * ChatResult. Only success and "bad arguments" are reachable here.
+ */
+const CHAT_SUCCESS = 0
+const CHAT_INVALID_ARGUMENTS = 1
+const CHAT_MEMBERSHIP_NOT_FOUND = 3
+const CHAT_PLAYER_ALREADY_ON_THREAD = 4
+
+/** The hub is a single global Durable Object instance, as every worker addresses it. */
+const HUB_INSTANCE = 'global'
+
+/**
+ * Push ChatMessageReceived to everyone in the thread once a message lands, so the
+ * conversation updates live instead of on the next poll.
+ *
+ * The sender is notified too, deliberately: the client doesn't fold the HTTP response
+ * into its local thread cache, so without a self-targeted push its own outgoing message
+ * doesn't appear until the thread is refetched.
+ *
+ * Best-effort — a hub failure is logged and swallowed, since the message has already
+ * committed and the client will still see it on the next fetch.
+ */
+async function pushChatMessage(c: Context<App>, message: ChatMessage): Promise<void> {
+	try {
+		const hub = c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE)
+		const members = await getThreadMemberIds(c.env.DB, message.chatThreadId)
+		await Promise.all(
+			members.map((playerId) =>
+				hub.notifyPlayer(playerId, NotificationType.ChatMessageReceived, { ...message })
+			)
+		)
+	} catch (err) {
+		logger.error('failed to push ChatMessageReceived notification', {
+			chatThreadId: message.chatThreadId,
+			chatMessageId: message.chatMessageId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
+ * Send a message to a thread that already exists — every message after the one that
+ * opened the conversation. `/thread/18` is what the client posts; `/thread/18/message` is
+ * the same call under the reference's other spelling, so both routes land here.
+ *
+ * Answers `{chatResult, chatThread}` — the whole thread with its messages, not just the
+ * message that was sent, so the client re-renders the conversation from one response.
+ * Blank or missing contents stores nothing and reports invalid-arguments, still with the
+ * thread attached, rather than an error status.
+ */
+async function sendToThread(c: Context<App>) {
+	const id = await authedId(c)
+	if (id === null) return c.body(null, 401)
+
+	const chatThreadId = Number.parseInt(c.req.param('id') ?? '', 10)
+	if (!(await isThreadMember(c.env.DB, chatThreadId, id))) return c.notFound()
+
+	// Stored exactly as sent: the envelope carries its own Type/Version and may hold
+	// fields we know nothing about (the client sends Version 2 with a `<=>` prefix in
+	// Data, and a `Blocks` array alongside it), so nothing here parses or rewrites it.
+	const contents = (await formField(c, 'messageContents'))?.trim()
+	const posted =
+		contents === undefined || contents === ''
+			? null
+			: await postMessage(c.env.DB, { chatThreadId, senderPlayerId: id, contents })
+	if (posted !== null) await pushChatMessage(c, posted)
+
+	const thread = await threadWithMessages(c, chatThreadId, id, DEFAULT_THREAD_MESSAGE_COUNT)
+	return c.json({
+		chatResult: posted === null ? CHAT_INVALID_ARGUMENTS : CHAT_SUCCESS,
+		chatThread: thread,
+	})
+}
+
+/**
+ * Move the caller's read pointer on a thread, to `chatMessageId` or (undefined) to the
+ * thread's latest message. Answers the bare ChatResult integer the reference sends.
+ */
+async function markRead(c: Context<App>, chatMessageId?: number) {
+	const id = await authedId(c)
+	if (id === null) return c.body(null, 401)
+
+	// Every route reaching here constrains `:id` to digits, so the parse can't fail.
+	const chatThreadId = Number.parseInt(c.req.param('id') ?? '', 10)
+	if (!(await isThreadMember(c.env.DB, chatThreadId, id))) return c.notFound()
+
+	await markThreadRead(c.env.DB, chatThreadId, id, chatMessageId)
+	return c.json(CHAT_SUCCESS)
+}
+
+/**
+ * A thread rendered for opening a conversation: the thread's own fields plus a page of
+ * its messages, newest first. `latestMessage` gives way to the full page — the client is
+ * sent one or the other, never both — and `messages` is always present, empty for a
+ * thread with nothing in it yet.
+ *
+ * Null when the caller isn't a member (or the thread doesn't exist); membership is the
+ * gate, so the two cases are indistinguishable from outside.
+ */
+async function threadWithMessages(
+	c: Context<App>,
+	chatThreadId: number,
+	playerId: number,
+	limit: number
+) {
+	const thread = await getThreadForPlayer(c.env.DB, chatThreadId, playerId)
+	if (thread === null) return null
+
+	const messages = await getThreadMessages(c.env.DB, chatThreadId, { limit })
+	const { latestMessage: _latest, ...rest } = thread
+	return { ...rest, messages }
+}
+
+/** Ceiling on a new thread's roster, counting the caller. */
+const MAX_THREAD_MEMBERS = 50
+
+/** Longest a thread name may be; anything beyond is truncated, not rejected. */
+const MAX_THREAD_NAME_LENGTH = 128
+
+/**
+ * What `snooze=True` stores in `snoozedUntil`. The client sends a boolean but reads back
+ * an instant, so "snoozed" is expressed as a time far enough out to mean indefinitely.
+ */
+const SNOOZED_INDEFINITELY = '9999-12-31T23:59:59Z'
+
+/**
+ * The repeated `ids` fields naming a new thread's members (`ids=2&ids=155`). The client
+ * sends them as a urlencoded body, but they're read from the query string too, since
+ * the same call is easy to hand-write that way. Values that aren't integers are dropped.
+ */
+async function memberIds(c: Context<App>): Promise<number[]> {
+	const raw = [...(c.req.queries('ids') ?? [])]
+	const form = await c.req.formData().catch(() => null)
+	if (form !== null) raw.push(...form.getAll('ids').map(String))
+	return raw.map((value) => Number.parseInt(value, 10)).filter((id) => Number.isInteger(id))
+}
+
+/** A form boolean as the client spells it (`True`/`False`), tolerant of the variants. */
+async function formBool(c: Context<App>, name: string): Promise<boolean> {
+	const value = (await formField(c, name))?.trim().toLowerCase()
+	return value === 'true' || value === '1' || value === 'yes'
+}
+
+/** A single form field, or the query param of the same name. Hono caches the body, so
+ * this is safe to call alongside `memberIds`. */
+async function formField(c: Context<App>, name: string): Promise<string | undefined> {
+	const form = await c.req.formData().catch(() => null)
+	const value = form?.get(name)
+	return typeof value === 'string' ? value : c.req.query(name)
+}
 
 const app = new Hono<App>()
 	.use(
@@ -21,7 +229,238 @@ const app = new Hono<App>()
 
 	.get('/', (c) => c.json({ service: 'chat', status: 'ok' }))
 
-	// Chat threads. No DB binding yet — returns `[]`.
-	.get('/thread', (c) => c.json([]))
+	// The player's own thread list, newest conversation first — each thread carrying its
+	// latest message and the caller's own read/snooze/favorite state. `MessageCount` is
+	// the page size (of threads, despite the name). Membership scopes the query, so a
+	// player only ever sees their own threads.
+	.get('/thread', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+		return c.json(await getThreadsForPlayer(c.env.DB, id, { limit: messageCount(c) }))
+	})
+
+	// Send to a set of players (`ids=155&ids=2&messageContents=…`) — the client's
+	// create-thread-and-post-first-message call, in one. Resolves to the thread those
+	// players already share rather than opening a second one.
+	//
+	// `messageContents` is the same envelope a message carries
+	// (`{"Type":0,"Version":1,"Data":"…"}`) and is stored verbatim, unparsed. The client
+	// also sends it blank, right after /thread/withmembers: that opens the thread without
+	// posting an empty message, and reports invalid-arguments the way the reference does.
+	.post('/thread', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const members = [...new Set([id, ...(await memberIds(c))])]
+		if (members.length < 2 || members.length > MAX_THREAD_MEMBERS) return c.body(null, 400)
+
+		const chatThreadId = await getOrCreateThreadWithMembers(c.env.DB, members, id)
+
+		const contents = (await formField(c, 'messageContents'))?.trim()
+		const posted =
+			contents === undefined || contents === ''
+				? null
+				: await postMessage(c.env.DB, { chatThreadId, senderPlayerId: id, contents })
+		if (posted !== null) await pushChatMessage(c, posted)
+
+		const thread = await getThreadForPlayer(c.env.DB, chatThreadId, id)
+		if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)
+		// The reference answers a wrapper here, not a bare thread.
+		return c.json({
+			chatThread: thread,
+			chatResult: posted === null ? CHAT_INVALID_ARGUMENTS : CHAT_SUCCESS,
+		})
+	})
+
+	// "Open the chat with these people" — the client's GetChatBetweenPlayers. Fetch or
+	// create: the thread whose membership is exactly `ids` plus the caller, opened only
+	// if they don't already share one. Returning a fresh empty thread each call would
+	// bury the real conversation and hand the client a thread with no messages.
+	//
+	// Answers the thread with a `messages` array (what `messageCount` sizes) rather than
+	// the list's single `latestMessage`, so the client can open straight into the
+	// conversation. The array is always present, empty for a brand-new thread.
+	.post('/thread/withmembers', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const members = [...new Set([id, ...(await memberIds(c))])]
+		// A thread needs someone else in it; naming only yourself is a bad request
+		// rather than a lonely thread.
+		if (members.length < 2 || members.length > MAX_THREAD_MEMBERS) return c.body(null, 400)
+
+		const chatThreadId = await getOrCreateThreadWithMembers(c.env.DB, members, id)
+		const limit = await formMessageCount(c, DEFAULT_THREAD_MESSAGE_COUNT)
+		const thread = await threadWithMessages(c, chatThreadId, id, limit)
+		if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)
+		return c.json(thread)
+	})
+
+	// A page of one thread's messages, newest first — a bare array, not a thread object.
+	// The client reads a conversation through either spelling: `/thread/2?messageCount=50`
+	// and `/thread/2/message?MessageCount=16` answer the same thing, so they share a
+	// handler; only the default page size differs, matching what each caller sends.
+	//
+	// 404 rather than 403 for a thread the caller isn't in: whether a thread exists is
+	// itself private, so a non-member gets the same answer as for a thread that's gone.
+	// An empty thread is still a 200 with `[]` — a conversation just opened with someone
+	// has no messages yet and still has to open.
+	// One thread with its recent messages — what the client opens a conversation with
+	// (`/thread/13?messageCount=50`). An OBJECT, the same shape /thread/withmembers
+	// answers: the client parses this one as a thread and rejects a bare array
+	// ("expected '{', actual '['"). Only /thread/:id/message below serves an array.
+	//
+	// 404s only for a thread the caller isn't in, not for one that's simply empty: a
+	// thread just opened with someone has no messages yet and still has to open.
+	.get('/thread/:id{[0-9]+}', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		const limit = messageCount(c, DEFAULT_THREAD_MESSAGE_COUNT)
+		const thread = await threadWithMessages(c, chatThreadId, id, limit)
+		return thread === null ? c.notFound() : c.json(thread)
+	})
+
+	// Send a message to a thread that already exists — every message after the one that
+	// opened the conversation. `/thread/18` is what the client posts; `/thread/18/message`
+	// is the same call under the reference's other spelling.
+	//
+	// Answers the SendMessageResponse wrapper (`{chatMessage, chatResult}`), not a bare
+	// message. Blank or missing contents is invalid-arguments with no message attached,
+	// rather than an error status.
+	.post('/thread/:id{[0-9]+}', (c) => sendToThread(c))
+	.post('/thread/:id{[0-9]+}/message', (c) => sendToThread(c))
+
+	// Rename a thread (`name=my chat`). Any member may rename — there's no owner — and an
+	// empty name clears it back to unnamed, which renders as the member list. Answers a
+	// bare ChatResult: 3 when the caller isn't on the thread, 0 on success.
+	.on(['POST', 'PUT'], '/thread/:id{[0-9]+}/rename', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+		}
+
+		const name = ((await formField(c, 'name')) ?? '').trim().slice(0, MAX_THREAD_NAME_LENGTH)
+		await setThreadName(c.env.DB, chatThreadId, name)
+		return c.json(CHAT_SUCCESS)
+	})
+
+	// Leave a thread. The thread and its history survive — only the caller's membership
+	// goes, so they stop seeing it and the remaining members keep the conversation.
+	//
+	// A "Player <@U…> left" notice is posted first, so the others see why the roster
+	// changed; the leaver is still a member at that moment and gets the push too, which
+	// is what tells their client the thread is gone.
+	.on(['POST', 'DELETE'], '/thread/:id{[0-9]+}/leave', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+		}
+
+		const notice = await postMessage(c.env.DB, {
+			chatThreadId,
+			senderPlayerId: SYSTEM_SENDER_ID,
+			contents: leftChatContents(id),
+		})
+		await pushChatMessage(c, notice)
+
+		await removeThreadMember(c.env.DB, chatThreadId, id)
+		return c.json(CHAT_SUCCESS)
+	})
+
+	// Snooze or unsnooze a thread (`snooze=True`), for the caller alone — snoozing is a
+	// per-member setting, so it never affects what anyone else sees.
+	//
+	// The client sends a boolean while the field it reads back is `snoozedUntil`, a time.
+	// `True` is therefore stored as a far-future instant meaning "muted indefinitely", and
+	// `False` clears it. If the real server instead snoozes for a fixed window, this is
+	// the one line to change.
+	.on(['POST', 'PUT'], '/thread/:id{[0-9]+}/snooze', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+		}
+
+		const on = await formBool(c, 'snooze')
+		await setThreadSnoozed(c.env.DB, chatThreadId, id, on ? SNOOZED_INDEFINITELY : null)
+		return c.json(CHAT_SUCCESS)
+	})
+
+	// Favorite or unfavorite a thread (`favorite=True`), for the caller alone — like
+	// snoozing, it's a per-member flag that pins the thread in their own inbox.
+	.on(['PUT', 'POST'], '/thread/:id{[0-9]+}/favorite', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+		}
+
+		await setThreadFavorited(c.env.DB, chatThreadId, id, await formBool(c, 'favorite'))
+		return c.json(CHAT_SUCCESS)
+	})
+
+	// Add a player to a thread (`/thread/20/member/2`). Gated on the caller already being
+	// in it — you can only pull someone into a conversation you're part of.
+	//
+	// Answers a bare ChatResult rather than an HTTP status, as the reference does: 3 when
+	// the caller isn't a member (which doubles as "no such thread", keeping a thread's
+	// existence private), 4 when the target is already on it, 0 on success. Idempotent —
+	// re-adding an existing member changes nothing.
+	.post('/thread/:id{[0-9]+}/member/:playerId{[0-9]+}', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+		}
+
+		const playerId = Number.parseInt(c.req.param('playerId'), 10)
+		if (await isThreadMember(c.env.DB, chatThreadId, playerId)) {
+			return c.json(CHAT_PLAYER_ALREADY_ON_THREAD)
+		}
+
+		await addThreadMember(c.env.DB, chatThreadId, playerId)
+		return c.json(CHAT_SUCCESS)
+	})
+
+	// Move the caller's read pointer — `/thread/15/read` for the whole thread, or
+	// `/thread/15/message/:messageId/read` for a specific message, which the client uses
+	// when the view sits on a message rather than the bottom. Both verbs, as the client
+	// sends either. Answers the bare ChatResult integer the reference does.
+	//
+	// The pointer only moves forward, and never past the thread's real latest message: an
+	// id the client made up (or one it read from a synthetic message) can't strand the
+	// thread as permanently read.
+	.on(['PUT', 'POST'], '/thread/:id{[0-9]+}/read', (c) => markRead(c))
+	.on(['PUT', 'POST'], '/thread/:id{[0-9]+}/message/:messageId{[0-9]+}/read', (c) =>
+		markRead(c, Number.parseInt(c.req.param('messageId'), 10))
+	)
+
+	// A page of one thread's messages, newest first — a bare array, unlike /thread/:id.
+	// `MessageCount` is the page size. 404 rather than 403 for a thread the caller isn't
+	// in: whether a thread exists is itself private, so a non-member gets the same answer
+	// as for a thread that's gone.
+	.get('/thread/:id{[0-9]+}/message', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) return c.notFound()
+
+		return c.json(await getThreadMessages(c.env.DB, chatThreadId, { limit: messageCount(c) }))
+	})
 
 export default app

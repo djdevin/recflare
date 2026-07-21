@@ -12,10 +12,12 @@
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-wrangler-dev",
 		"fix:workers-types": "run-wrangler-types",
+		"migrate": "run-wrangler-migrate",
 		"test": "run-vitest"
 	},
 	"dependencies": {
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/jwt": "workspace:*",
 		"hono": "4.12.27",
 		"workers-tagged-logger": "1.0.1"
 	},

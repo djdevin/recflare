@@ -4,6 +4,41 @@
 	"main": "src/chat.app.ts",
 	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` DB (created manually with `wrangler d1 create recflare`; the
+	// "local" placeholder is spliced out at deploy time). The `chat` worker owns the
+	// `message` table (schema/migration here); its own migrations_table keeps history
+	// separate from the other workers' migrations on the shared database.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_chat"
+		}
+	],
+	"logpush": false,
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	// The `notify` worker's NotificationsHub DO — used to push ChatMessageReceived to
+	// every member of a thread when a message lands.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {
