@@ -55,6 +55,26 @@
 - Explicit function return types are optional
 </code-style>
 
+<client-contract-notes>
+Response shapes the Rec Room client depends on. These were found by watching the live
+client, not by reading a spec: when one is wrong the client renders nothing or hangs
+rather than erroring, so tests won't catch a regression. Don't "clean up" an
+inconsistency here without checking the client first.
+
+- Player image lists (`api`: `/api/images/v5|v4/player/:id`, `/api/images/v3/feed/player/:id`)
+  must use the `toImagesPlayer` projection — `Id` → `SavedImageId`, `Type` →
+  `SavedImageType`, no `TaggedPlayerIds`. Serving the raw `SavedImage` renders blank
+  thumbnails.
+- The room photo feed (`api`: `/api/images/v4/room/:roomId`) serves the raw `SavedImage`
+  and displays correctly. It is deliberately NOT projected — do not unify these two.
+- A club's `AdditionalImages` (`clubs`) is an array of whole `SavedImage` records, not
+  image names — a bare string array fails the client's parser ("expected '{'"). The list
+  is packed: removing an image shifts the rest up, never leaving a blank slot.
+- Endpoints the client re-renders from must return the updated entity, not
+  `{ error, success, value: null }` — e.g. `clubs` `PUT /club/:id/clubhouse` left the old
+  clubhouse on screen until it answered the full details envelope.
+</client-contract-notes>
+
 <critical-notes>
 - TypeScript configs MUST use fully qualified paths: `@repo/typescript-config/base.json` not `./base.json`
 - Do NOT add 'WebWorker' to TypeScript config - types are in worker-configuration.d.ts or @cloudflare/workers-types
