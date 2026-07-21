@@ -70,6 +70,14 @@ export const CachedLogin = z.object({
 		.describe('Always false — platform ownership is the credential for a cached login'),
 })
 
+/**
+ * The stubbed Oculus cached login. Same shape as `CachedLogin`, but `requirePassword`
+ * is true — nothing proves platform ownership, so the client has to prompt.
+ */
+export const FakeCachedLogin = CachedLogin.extend({
+	requirePassword: z.literal(true).describe('Always true — the entry is not platform-backed'),
+})
+
 /** OAuth-shaped error body. Always HTTP 400 except `server_error` (500). */
 export const OAuthError = z.object({
 	error: z.enum(['invalid_grant', 'invalid_request', 'server_error']),

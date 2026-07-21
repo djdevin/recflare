@@ -25,6 +25,7 @@ import {
 	CachedLogin,
 	ChangePasswordRequest,
 	ChangePasswordResponse,
+	FakeCachedLogin,
 	form,
 	json,
 	OAuthError,
@@ -57,6 +58,18 @@ const PLATFORM_TYPES: Record<number, string> = {
 	7: 'Standalone',
 	8: 'Pico',
 }
+
+/** PlatformType for Oculus, which `/cachedlogin/forplatformid` currently stubs out. */
+const OCULUS_PLATFORM = 1
+
+/** The canned entry served for any Oculus cached-login lookup. See the route below. */
+const FAKE_OCULUS_CACHED_LOGIN = {
+	platform: OCULUS_PLATFORM,
+	platformId: '1',
+	accountId: 1,
+	lastLoginTime: '2026-07-19T17:13:29.225Z',
+	requirePassword: true,
+} as const
 
 /**
  * Signup caps, enforced on create_account only (never on login — an existing account
@@ -254,7 +267,9 @@ const app = new Hono<App>()
 				'Accounts the client may offer on its login screen for this platform identity. ' +
 				'Filtered to those a `cached_login` grant would actually accept, so an entry here ' +
 				'is always redeemable. An unknown id yields `[]` (not a 404) and the client falls ' +
-				'back to a fresh login or create_account.',
+				'back to a fresh login or create_account. ' +
+				'EXCEPT platform 1 (Oculus), which is stubbed: it ignores the id and returns one ' +
+				'canned, non-redeemable entry with `requirePassword: true`.',
 			parameters: [
 				{
 					name: 'platform',
@@ -271,12 +286,23 @@ const app = new Hono<App>()
 					schema: { type: 'string' },
 				},
 			],
-			responses: { 200: json(CachedLogin.array(), 'Matching accounts; `[]` if none') },
+			responses: {
+				200: json(
+					CachedLogin.or(FakeCachedLogin).array(),
+					'Matching accounts; `[]` if none. The canned entry for platform 1 (Oculus).'
+				),
+			},
 		}),
 		async (c) => {
 			const { platform, id } = c.req.param()
 			logger.info('cached login lookup', { platform, id })
 			const platformInt = Number.parseInt(platform, 10)
+			// Oculus has no identity flow yet, so there is nothing in the DB to look up and
+			// the real path would always yield []. Hand back one canned entry instead, so the
+			// Oculus client gets past its login screen. `requirePassword` is true — unlike a
+			// genuine cached login there is no platform ticket behind this, so the client must
+			// prompt. Delete this branch once Oculus platform auth lands.
+			if (platformInt === OCULUS_PLATFORM) return c.json([FAKE_OCULUS_CACHED_LOGIN])
 			const accounts = await getAccountsByPlatformId(c.env.DB, id)
 			// Offer only accounts the `cached_login` grant will actually accept — same check.
 			return c.json(

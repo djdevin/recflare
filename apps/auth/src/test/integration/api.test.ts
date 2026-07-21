@@ -117,10 +117,26 @@ describe('auth worker routes', () => {
 		expect(await res.text()).toBe('"AA=="')
 	})
 
+	// Platform 0 (Steam), not 1 — platform 1 is Oculus, which is stubbed below.
 	test('GET /cachedlogin/forplatformid/:platform/:id returns [] (no cached login)', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/1/abc123`)
+		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/0/abc123`)
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([])
+	})
+
+	// Oculus is stubbed: no DB lookup, one canned entry whatever the id.
+	test('GET /cachedlogin/forplatformid/1/:id returns the canned Oculus entry', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/1/anything`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([
+			{
+				platform: 1,
+				platformId: '1',
+				accountId: 1,
+				lastLoginTime: '2026-07-19T17:13:29.225Z',
+				requirePassword: true,
+			},
+		])
 	})
 
 	// Only Steam (platform 0) can be verified (via its signed platform_auth ticket),
