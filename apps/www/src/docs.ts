@@ -27,6 +27,36 @@ export const DOCUMENTED_SERVICES: ReadonlyArray<{ slug: string; title: string }>
 const SCALAR_ASSET = '/docs/scalar.standalone.js'
 
 /**
+ * A minimal OpenAPI document used as the docs landing page. It carries no operations —
+ * just a rich `info.description` (rendered as markdown by Scalar) — so `/docs` opens on
+ * a neutral overview instead of whichever service happens to be first. Built from
+ * DOCUMENTED_SERVICES so the service list can't drift from the dropdown.
+ */
+function overviewSpec(): Record<string, unknown> {
+	const list = DOCUMENTED_SERVICES.map((s) => `- **${s.title}**`).join('\n')
+	const description = [
+		'Aggregated API reference for the **recflare** private-server backend — a',
+		'reimplementation of the Rec Room services the game client talks to.',
+		'',
+		'Use the **dropdown at the top** to switch between services:',
+		'',
+		list,
+		'',
+		'---',
+		'',
+		'These specs are **descriptive, not enforced** — they document a protocol',
+		'reverse-engineered from the game client (the only real consumer), so a field',
+		'marked required means "the client always sends it", not "the server rejects it if',
+		'absent". Each service also serves its own spec at `https://<service>.<domain>/openapi.json`.',
+	].join('\n')
+	return {
+		openapi: '3.1.0',
+		info: { title: 'recflare API', version: '1.0.0', description },
+		paths: {},
+	}
+}
+
+/**
  * The upstream `/openapi.json` URL for a service, derived from the shared base domain
  * the same way upstream.ts derives the auth/accounts hosts.
  */
@@ -55,11 +85,16 @@ export async function fetchSpec(env: Env, slug: string): Promise<Response | null
  * DOCUMENTED_SERVICES so it stays in sync with the proxy.
  */
 export function docsPage(): string {
-	const sources = DOCUMENTED_SERVICES.map((s) => ({
-		url: `/docs/openapi/${s.slug}.json`,
-		title: s.title,
-		slug: s.slug,
-	}))
+	// The Overview is first, so it's the default view (Scalar selects sources[0]). Its
+	// spec is inlined via `content`; the services are fetched from their proxy URLs.
+	const sources = [
+		{ slug: 'overview', title: 'Overview', content: overviewSpec() },
+		...DOCUMENTED_SERVICES.map((s) => ({
+			url: `/docs/openapi/${s.slug}.json`,
+			title: s.title,
+			slug: s.slug,
+		})),
+	]
 	// The config is inlined as JSON — the slugs/titles are static constants, not user
 	// input, so there's nothing to escape here.
 	const config = JSON.stringify({ sources })
