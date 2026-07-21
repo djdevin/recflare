@@ -634,29 +634,30 @@ describe('clubs endpoints', () => {
 			expect.objectContaining({ Id: 500, ImageName: first, PlayerId: 7100 }),
 		])
 
-		// Slots are positional: filling 2 while 1 is empty keeps them in that order, and
-		// the empty slot isn't served as a blank image.
+		// The list stays packed: a PUT past the end appends rather than leaving a gap.
 		const third = (await (await setImage(2, 'c.jpg')).json()) as Details
 		expect(names(third.value.AdditionalImages)).toEqual([first, 'c.jpg'])
-		const second = (await (await setImage(1, 'b.jpg')).json()) as Details
-		expect(names(second.value.AdditionalImages)).toEqual([first, 'b.jpg', 'c.jpg'])
+		const second = (await (await setImage(2, 'b.jpg')).json()) as Details
+		expect(names(second.value.AdditionalImages)).toEqual([first, 'c.jpg', 'b.jpg'])
 
-		// Re-PUTting a slot replaces just that image; an empty name clears it. A name with
-		// no image row still renders, as a placeholder record.
+		// Re-PUTting a position replaces just that image. A name with no image row still
+		// renders, as a placeholder record.
 		const replaced = (await (await setImage(0, 'a2.jpg')).json()) as Details
-		expect(names(replaced.value.AdditionalImages)).toEqual(['a2.jpg', 'b.jpg', 'c.jpg'])
+		expect(names(replaced.value.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg', 'b.jpg'])
 		expect(replaced.value.AdditionalImages[0]).toMatchObject({ Id: 0, ImageName: 'a2.jpg' })
+
+		// An empty name removes that image and shifts the rest up — no blank left behind.
 		const cleared = (await (await setImage(1, '')).json()) as Details
-		expect(names(cleared.value.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
+		expect(names(cleared.value.AdditionalImages)).toEqual(['a2.jpg', 'b.jpg'])
 
 		// They're on the club's details payload, for everyone reading the club.
 		const details = (await (
 			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
 		).json()) as { AdditionalImages: Image[] }
-		expect(names(details.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
+		expect(names(details.AdditionalImages)).toEqual(['a2.jpg', 'b.jpg'])
 
-		// DELETE removes a slot's image, ignoring any body, and repeats are no-ops. The
-		// other slots keep their positions, so slot 2 is still slot 2.
+		// DELETE removes that position's image and shifts the rest up, ignoring any body.
+		// Deleting a position that holds nothing is a no-op.
 		const deleteImage = async (index: number, sub = '7100', body?: string) =>
 			exports.default.fetch(`${ORIGIN}/club/${clubId}/additionalimage/${index}`, {
 				method: 'DELETE',
@@ -665,12 +666,14 @@ describe('clubs endpoints', () => {
 			})
 		const dropped = (await (await deleteImage(0, '7100', 'imageName=sneaky.jpg')).json()) as Details
 		expect(dropped).toMatchObject({ error: '', success: true })
-		expect(names(dropped.value.AdditionalImages)).toEqual(['c.jpg'])
+		expect(names(dropped.value.AdditionalImages)).toEqual(['b.jpg'])
+		// Position 1 holds nothing now, so deleting it changes nothing.
 		expect(
-			names(((await (await deleteImage(0)).json()) as Details).value.AdditionalImages)
-		).toEqual(['c.jpg'])
-		const refilled = (await (await setImage(0, 'a3.jpg')).json()) as Details
-		expect(names(refilled.value.AdditionalImages)).toEqual(['a3.jpg', 'c.jpg'])
+			names(((await (await deleteImage(1)).json()) as Details).value.AdditionalImages)
+		).toEqual(['b.jpg'])
+		// A PUT past the end appends, so the club is back to two images.
+		const refilled = (await (await setImage(1, 'a3.jpg')).json()) as Details
+		expect(names(refilled.value.AdditionalImages)).toEqual(['b.jpg', 'a3.jpg'])
 
 		// Same gate as the PUT.
 		expect((await deleteImage(0, '7101')).status).toBe(403)

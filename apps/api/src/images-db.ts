@@ -118,12 +118,16 @@ export async function createImage(db: D1Database, input: NewImage): Promise<Save
  */
 async function syncImageCheerCount(db: D1Database, savedImageId: number): Promise<number> {
 	const row = await db
-		.prepare('SELECT COUNT(*) AS n FROM image_interaction WHERE saved_image_id = ?1 AND cheered = 1')
+		.prepare(
+			'SELECT COUNT(*) AS n FROM image_interaction WHERE saved_image_id = ?1 AND cheered = 1'
+		)
 		.bind(savedImageId)
 		.first<{ n: number }>()
 	const count = row?.n ?? 0
 	await db
-		.prepare("UPDATE image SET data = json_set(data, '$.CheerCount', CAST(?2 AS INTEGER)) WHERE id = ?1")
+		.prepare(
+			"UPDATE image SET data = json_set(data, '$.CheerCount', CAST(?2 AS INTEGER)) WHERE id = ?1"
+		)
 		.bind(savedImageId, count)
 		.run()
 	return count
@@ -223,9 +227,7 @@ export async function getImagesByRoom(
 
 	if (filter > 0) images = images.filter((img) => img.Type === filter)
 
-	images.sort(
-		sort === 1 ? (a, b) => b.CheerCount - a.CheerCount || newestFirst(a, b) : newestFirst
-	)
+	images.sort(sort === 1 ? (a, b) => b.CheerCount - a.CheerCount || newestFirst(a, b) : newestFirst)
 
 	return images.slice(skip, skip + take)
 }
@@ -255,6 +257,46 @@ export async function getImagesByPlayer(
 		.filter((img) => img.Accessibility === 1)
 		.sort(sort === 1 ? (a, b) => b.CheerCount - a.CheerCount || newestFirst(a, b) : newestFirst)
 		.slice(skip, skip + take)
+}
+
+/**
+ * The client-facing projection of a saved image for the player photo lists (the
+ * reference's `ImagesPlayer`). Same data as the stored record, but the id and type
+ * are renamed — `Id` → `SavedImageId`, `Type` → `SavedImageType` — and the tagged
+ * player ids aren't part of it. The client deserializes into this shape, so a raw
+ * SavedImage leaves it without an image id and its thumbnails come up blank.
+ */
+export interface ImagesPlayer {
+	Accessibility: number
+	AccessibilityLocked: boolean
+	CheerCount: number
+	CommentCount: number
+	CreatedAt: string
+	Description: string | null
+	ImageName: string
+	PlayerEventId: number | null
+	PlayerId: number
+	RoomId: number | null
+	SavedImageId: number
+	SavedImageType: number
+}
+
+/** Project a stored image to the client's ImagesPlayer shape. */
+export function toImagesPlayer(img: SavedImage): ImagesPlayer {
+	return {
+		Accessibility: img.Accessibility,
+		AccessibilityLocked: img.AccessibilityLocked,
+		CheerCount: img.CheerCount,
+		CommentCount: img.CommentCount,
+		CreatedAt: img.CreatedAt,
+		Description: img.Description,
+		ImageName: img.ImageName,
+		PlayerEventId: img.PlayerEventId,
+		PlayerId: img.PlayerId,
+		RoomId: img.RoomId,
+		SavedImageId: img.Id,
+		SavedImageType: img.Type,
+	}
 }
 
 /** Default number of recent images the slideshow feed returns. */

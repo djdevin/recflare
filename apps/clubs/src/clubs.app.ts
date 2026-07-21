@@ -574,15 +574,15 @@ const app = new Hono<App>()
 		})
 	})
 
-	// One of the club's gallery images, by slot (`/additionalimage/{index}`, 0-based —
-	// the client PUTs the first image to 0, the second to 1). Takes the same
-	// `imageName` the `storage` worker handed back; an empty one clears that slot.
-	// Co-owner or above, like the main image. The slots are positional, so clearing
-	// one doesn't shift the others; they come back on `value.AdditionalImages`.
+	// One of the club's gallery images, by position (`/additionalimage/{index}`, 0-based
+	// — the client PUTs the first image to 0, the second to 1). Takes the same
+	// `imageName` the `storage` worker handed back. Co-owner or above, like the main
+	// image. The list is packed: a PUT past the end appends rather than leaving a gap,
+	// and the images come back in order on `value.AdditionalImages`.
 	//
-	// DELETE removes that slot's image — same thing as PUTting an empty name, with the
-	// intent spelled out. It ignores any body, so it can't accidentally set one, and
-	// deleting an already-empty slot is a no-op rather than an error.
+	// DELETE removes that position's image and shifts the rest up, so there's never a
+	// blank slot in the gallery. It ignores any body, so it can't accidentally set an
+	// image instead, and deleting a position that holds nothing is a no-op.
 	.on(['PUT', 'DELETE'], '/club/:clubId{[0-9]+}/additionalimage/:index{[0-9]+}', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)

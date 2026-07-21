@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { authedId, unauthorized } from '../http'
 import {
 	createImage,
 	deleteImage,
@@ -11,8 +12,8 @@ import {
 	getSlideshowImages,
 	SavedImageType,
 	setImageCheer,
+	toImagesPlayer,
 } from '../images-db'
-import { authedId, unauthorized } from '../http'
 
 import type { App } from '../context'
 
@@ -139,12 +140,14 @@ export const imageRoutes = new Hono<App>({ strict: false })
 	})
 
 	// A player's photos — the public images that player has taken, newest first.
-	// Paginated via skip/take (take defaults to 100). Returns a bare array.
+	// Paginated via skip/take (take defaults to 100). Returns a bare array of the
+	// client's ImagesPlayer projection (SavedImageId/SavedImageType, not Id/Type).
 	.get('/api/images/v4/player/:playerId{[0-9]+}', async (c) => {
 		const playerId = Number.parseInt(c.req.param('playerId'), 10)
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-		return c.json(await getImagesByPlayer(c.env.DB, playerId, 0, skip, take))
+		const images = await getImagesByPlayer(c.env.DB, playerId, 0, skip, take)
+		return c.json(images.map(toImagesPlayer))
 	})
 
 	// A player's photos with a sort option. `sort` orders the list (1 = most
@@ -154,16 +157,19 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		const sort = Number.parseInt(c.req.query('sort') ?? '0', 10) || 0
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-		return c.json(await getImagesByPlayer(c.env.DB, playerId, sort, skip, take))
+		const images = await getImagesByPlayer(c.env.DB, playerId, sort, skip, take)
+		return c.json(images.map(toImagesPlayer))
 	})
 
 	// A player's photo feed — the public images they took plus ones they're tagged
-	// in, newest first. Paginated via skip/take (take defaults to 100). Bare array.
+	// in, newest first. Paginated via skip/take (take defaults to 100). Bare array of
+	// the same ImagesPlayer projection the player photo lists use.
 	.get('/api/images/v3/feed/player/:playerId{[0-9]+}', async (c) => {
 		const playerId = Number.parseInt(c.req.param('playerId'), 10)
 		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-		return c.json(await getPlayerFeed(c.env.DB, playerId, skip, take))
+		const images = await getPlayerFeed(c.env.DB, playerId, skip, take)
+		return c.json(images.map(toImagesPlayer))
 	})
 
 	// Global slideshow feed — the most recent publicly-listable ShareCamera photos
@@ -214,5 +220,7 @@ export const imageRoutes = new Hono<App>({ strict: false })
 				.map((raw) => Number.parseInt(raw.trim(), 10))
 				.filter((imageId) => !Number.isNaN(imageId)) ?? []
 		const cheered = await getCheeredImageIds(c.env.DB, id, ids)
-		return c.json(ids.map((imageId) => ({ SavedImageId: imageId, IsCheered: cheered.has(imageId) })))
+		return c.json(
+			ids.map((imageId) => ({ SavedImageId: imageId, IsCheered: cheered.has(imageId) }))
+		)
 	})

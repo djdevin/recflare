@@ -130,9 +130,9 @@ interface StoredClub extends Club {
 	CreatedAt: string
 	CustomTags?: string[]
 	/**
-	 * The club's gallery images, by slot (the client PUTs to
-	 * `/additionalimage/{index}`). Positional, so a cleared middle slot stays as an
-	 * empty string rather than shifting the images after it.
+	 * The club's gallery image names, in order (the client PUTs to
+	 * `/additionalimage/{index}`). Packed, never sparse: removing one shifts the rest
+	 * up, so the list is always the images the club actually has.
 	 */
 	AdditionalImages?: string[]
 }
@@ -673,39 +673,32 @@ function dedupeTags(tags: string[]): string[] {
 	return out
 }
 
-/**
- * A club's gallery images (stored on the blob). Trailing empty slots are trimmed, so
- * a club with nothing set reads as `[]` while a club with only slot 1 filled still
- * reports `['', 'name.jpg']` — the index a client PUT to is the index it reads back.
- */
+/** A club's gallery image names, in order (stored on the blob; `[]` when it has none). */
 export async function getClubAdditionalImages(db: D1Database, clubId: number): Promise<string[]> {
 	const row = await db
 		.prepare('SELECT data FROM club WHERE club_id = ?1')
 		.bind(clubId)
 		.first<ClubRow>()
-	const images = row === null ? [] : ((JSON.parse(row.data) as StoredClub).AdditionalImages ?? [])
-	let end = images.length
-	while (end > 0 && images[end - 1] === '') end--
-	return images.slice(0, end)
+	return row === null ? [] : ((JSON.parse(row.data) as StoredClub).AdditionalImages ?? [])
 }
 
 /**
- * A club's gallery as the client reads it: the image record behind each filled slot,
- * in slot order. Empty slots are left out (the records carry no index, so a hole
- * would just be a blank image), and a name whose metadata row is missing falls back
- * to a placeholder record so the picture still renders.
+ * A club's gallery as the client reads it: the image record behind each name, in
+ * order. A name whose metadata row is missing falls back to a placeholder record so
+ * the picture still renders.
  */
 export async function getClubGallery(db: D1Database, clubId: number): Promise<SavedImage[]> {
-	const names = (await getClubAdditionalImages(db, clubId)).filter((n) => n !== '')
+	const names = await getClubAdditionalImages(db, clubId)
 	if (names.length === 0) return []
 	const records = await getSavedImagesByNames(db, names)
 	return names.map((name) => records.get(name) ?? placeholderSavedImage(name))
 }
 
 /**
- * Set (or clear, with an empty `imageName`) one of a club's gallery image slots.
- * Returns null when the club doesn't exist. The slot must be in range — callers
- * validate the index before getting here.
+ * Set (or remove, with an empty `imageName`) one of a club's gallery images. The list
+ * stays packed: removing an image shifts the ones after it up, and setting an index
+ * past the end appends rather than leaving a gap. Returns null when the club doesn't
+ * exist; the caller validates the index is in range.
  */
 export async function setClubAdditionalImage(
 	db: D1Database,
@@ -720,11 +713,15 @@ export async function setClubAdditionalImage(
 	if (row === null) return null
 	const stored = JSON.parse(row.data) as StoredClub
 
-	// Pad rather than assign past the end: a sparse array would serialize its holes as
-	// nulls, and the client expects strings in every slot it reads.
 	const images = [...(stored.AdditionalImages ?? [])]
-	while (images.length <= index) images.push('')
-	images[index] = imageName
+	if (imageName === '') {
+		// Removing past the end is a no-op, not an error: the image is already gone.
+		if (index < images.length) images.splice(index, 1)
+	} else if (index < images.length) {
+		images[index] = imageName
+	} else if (images.length < MAX_ADDITIONAL_IMAGES) {
+		images.push(imageName)
+	}
 
 	const updated: StoredClub = { ...stored, AdditionalImages: images }
 	await db

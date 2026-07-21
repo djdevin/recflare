@@ -1140,7 +1140,8 @@ describe('images', () => {
 
 	test('POST /api/images/v1/cheer persists, syncs CheerCount, and the bulk lookup reflects it', async () => {
 		// Seed an image to cheer.
-		const img = await createImage(env.DB, { imageName: 'cheerme.jpg', playerId: 700 })
+		// Its own player id: 700's photos are asserted on exactly in the player-list test.
+		const img = await createImage(env.DB, { imageName: 'cheerme.jpg', playerId: 7001 })
 		const cheerBody = JSON.stringify({ SavedImageId: img.Id, Cheer: true })
 
 		// No token → 401.
@@ -1465,23 +1466,47 @@ describe('images', () => {
 			seed({ Id: 205, PlayerId: 999, TaggedPlayerIds: [111] }),
 		])
 
+		// The lists serve the client's ImagesPlayer projection: the id and type are
+		// SavedImageId/SavedImageType, and TaggedPlayerIds isn't part of it.
+		type ImagesPlayer = { SavedImageId: number; SavedImageType: number; ImageName: string }
+
 		// v4/player → only photos 700 *took*, public, newest first.
 		const mine = (await (
 			await exports.default.fetch(`${ORIGIN}/api/images/v4/player/700`)
-		).json()) as SavedImage[]
-		expect(mine.map((i) => i.Id)).toEqual([202, 201])
+		).json()) as ImagesPlayer[]
+		expect(mine.map((i) => i.SavedImageId)).toEqual([202, 201])
+		expect(mine[0]).toEqual({
+			Accessibility: 1,
+			AccessibilityLocked: false,
+			CheerCount: 0,
+			CommentCount: 0,
+			CreatedAt: '2026-04-01T00:00:00.000Z',
+			Description: null,
+			ImageName: 'p202.jpg',
+			PlayerEventId: null,
+			PlayerId: 700,
+			RoomId: null,
+			SavedImageId: 202,
+			SavedImageType: 1,
+		})
 
 		// take paginates.
 		const one = (await (
 			await exports.default.fetch(`${ORIGIN}/api/images/v4/player/700?take=1`)
-		).json()) as SavedImage[]
-		expect(one.map((i) => i.Id)).toEqual([202])
+		).json()) as ImagesPlayer[]
+		expect(one.map((i) => i.SavedImageId)).toEqual([202])
+
+		// v5/player is the same list with a sort option (0 = newest first).
+		const sorted = (await (
+			await exports.default.fetch(`${ORIGIN}/api/images/v5/player/700?sort=0`)
+		).json()) as ImagesPlayer[]
+		expect(sorted.map((i) => i.SavedImageId)).toEqual([202, 201])
 
 		// v3/feed/player → photos taken *or* tagged in, newest first (204 is newest).
 		const feed = (await (
 			await exports.default.fetch(`${ORIGIN}/api/images/v3/feed/player/700?take=100`)
-		).json()) as SavedImage[]
-		expect(feed.map((i) => i.Id)).toEqual([204, 202, 201])
+		).json()) as ImagesPlayer[]
+		expect(feed.map((i) => i.SavedImageId)).toEqual([204, 202, 201])
 
 		// A player with no photos → empty array on both.
 		expect(
