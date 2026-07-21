@@ -106,7 +106,7 @@ const BASE_ROLES = ['gameClient']
 export async function generateToken(
 	accountId: string,
 	platformId: string,
-	platform: string,
+	platform: number,
 	secret: string,
 	extraRoles: string[] = []
 ): Promise<string> {
@@ -128,7 +128,8 @@ export async function generateToken(
 			platform,
 			platform_id: platformId,
 			'rn.ver': '20230302',
-			'rn.plat': '0',
+			// Same PlatformType int as the `platform` claim — it was pinned to Steam.
+			'rn.plat': platform,
 			role: [...BASE_ROLES, ...extraRoles],
 			scope: TOKEN_SCOPES,
 			jti: crypto.randomUUID(),
