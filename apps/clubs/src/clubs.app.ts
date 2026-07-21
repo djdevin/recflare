@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { getSavedImageByName } from '@repo/domain'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
@@ -577,13 +576,9 @@ const app = new Hono<App>()
 
 	// One of the club's gallery images, by slot (`/additionalimage/{index}`, 0-based —
 	// the client PUTs the first image to 0, the second to 1). Takes the same
-	// `imageName` the `storage` worker handed back (or an `imageId` directly); an empty
-	// one clears that slot. Co-owner or above, like the main image. The slots are
-	// positional, so clearing one doesn't shift the others; they come back on
-	// `value.AdditionalImages` as whole image records.
-	//
-	// The name is resolved to the image's id and *that* is what's stored: names are R2
-	// keys, so a re-upload changes them, while the id keeps pointing at the image.
+	// `imageName` the `storage` worker handed back; an empty one clears that slot.
+	// Co-owner or above, like the main image. The slots are positional, so clearing
+	// one doesn't shift the others; they come back on `value.AdditionalImages`.
 	.put('/club/:clubId{[0-9]+}/additionalimage/:index{[0-9]+}', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return c.body(null, 401)
@@ -603,26 +598,10 @@ const app = new Hono<App>()
 		}
 
 		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
-		const field = (name: string): string => {
-			const key = Object.keys(body).find((k) => k.toLowerCase() === name)
-			return typeof body[key ?? ''] === 'string' ? (body[key ?? ''] as string).trim() : ''
-		}
-		const rawId = field('imageid')
-		const imageName = field('imagename')
+		const key = Object.keys(body).find((k) => k.toLowerCase() === 'imagename')
+		const imageName = typeof body[key ?? ''] === 'string' ? (body[key ?? ''] as string).trim() : ''
 
-		// Neither field (or an empty one) clears the slot; otherwise resolve to an id and
-		// refuse an image we don't know, rather than storing a dangling reference.
-		let imageId: number | null = null
-		if (rawId !== '') {
-			imageId = Number.parseInt(rawId, 10)
-			if (Number.isNaN(imageId)) return clubError(c, 'Invalid imageId.')
-		} else if (imageName !== '') {
-			const image = await getSavedImageByName(c.env.DB, imageName)
-			if (image === null) return clubError(c, 'No such image.')
-			imageId = image.Id
-		}
-
-		const updated = await setClubAdditionalImage(c.env.DB, clubId, index, imageId)
+		const updated = await setClubAdditionalImage(c.env.DB, clubId, index, imageName)
 		if (updated === null) return c.notFound()
 		return c.json({
 			error: '',

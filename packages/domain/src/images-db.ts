@@ -30,37 +30,45 @@ const placeholders = (n: number): string =>
 	Array.from({ length: n }, (_, i) => `?${i + 1}`).join(',')
 
 /**
- * Look up image records by id, returned keyed by Id. Ids with no record (the image
- * was deleted since) are simply absent from the map.
+ * Look up image records by name (the R2 key), returned keyed by ImageName. One query
+ * for the whole set; names with no record are simply absent from the map.
  */
-export async function getSavedImagesByIds(
+export async function getSavedImagesByNames(
 	db: D1Database,
-	ids: number[]
-): Promise<Map<number, SavedImage>> {
-	if (ids.length === 0) return new Map()
+	names: string[]
+): Promise<Map<string, SavedImage>> {
+	if (names.length === 0) return new Map()
 	const { results } = await db
-		.prepare(`SELECT data FROM image WHERE id IN (${placeholders(ids.length)})`)
-		.bind(...ids)
+		.prepare(`SELECT data FROM image WHERE image_name IN (${placeholders(names.length)})`)
+		.bind(...names)
 		.all<{ data: string }>()
 	return new Map(
 		results.map((r) => {
 			const image = JSON.parse(r.data) as SavedImage
-			return [image.Id, image]
+			return [image.ImageName, image]
 		})
 	)
 }
 
 /**
- * Look up a single image record by name (the R2 key), or null. Only for turning a
- * name a client sent into the image's id — store the id, never the name.
+ * A minimal SavedImage for an image name with no metadata row — enough for the client
+ * to render the picture. Uploads normally write a row first, so this only covers a
+ * name that was set directly (or whose row was since deleted).
  */
-export async function getSavedImageByName(
-	db: D1Database,
-	name: string
-): Promise<SavedImage | null> {
-	const row = await db
-		.prepare('SELECT data FROM image WHERE image_name = ?1')
-		.bind(name)
-		.first<{ data: string }>()
-	return row ? (JSON.parse(row.data) as SavedImage) : null
+export function placeholderSavedImage(imageName: string): SavedImage {
+	return {
+		Id: 0,
+		Type: 1,
+		Accessibility: 1,
+		AccessibilityLocked: false,
+		ImageName: imageName,
+		Description: null,
+		PlayerId: 0,
+		TaggedPlayerIds: [],
+		RoomId: null,
+		PlayerEventId: null,
+		CreatedAt: new Date(0).toISOString(),
+		CheerCount: 0,
+		CommentCount: 0,
+	}
 }

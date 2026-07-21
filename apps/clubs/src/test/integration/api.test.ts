@@ -585,7 +585,7 @@ describe('clubs endpoints', () => {
 		const first = 'sharecamera/2026-07-21/e37fc41f-005e-4216-8f1e-a37dca953981.jpg'
 		const insertImage = env.DB.prepare('INSERT OR IGNORE INTO image (data) VALUES (?1)')
 		await env.DB.batch(
-			[first, 'b.jpg', 'c.jpg', 'legacy.jpg'].map((ImageName, i) =>
+			[first, 'b.jpg', 'c.jpg'].map((ImageName, i) =>
 				insertImage.bind(
 					JSON.stringify({
 						Id: 500 + i,
@@ -641,63 +641,23 @@ describe('clubs endpoints', () => {
 		const second = (await (await setImage(1, 'b.jpg')).json()) as Details
 		expect(names(second.value.AdditionalImages)).toEqual([first, 'b.jpg', 'c.jpg'])
 
-		// What's stored is the image's id, not its name: renaming the image (a re-upload
-		// gets a new R2 key) leaves the gallery pointing at the same picture.
-		await env.DB.prepare("UPDATE image SET data = json_set(data, '$.ImageName', ?2) WHERE id = ?1")
-			.bind(501, 'b-renamed.jpg')
-			.run()
-		const renamed = (await (
-			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
-		).json()) as { AdditionalImages: Image[] }
-		expect(names(renamed.AdditionalImages)).toEqual([first, 'b-renamed.jpg', 'c.jpg'])
-
-		// Re-PUTting a slot replaces just that image; an empty name clears it.
-		const replaced = (await (await setImage(0, 'c.jpg')).json()) as Details
-		expect(names(replaced.value.AdditionalImages)).toEqual(['c.jpg', 'b-renamed.jpg', 'c.jpg'])
+		// Re-PUTting a slot replaces just that image; an empty name clears it. A name with
+		// no image row still renders, as a placeholder record.
+		const replaced = (await (await setImage(0, 'a2.jpg')).json()) as Details
+		expect(names(replaced.value.AdditionalImages)).toEqual(['a2.jpg', 'b.jpg', 'c.jpg'])
+		expect(replaced.value.AdditionalImages[0]).toMatchObject({ Id: 0, ImageName: 'a2.jpg' })
 		const cleared = (await (await setImage(1, '')).json()) as Details
-		expect(names(cleared.value.AdditionalImages)).toEqual(['c.jpg', 'c.jpg'])
-
-		// An image name nothing was uploaded under is refused rather than stored as a
-		// dangling reference, and a deleted image drops out of the gallery.
-		expect((await setImage(1, 'never-uploaded.jpg')).status).toBe(400)
-		await env.DB.prepare('DELETE FROM image WHERE id = ?1').bind(502).run()
-		const afterDelete = (await (
-			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
-		).json()) as { AdditionalImages: Image[] }
-		expect(afterDelete.AdditionalImages).toEqual([])
-		// Put one back so the rest of the test has a gallery to read.
-		await setImage(0, first)
+		expect(names(cleared.value.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
 
 		// They're on the club's details payload, for everyone reading the club.
 		const details = (await (
 			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
 		).json()) as { AdditionalImages: Image[] }
-		expect(names(details.AdditionalImages)).toEqual([first])
-
-		// A club stored before ids (its slots hold image names) still resolves, and the
-		// next PUT to that slot rewrites it as an id.
-		await env.DB.prepare(
-			"UPDATE club SET data = json_set(data, '$.AdditionalImages', json(?2)) WHERE club_id = ?1"
-		)
-			.bind(clubId, JSON.stringify(['legacy.jpg']))
-			.run()
-		const legacy = (await (
-			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
-		).json()) as { AdditionalImages: Image[] }
-		expect(legacy.AdditionalImages).toEqual([
-			expect.objectContaining({ Id: 503, ImageName: 'legacy.jpg' }),
-		])
-		await setImage(0, first)
-		const row = await env.DB.prepare('SELECT data FROM club WHERE club_id = ?1')
-			.bind(clubId)
-			.first<{ data: string }>()
-		expect((JSON.parse(row!.data) as { AdditionalImages: unknown[] }).AdditionalImages).toEqual([
-			500,
-		])
+		expect(names(details.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
 
 		// There are only three slots, and only co-owners may set them.
-		expect((await setImage(3, first)).status).toBe(400)
-		expect((await setImage(0, first, '7101')).status).toBe(403)
+		expect((await setImage(3, 'd.jpg')).status).toBe(400)
+		expect((await setImage(0, 'hijack.jpg', '7101')).status).toBe(403)
 		expect(
 			(
 				await exports.default.fetch(`${ORIGIN}/club/${clubId}/additionalimage/0`, {

@@ -14,7 +14,7 @@
  * can build the tables directly.
  */
 
-import { getSavedImagesByIds } from '@repo/domain'
+import { getSavedImagesByNames, placeholderSavedImage } from '@repo/domain'
 
 import type { SavedImage } from '@repo/domain'
 
@@ -130,12 +130,11 @@ interface StoredClub extends Club {
 	CreatedAt: string
 	CustomTags?: string[]
 	/**
-	 * The club's gallery, by slot (the client PUTs to `/additionalimage/{index}`).
-	 * Entries are `SavedImage` ids — image names are R2 keys and change when an image
-	 * is re-uploaded, so the id is what stays true — with `0` for an empty slot.
-	 * Positional, so clearing a middle slot doesn't shift the images after it.
+	 * The club's gallery images, by slot (the client PUTs to
+	 * `/additionalimage/{index}`). Positional, so a cleared middle slot stays as an
+	 * empty string rather than shifting the images after it.
 	 */
-	AdditionalImages?: number[]
+	AdditionalImages?: string[]
 }
 
 /** How many gallery images a club has room for (slots 0..2). */
@@ -675,48 +674,44 @@ function dedupeTags(tags: string[]): string[] {
 }
 
 /**
- * A club's gallery slots as stored (image ids, `0` for empty). Trailing empty slots
- * are trimmed, so a club with nothing set reads as `[]` while a club with only slot 1
- * filled still reports `[0, 42]` — the index a client PUT to is the index it reads
- * back.
+ * A club's gallery images (stored on the blob). Trailing empty slots are trimmed, so
+ * a club with nothing set reads as `[]` while a club with only slot 1 filled still
+ * reports `['', 'name.jpg']` — the index a client PUT to is the index it reads back.
  */
-export async function getClubAdditionalImages(db: D1Database, clubId: number): Promise<number[]> {
+export async function getClubAdditionalImages(db: D1Database, clubId: number): Promise<string[]> {
 	const row = await db
 		.prepare('SELECT data FROM club WHERE club_id = ?1')
 		.bind(clubId)
 		.first<ClubRow>()
 	const images = row === null ? [] : ((JSON.parse(row.data) as StoredClub).AdditionalImages ?? [])
 	let end = images.length
-	while (end > 0 && images[end - 1] === 0) end--
+	while (end > 0 && images[end - 1] === '') end--
 	return images.slice(0, end)
 }
 
 /**
  * A club's gallery as the client reads it: the image record behind each filled slot,
- * in slot order. Empty slots are left out — the records carry no index, so a hole
- * would just be a blank image — and so are ids whose image has since been deleted,
- * which is the point of storing ids: the gallery follows the image rather than a
- * filename that may now belong to nothing.
+ * in slot order. Empty slots are left out (the records carry no index, so a hole
+ * would just be a blank image), and a name whose metadata row is missing falls back
+ * to a placeholder record so the picture still renders.
  */
 export async function getClubGallery(db: D1Database, clubId: number): Promise<SavedImage[]> {
-	const ids = (await getClubAdditionalImages(db, clubId)).filter((id) => id !== 0)
-	if (ids.length === 0) return []
-	const byId = await getSavedImagesByIds(db, ids)
-	return ids
-		.map((id) => byId.get(id))
-		.filter((image): image is SavedImage => image !== undefined)
+	const names = (await getClubAdditionalImages(db, clubId)).filter((n) => n !== '')
+	if (names.length === 0) return []
+	const records = await getSavedImagesByNames(db, names)
+	return names.map((name) => records.get(name) ?? placeholderSavedImage(name))
 }
 
 /**
- * Set (or clear, with a null `imageId`) one of a club's gallery image slots. Returns
- * null when the club doesn't exist. The slot must be in range, and the image must
- * exist — callers validate both before getting here.
+ * Set (or clear, with an empty `imageName`) one of a club's gallery image slots.
+ * Returns null when the club doesn't exist. The slot must be in range — callers
+ * validate the index before getting here.
  */
 export async function setClubAdditionalImage(
 	db: D1Database,
 	clubId: number,
 	index: number,
-	imageId: number | null
+	imageName: string
 ): Promise<Club | null> {
 	const row = await db
 		.prepare('SELECT data FROM club WHERE club_id = ?1')
@@ -726,10 +721,10 @@ export async function setClubAdditionalImage(
 	const stored = JSON.parse(row.data) as StoredClub
 
 	// Pad rather than assign past the end: a sparse array would serialize its holes as
-	// nulls, and every slot the client reads should be an id (0 when empty).
+	// nulls, and the client expects strings in every slot it reads.
 	const images = [...(stored.AdditionalImages ?? [])]
-	while (images.length <= index) images.push(0)
-	images[index] = imageId ?? 0
+	while (images.length <= index) images.push('')
+	images[index] = imageName
 
 	const updated: StoredClub = { ...stored, AdditionalImages: images }
 	await db
