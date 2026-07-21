@@ -413,16 +413,6 @@ describe('econ endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('POST /api/settings/v2/set 401s without a token, 200s with one', async () => {
-		const anon = await exports.default.fetch(`${ORIGIN}/api/settings/v2/set`, { method: 'POST' })
-		expect(anon.status).toBe(401)
-		const res = await exports.default.fetch(`${ORIGIN}/api/settings/v2/set`, {
-			method: 'POST',
-			headers: await bearer(),
-		})
-		expect(res.status).toBe(200)
-	})
-
 	test('GET /api/consumables/v2/getUnlocked 401s without a token, returns []', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/consumables/v2/getUnlocked`)
 		expect(anon.status).toBe(401)
@@ -774,16 +764,20 @@ describe('econ endpoints', () => {
 			})
 			expect(r.status).toBe(200)
 			return (await r.json()) as Array<{
-				EquipmentModificationGuid: string
-				EquipmentPrefabName: string
+				ModificationGuid: string
+				PrefabName: string
 				FriendlyName: string
+				PlatformMask: number
+				Favorited: boolean
 			}>
 		}
 		const first = await unlocked()
 		expect(first).toHaveLength(1)
-		expect(first[0].EquipmentModificationGuid).toBe(guid)
-		expect(first[0].EquipmentPrefabName).toBe('[DiscGolfDisc]')
+		// The unlocked DTO is unprefixed, unlike the gift-drop the grant came from.
+		expect(first[0].ModificationGuid).toBe(guid)
+		expect(first[0].PrefabName).toBe('[DiscGolfDisc]')
 		expect(first[0].FriendlyName).toBe('Disc Skin (Coop)')
+		expect(first[0].PlatformMask).toBe(-1)
 
 		// Equipment is not an avatar item — it does not show up in v4/items.
 		const items = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/items`, {
@@ -792,9 +786,48 @@ describe('econ endpoints', () => {
 		const list = (await items.json()) as Array<{ FriendlyName: string }>
 		expect(list.every((i) => i.FriendlyName !== 'Disc Skin (Coop)')).toBe(true)
 
+		expect(first[0].Favorited).toBe(false)
+
 		// Owning equipment is boolean: re-buying upserts, it does not add a second row.
 		expect((await buy()).status).toBe(200)
 		expect(await unlocked()).toHaveLength(1)
+
+		// Favouriting sticks.
+		const update = async (favorited: boolean) =>
+			exports.default.fetch(`${ORIGIN}/api/equipment/v1/update`, {
+				method: 'PUT',
+				headers: { ...(await bearer('31')), 'Content-Type': 'application/json' },
+				body: JSON.stringify([
+					{ PrefabName: '[DiscGolfDisc]', ModificationGuid: guid, Favorited: favorited },
+					// A guid the caller doesn't own is silently skipped, not inserted.
+					{ PrefabName: '[Basketball]', ModificationGuid: 'not-owned', Favorited: true },
+				]),
+			})
+		expect((await update(true)).status).toBe(200)
+		let after = await unlocked()
+		expect(after).toHaveLength(1)
+		expect(after[0].Favorited).toBe(true)
+
+		// …and un-favouriting flips it back.
+		expect((await update(false)).status).toBe(200)
+		after = await unlocked()
+		expect(after[0].Favorited).toBe(false)
+	})
+
+	test('PUT /api/equipment/v1/update 401s without a token, 400s on a non-array body', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/equipment/v1/update`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: '[]',
+		})
+		expect(anon.status).toBe(401)
+
+		const bad = await exports.default.fetch(`${ORIGIN}/api/equipment/v1/update`, {
+			method: 'PUT',
+			headers: { ...(await bearer('32')), 'Content-Type': 'application/json' },
+			body: '{}',
+		})
+		expect(bad.status).toBe(400)
 	})
 
 	test('POST /api/storefronts/v2/buyItem 409s when the sent price no longer matches', async () => {
@@ -1127,8 +1160,8 @@ describe('econ endpoints', () => {
 			'POST /api/consumables/v1/consume',
 			'POST /api/gamerewards/v1/request',
 			'POST /api/objectives/v1/cleargroup',
-			'POST /api/settings/v2/set',
 			'POST /api/storefronts/v2/buyItem',
+			'PUT /api/equipment/v1/update',
 		])
 
 		// Every operation carries a summary — a path present but undescribed is not

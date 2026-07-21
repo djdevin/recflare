@@ -177,5 +177,20 @@ export const SaveOutfitRequest = z
 	.catchall(z.unknown())
 	.describe('Plus opaque outfit fields (OutfitSelectionsV2, FaceFeatures, …) stored verbatim')
 
+/**
+ * `PUT /api/equipment/v1/update` JSON body — the client's favourite toggles. It echoes
+ * back the whole entry it was served, but only `Favorited` is written; the rest is
+ * ignored (as on the reference server).
+ */
+export const EquipmentUpdateRequest = z.array(
+	z
+		.object({
+			ModificationGuid: z.string().describe('Identifies the owned equipment row'),
+			Favorited: z.boolean(),
+		})
+		.catchall(z.unknown())
+		.describe('Plus the echoed-back PrefabName / FriendlyName / Tooltip / Rarity, all ignored')
+)
+
 /** An opaque JSON body stored verbatim (the avatar blob for `POST /api/avatar/v2/set`). */
 export const OpaqueJsonBody = JsonObject.describe('Stored verbatim and echoed back')

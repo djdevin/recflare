@@ -28,7 +28,7 @@ import {
 	getConsumables,
 	grantConsumable,
 } from './consumables-db'
-import { getEquipment, grantEquipment } from './equipment-db'
+import { getEquipment, grantEquipment, setEquipmentFavorited } from './equipment-db'
 import { getInventory, grantItem } from './inventory-db'
 import {
 	AUTHED,
@@ -42,6 +42,7 @@ import {
 	ConsumeEnvelope,
 	ConsumeGiftRequest,
 	CustomAvatarItemsResponse,
+	EquipmentUpdateRequest,
 	ErrorResponse,
 	form,
 	json,
@@ -280,11 +281,13 @@ function toAvatarItem(giftDrop: StoreGiftDrop): AvatarItem {
 /** Build the owned equipment DTO granted into the buyer's inventory from a gift-drop. */
 function toEquipment(giftDrop: StoreGiftDrop): Equipment {
 	return {
-		EquipmentModificationGuid: giftDrop.EquipmentModificationGuid,
-		EquipmentPrefabName: giftDrop.EquipmentPrefabName,
+		ModificationGuid: giftDrop.EquipmentModificationGuid,
+		PrefabName: giftDrop.EquipmentPrefabName,
 		FriendlyName: giftDrop.FriendlyName,
 		Tooltip: giftDrop.Tooltip,
 		Rarity: giftDrop.Rarity,
+		PlatformMask: -1,
+		Favorited: false,
 	}
 }
 
@@ -711,6 +714,44 @@ const app = new Hono<App>({ strict: false })
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
 			return c.json(await getEquipment(c.env.DB, id))
+		}
+	)
+
+	// Favourite/un-favourite owned equipment. [Authorize]. The client PUTs the entries
+	// it wants changed (one request can carry several) and reads nothing back. Only
+	// `Favorited` is written — the rest of each entry is the client echoing what it was
+	// served, and a guid the caller doesn't own matches no row and is dropped.
+	.put(
+		'/api/equipment/v1/update',
+		describeRoute({
+			tags: ['Equipment'],
+			summary: 'Update owned equipment',
+			description:
+				'Applies the posted `Favorited` flags to the caller’s owned equipment, matched by ' +
+				'`ModificationGuid`. Everything else in each entry is ignored, and a guid the caller ' +
+				'doesn’t own is silently skipped. Empty body on success.',
+			security: AUTHED,
+			requestBody: jsonBody(EquipmentUpdateRequest, 'The entries to update'),
+			responses: {
+				200: { description: 'Applied (empty body)' },
+				400: { description: 'Body isn’t a JSON array (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			const body = (await c.req.json().catch(() => null)) as unknown
+			if (!Array.isArray(body)) return c.body(null, 400)
+			const updates = body
+				.filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null)
+				.filter((e) => typeof e.ModificationGuid === 'string' && e.ModificationGuid !== '')
+				.map((e) => ({
+					ModificationGuid: e.ModificationGuid as string,
+					Favorited: e.Favorited === true,
+				}))
+			await setEquipmentFavorited(c.env.DB, id, updates)
+			return c.body(null, 200)
 		}
 	)
 
