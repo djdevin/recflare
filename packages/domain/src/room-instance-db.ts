@@ -2,12 +2,12 @@
  * Room instances — live sessions of a room. Stored with the same JSON-blob pattern
  * as the rooms/accounts tables: the full instance is a JSON blob in `data`, and
  * every field is a SQLite generated (virtual) column extracted from it (snake_case
- * per the C# `[Column]` names). `id` is a sequential key held in the blob.
+ * per the reference's `[Column]` names). `id` is a sequential key held in the blob.
  *
  * The `rooms` worker owns the schema (migrations/0004_room_instance.sql); the
  * `match` worker finds/creates instances here at matchmake time. This module is the
  * single source of truth for the helpers — both workers import it from
- * `@repo/domain`. Columns marked `[JsonIgnore]` in the C# (owner_account_id,
+ * `@repo/domain`. Columns marked `[JsonIgnore]` in the reference (owner_account_id,
  * data_blob, allow_new_users, join_disabled) live in the blob but are dropped from
  * the client DTO (`toDto`).
  */
@@ -63,7 +63,7 @@ export interface RoomInstanceDto {
 	roomCode: string
 	roomInstanceType: number
 	clubId: number
-	// PascalCase JSON key, per the C# `[JsonPropertyName("EncryptVoiceChat")]`.
+	// PascalCase JSON key, per the reference's `[JsonPropertyName("EncryptVoiceChat")]`.
 	EncryptVoiceChat: boolean
 	matchmakingPolicy: number
 	createdAt: string

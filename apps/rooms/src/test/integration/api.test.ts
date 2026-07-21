@@ -1058,7 +1058,7 @@ describe('rooms endpoints', () => {
 		expect(created.roomInstanceId).toBeGreaterThan(0)
 		expect(created.roomId).toBe(2)
 		expect(created.isPrivate).toBe(true)
-		expect(created.EncryptVoiceChat).toBe(true) // PascalCase JSON key, per the C#
+		expect(created.EncryptVoiceChat).toBe(true) // PascalCase JSON key, per the reference
 
 		// Reads back identically; JsonIgnore columns are not in the DTO.
 		const fetched = await getRoomInstance(env.DB, created.roomInstanceId)

@@ -121,7 +121,7 @@ function toSelfAccountDto(account: Account) {
 const HUB_INSTANCE = 'global'
 
 /**
- * Push the notifications that follow an account mutation, mirroring the C#/Go
+ * Push the notifications that follow an account mutation, mirroring the reference
  * hub behavior: the owner receives `SelfAccountUpdate` and `AccountUpdate`, and
  * every connected client receives an `AccountUpdate` broadcast. Hub failures are
  * logged and swallowed — the account write has already committed, so a hub

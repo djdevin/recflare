@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withOnError } from '@repo/hono-helpers'
 
+import { NotificationType } from '../../notify/src/notification-types'
 import { docsPage, fetchSpec } from './docs'
 import { accountsBase, apiBase, authBase, imgBase, notifyBase, postForm } from './upstream'
 
@@ -36,9 +37,6 @@ const WEB_PLATFORM = '4'
  * the real enforcement (it verifies the token) on every call.
  */
 const ADMIN_ROLES = new Set(['developer', 'moderator'])
-
-/** `NotificationType.ServerMaintenance` in the notify worker's enum. */
-const SERVER_MAINTENANCE = 25
 
 /** Cookie flags for the session token. `secure` is dropped for local http dev. */
 function sessionCookieOptions(c: Context<App>, maxAge: number): CookieOptions {
@@ -247,7 +245,7 @@ const app = new Hono<App>()
 			method: 'POST',
 			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
 			body: JSON.stringify({
-				notificationType: SERVER_MAINTENANCE,
+				notificationType: NotificationType.ServerMaintenance,
 				data: { StartsInMinutes: startsIn },
 			}),
 		})

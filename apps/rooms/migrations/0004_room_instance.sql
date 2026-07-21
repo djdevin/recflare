@@ -1,5 +1,5 @@
 -- Room instances — live sessions of a room. Stored as a JSON blob in `data` with
--- generated (virtual) columns for every field (snake_case, per the C# `[Column]`
+-- generated (virtual) columns for every field (snake_case, per the reference's `[Column]`
 -- names), the same pattern as the rooms/accounts tables. `id` (roomInstanceId) is
 -- a sequential key held in the blob. Generated from src/room-instance-db.ts
 -- (SCHEMA_DDL) — keep in sync. Written/read by the match worker.
