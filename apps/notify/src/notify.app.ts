@@ -2,12 +2,12 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
-import { validateAndGetRoles } from '@repo/jwt'
+import { validateAndGetAccountId, validateAndGetRoles } from '@repo/jwt'
 
-import { NotificationsHub } from './notifications-hub'
+import { NotificationsHub, OWNER_HEADER } from './notifications-hub'
 
+import type { Context, MiddlewareHandler } from 'hono'
 import type { App } from './context'
-import type { MiddlewareHandler } from 'hono'
 
 /**
  * Maps a SignalR hub at `/hub/v1`. The hub itself — WebSocket transport, the
@@ -36,6 +36,26 @@ function isNotificationType(value: unknown): value is string | number {
  * from the accounts web UI's maintenance control.
  */
 const ADMIN_ROLES = new Set(['developer', 'moderator'])
+
+/**
+ * The player opening a hub WebSocket, or null when the connect carries no valid token.
+ *
+ * A WebSocket connect can't always carry an `Authorization` header — SignalR clients
+ * that can't set headers on the upgrade put the token in an `access_token` query
+ * param instead — so both are accepted, header first.
+ */
+async function connectionOwner(c: Context<App>): Promise<number | null> {
+	const secret = await c.env.JWT_SECRET.get()
+	const id = await validateAndGetAccountId(c.req.raw, secret)
+	if (id !== null) return id
+
+	const token = c.req.query('access_token')
+	if (!token) return null
+	return validateAndGetAccountId(
+		new Request(c.req.url, { headers: { Authorization: `Bearer ${token}` } }),
+		secret
+	)
+}
 
 /**
  * Gates the `/internal/*` endpoints on a valid Bearer token that carries one of the
@@ -78,12 +98,26 @@ const app = new Hono<App>()
 		})
 	})
 
-	// The hub WebSocket. Upgrade requests are forwarded to the Durable Object.
+	// The hub WebSocket. Upgrade requests are forwarded to the Durable Object, tagged
+	// with the connecting player so the hub can route their own notifications to them.
 	.get('/hub/v1', async (c) => {
 		if ((c.req.header('upgrade') ?? '').toLowerCase() !== 'websocket') {
 			return c.json({ error: 'Expected a WebSocket upgrade request' }, 426)
 		}
-		return c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).fetch(c.req.raw)
+
+		const playerId = await connectionOwner(c)
+		// Every notification the hub sends is either for a specific player or a
+		// broadcast to logged-in clients, so a connection we can't identify has nothing
+		// to receive. Refusing it here keeps unidentified sockets out of the hub
+		// entirely rather than letting them sit there collecting broadcasts.
+		if (playerId === null) return c.json({ error: 'Unauthorized' }, 401)
+
+		const request = new Request(c.req.raw)
+		// Always set from the validated token, never passed through: the header is the
+		// DO's proof of identity, so a client sending its own must not be believed.
+		request.headers.set(OWNER_HEADER, String(playerId))
+
+		return c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).fetch(request)
 	})
 
 	// ---- Internal service-to-service send/broadcast --------------------------
@@ -131,6 +165,32 @@ const app = new Hono<App>()
 		if (content === '') return c.json({ error: 'messageContent is required' }, 400)
 		const result =
 			await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).coachMessageAll(content)
+		return c.json({ success: true, ...result })
+	})
+
+	// Read-only view of the hub's routing state, for working out why a notification
+	// didn't arrive: which connections are live, which players each one receives for,
+	// and what's queued for a player who wasn't reachable.
+	.get('/internal/hub-state', async (c) => {
+		return c.json(await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).inspect())
+	})
+
+	// Discard queued notifications, for `?playerId=` or — with the explicit `?all=true`,
+	// so a bare call can't do it by accident — the whole queue. Anything left pending is
+	// delivered on the player's next subscribe, so stale frames need a way out.
+	.delete('/internal/hub-state/pending', async (c) => {
+		const raw = c.req.query('playerId')
+		const playerId = raw === undefined ? undefined : Number.parseInt(raw, 10)
+		if (playerId !== undefined && !Number.isInteger(playerId)) {
+			return c.json({ error: 'playerId must be an integer' }, 400)
+		}
+		if (playerId === undefined && c.req.query('all') !== 'true') {
+			return c.json({ error: 'pass playerId, or all=true to clear every queue' }, 400)
+		}
+
+		const result =
+			await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).clearPending(playerId)
+		logger.info('cleared pending notifications', { playerId: playerId ?? null, ...result })
 		return c.json({ success: true, ...result })
 	})
 
