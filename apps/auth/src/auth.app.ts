@@ -30,6 +30,7 @@ import {
 	json,
 	OAuthError,
 	PlatformIdsRequest,
+	PlatformType,
 	roleLookup,
 	TokenRequest,
 	TokenResponse,
@@ -45,26 +46,9 @@ import type { App } from './context'
 const TOKEN_SCOPE =
 	'offline_access profile rn rn.accounts rn.accounts.gc rn.api rn.chat rn.clubs rn.commerce rn.match.read rn.match.write rn.notify rn.rooms rn.storage'
 
-/** Platform-type enum names by value, used for the token's `platform` claim. */
-const PLATFORM_TYPES: Record<number, string> = {
-	[-1]: 'All',
-	0: 'Steam',
-	1: 'Oculus',
-	2: 'PlayStation',
-	3: 'Xbox',
-	4: 'RecNet',
-	5: 'IOS',
-	6: 'GooglePlay',
-	7: 'Standalone',
-	8: 'Pico',
-}
-
-/** PlatformType for Oculus, which `/cachedlogin/forplatformid` currently stubs out. */
-const OCULUS_PLATFORM = 1
-
 /** The canned entry served for any Oculus cached-login lookup. See the route below. */
 const FAKE_OCULUS_CACHED_LOGIN = {
-	platform: OCULUS_PLATFORM,
+	platform: PlatformType.Oculus,
 	platformId: '1',
 	accountId: 1,
 	lastLoginTime: '2026-07-19T17:13:29.225Z',
@@ -302,7 +286,7 @@ const app = new Hono<App>()
 			// Oculus client gets past its login screen. `requirePassword` is true — unlike a
 			// genuine cached login there is no platform ticket behind this, so the client must
 			// prompt. Delete this branch once Oculus platform auth lands.
-			if (platformInt === OCULUS_PLATFORM) return c.json([FAKE_OCULUS_CACHED_LOGIN])
+			if (platformInt === PlatformType.Oculus) return c.json([FAKE_OCULUS_CACHED_LOGIN])
 			const accounts = await getAccountsByPlatformId(c.env.DB, id)
 			// Offer only accounts the `cached_login` grant will actually accept — same check.
 			return c.json(
@@ -406,10 +390,12 @@ const app = new Hono<App>()
 			// `platform`/`platform_id` come from the body for a fresh login; a refresh
 			// grant overrides them below with what was stored when the token was issued.
 			let platformId = typeof body.platform_id === 'string' ? body.platform_id : ''
-			// `platform` is the PlatformType int → its enum name (e.g. 0 → "Steam").
 			const platformInt =
 				typeof body.platform === 'string' ? Number.parseInt(body.platform, 10) : NaN
-			let platform = Number.isNaN(platformInt) ? '' : (PLATFORM_TYPES[platformInt] ?? '')
+			// The token's `platform` claim is the PlatformType int. A grant that asserts no
+			// platform (a password login) falls back to Steam/0, the same default the account
+			// itself carries — see `accountPlatform`.
+			let platform = Number.isNaN(platformInt) ? PlatformType.Steam : platformInt
 
 			// The device this login came from. The client posts both on every grant; they're
 			// unverified (client-picked) so they're recorded on the account, never trusted as
@@ -440,7 +426,7 @@ const app = new Hono<App>()
 			let verifiedSteamId: string | null = null
 			const platformAsserted = !Number.isNaN(platformInt)
 			if (grantType === 'cached_login' || (grantType === 'create_account' && platformAsserted)) {
-				if (platformInt !== 0) {
+				if (platformInt !== PlatformType.Steam) {
 					return c.json(
 						{
 							error: 'invalid_grant',
@@ -548,9 +534,10 @@ const app = new Hono<App>()
 						400
 					)
 				}
-				accountId = String(refreshed.accountId)
-				platform = refreshed.platform
-				platformId = refreshed.platformId
+				// `platform`/`platform_id` aren't stored with the token — they're taken from
+				// the account below, so a refreshed token always reflects the identity the
+				// account is bound to now.
+				accountId = String(refreshed)
 			} else if (grantType === 'cached_login') {
 				// Platform-authenticated login into an already-linked account. The client posts
 				// the `account_id` it got from /cachedlogin/forplatformid together with the
@@ -629,6 +616,12 @@ const app = new Hono<App>()
 			// /role/* lookups). One read of the just-resolved account; roles thus refresh on
 			// every login and every refresh_token grant.
 			const roleAccount = await getAccount(c.env.DB, Number(accountId))
+			// A refresh grant posts no platform of its own, so the identity comes off the
+			// account — the same read, and the only place the bound identity is authoritative.
+			if (grantType === 'refresh_token' && roleAccount) {
+				platform = accountPlatform(roleAccount)
+				platformId = roleAccount.platformId ?? ''
+			}
 			const accessToken = await generateToken(
 				accountId,
 				platformId,
@@ -638,11 +631,7 @@ const app = new Hono<App>()
 			)
 			// Issue a fresh, persisted refresh token (single-use; the client redeems it via
 			// grant_type=refresh_token). A refresh grant thus rotates its token.
-			const refreshToken = await issueRefreshToken(c.env.DB, {
-				accountId: Number(accountId),
-				platform,
-				platformId,
-			})
+			const refreshToken = await issueRefreshToken(c.env.DB, Number(accountId))
 
 			return c.json({
 				access_token: accessToken,

@@ -512,9 +512,17 @@ describe('auth worker routes', () => {
 		})
 	})
 
-	test('POST /connect/token maps the platform int to its enum name', async () => {
-		const payload = await tokenFor(`account_id=42&platform=0&password=${LOGIN_PASSWORD}`)
-		expect(payload.platform).toBe('Steam')
+	test('POST /connect/token carries the platform int on the token', async () => {
+		const payload = await tokenFor(`account_id=42&platform=5&password=${LOGIN_PASSWORD}`)
+		expect(payload.platform).toBe(5)
+		// `rn.plat` is the same int, not a pinned 0.
+		expect(payload['rn.plat']).toBe(5)
+	})
+
+	test('POST /connect/token defaults the platform claim when none is posted', async () => {
+		const payload = await tokenFor(`account_id=42&password=${LOGIN_PASSWORD}`)
+		expect(payload.platform).toBe(0)
+		expect(payload['rn.plat']).toBe(0)
 	})
 
 	test('POST /connect/token returns a refresh_token that redeems for a new token', async () => {
@@ -530,13 +538,42 @@ describe('auth worker routes', () => {
 			`grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
 		)
 		expect(refreshed.status).toBe(200)
-		// A fresh access token for the same account, carrying the stored platform.
 		const payload = decodePayload(refreshed.json.access_token as string)
 		expect(payload.sub).toBe('42')
-		expect(payload.platform).toBe('Steam')
-		expect(payload.platform_id).toBe('steam-123')
+		// The platform identity comes off the account, not the refresh token. Account 42
+		// has none bound (the posted `platform_id` above was never Steam-verified, so it
+		// was never written), so the refreshed token carries no identity either.
+		expect(payload.platform).toBe(0)
+		expect(payload.platform_id).toBe('')
 		// The refresh token is rotated (single-use), so a new one is returned.
 		expect(refreshed.json.refresh_token).not.toBe(refreshToken)
+	})
+
+	test('a refreshed token carries the identity bound to the account', async () => {
+		// A Steam-bound account: only a verified ticket writes `platformId`, so seed it
+		// directly rather than posting an (unverified) platform_id on the login.
+		await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 43,
+					username: 'Player43',
+					passwordHash: await hashPassword(LOGIN_PASSWORD),
+					platform: 0,
+					platformId: 'steam-123',
+				})
+			)
+			.run()
+
+		const login = await postToken(`account_id=43&password=${LOGIN_PASSWORD}`)
+		expect(login.status).toBe(200)
+		const refreshed = await postToken(
+			`grant_type=refresh_token&refresh_token=${encodeURIComponent(login.json.refresh_token as string)}`
+		)
+		expect(refreshed.status).toBe(200)
+		const payload = decodePayload(refreshed.json.access_token as string)
+		expect(payload.sub).toBe('43')
+		expect(payload.platform).toBe(0)
+		expect(payload.platform_id).toBe('steam-123')
 	})
 
 	test('POST /connect/token refresh_token is single-use (rejected on reuse)', async () => {

@@ -49,19 +49,40 @@ export function form(schema: z.ZodType, description: string): OpenAPIV3_1.Reques
 }
 
 /**
- * PlatformType, by value. The `platform` form field is posted as the integer; the
- * token's `platform` claim carries the name. Only Steam (0) can actually be
- * verified — see the platform-auth notes on `POST /connect/token`.
+ * PlatformType, the client's platform enum. Declaration order is wire order, and is
+ * the single source for the schema and description below. The `platform` form field
+ * is posted as the integer; the token's `platform` claim carries the name.
  */
-export const PlatformType = z
-	.union([z.literal(-1), z.int().min(0).max(8)])
+export const PlatformType = {
+	All: -1,
+	Steam: 0,
+	Oculus: 1,
+	PlayStation: 2,
+	Xbox: 3,
+	RecNet: 4,
+	IOS: 5,
+	GooglePlay: 6,
+	Standalone: 7,
+	Pico: 8,
+} as const
+
+export type PlatformType = (typeof PlatformType)[keyof typeof PlatformType]
+
+/**
+ * A PlatformType by value. Only Steam can actually be verified — see the
+ * platform-auth notes on `POST /connect/token`.
+ */
+export const PlatformTypeSchema = z
+	.union([z.literal(-1), z.int().min(0).max(Math.max(...Object.values(PlatformType)))])
 	.describe(
-		'-1 All, 0 Steam, 1 Oculus, 2 PlayStation, 3 Xbox, 4 RecNet, 5 IOS, 6 GooglePlay, 7 Standalone, 8 Pico'
+		Object.entries(PlatformType)
+			.map(([name, value]) => `${value} ${name}`)
+			.join(', ')
 	)
 
 /** One entry on the client's login screen, from `toCachedLogin`. */
 export const CachedLogin = z.object({
-	platform: PlatformType,
+	platform: PlatformTypeSchema,
 	platformId: z.string().describe('Platform-native id (a SteamID64 for Steam); "" if unlinked'),
 	accountId: z.int().describe('Post this back as `account_id` on a cached_login grant'),
 	lastLoginTime: z.iso.datetime().describe("Falls back to the account's createdAt"),
