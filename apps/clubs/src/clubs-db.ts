@@ -14,6 +14,10 @@
  * can build the tables directly.
  */
 
+import { getSavedImagesByNames, placeholderSavedImage } from '@repo/domain'
+
+import type { SavedImage } from '@repo/domain'
+
 /** Schema DDL (mirror of migrations/0001_club.sql, sans seed rows). */
 export const SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS club (
@@ -125,7 +129,16 @@ export interface Club {
 interface StoredClub extends Club {
 	CreatedAt: string
 	CustomTags?: string[]
+	/**
+	 * The club's gallery images, by slot (the client PUTs to
+	 * `/additionalimage/{index}`). Positional, so a cleared middle slot stays as an
+	 * empty string rather than shifting the images after it.
+	 */
+	AdditionalImages?: string[]
 }
+
+/** How many gallery images a club has room for (slots 0..2). */
+export const MAX_ADDITIONAL_IMAGES = 3
 
 interface ClubRow {
 	data: string
@@ -307,7 +320,12 @@ function clubPermission(
 
 /** The club-details payload the client reads from create/details. */
 export interface ClubDetails {
-	AdditionalImages: unknown[]
+	/**
+	 * The club's gallery images as whole image records — the same `SavedImage` shape
+	 * every other image on the site is served as. The client deserializes these into
+	 * objects, so a bare array of names fails its parser ("expected '{'").
+	 */
+	AdditionalImages: SavedImage[]
 	Club: Club
 	ClubId: number
 	CoownerPermissions: ClubPermission
@@ -319,8 +337,9 @@ export interface ClubDetails {
 
 /**
  * Build the club-details view for a caller. `MyMembershipType` is the caller's own
- * membership (0 = none, e.g. a signed-out viewer). Additional images have no storage
- * yet, so they're empty; custom tags come from the club (set via `modifydetails`).
+ * membership (0 = none, e.g. a signed-out viewer). Additional images (set via
+ * `/additionalimage/{index}`) and custom tags (set via `modifydetails`) both come off
+ * the club's blob.
  */
 export async function getClubDetails(
 	db: D1Database,
@@ -328,7 +347,7 @@ export async function getClubDetails(
 	accountId: number | null
 ): Promise<ClubDetails> {
 	return {
-		AdditionalImages: [],
+		AdditionalImages: await getClubGallery(db, club.ClubId),
 		Club: club,
 		ClubId: club.ClubId,
 		CoownerPermissions: clubPermission(club.ClubId, ClubMembershipType.Coowner, {
@@ -652,6 +671,67 @@ function dedupeTags(tags: string[]): string[] {
 		out.push(tag)
 	}
 	return out
+}
+
+/**
+ * A club's gallery images (stored on the blob). Trailing empty slots are trimmed, so
+ * a club with nothing set reads as `[]` while a club with only slot 1 filled still
+ * reports `['', 'name.jpg']` — the index a client PUT to is the index it reads back.
+ */
+export async function getClubAdditionalImages(db: D1Database, clubId: number): Promise<string[]> {
+	const row = await db
+		.prepare('SELECT data FROM club WHERE club_id = ?1')
+		.bind(clubId)
+		.first<ClubRow>()
+	const images = row === null ? [] : ((JSON.parse(row.data) as StoredClub).AdditionalImages ?? [])
+	let end = images.length
+	while (end > 0 && images[end - 1] === '') end--
+	return images.slice(0, end)
+}
+
+/**
+ * A club's gallery as the client reads it: the image record behind each filled slot,
+ * in slot order. Empty slots are left out (the records carry no index, so a hole
+ * would just be a blank image), and a name whose metadata row is missing falls back
+ * to a placeholder record so the picture still renders.
+ */
+export async function getClubGallery(db: D1Database, clubId: number): Promise<SavedImage[]> {
+	const names = (await getClubAdditionalImages(db, clubId)).filter((n) => n !== '')
+	if (names.length === 0) return []
+	const records = await getSavedImagesByNames(db, names)
+	return names.map((name) => records.get(name) ?? placeholderSavedImage(name))
+}
+
+/**
+ * Set (or clear, with an empty `imageName`) one of a club's gallery image slots.
+ * Returns null when the club doesn't exist. The slot must be in range — callers
+ * validate the index before getting here.
+ */
+export async function setClubAdditionalImage(
+	db: D1Database,
+	clubId: number,
+	index: number,
+	imageName: string
+): Promise<Club | null> {
+	const row = await db
+		.prepare('SELECT data FROM club WHERE club_id = ?1')
+		.bind(clubId)
+		.first<ClubRow>()
+	if (row === null) return null
+	const stored = JSON.parse(row.data) as StoredClub
+
+	// Pad rather than assign past the end: a sparse array would serialize its holes as
+	// nulls, and the client expects strings in every slot it reads.
+	const images = [...(stored.AdditionalImages ?? [])]
+	while (images.length <= index) images.push('')
+	images[index] = imageName
+
+	const updated: StoredClub = { ...stored, AdditionalImages: images }
+	await db
+		.prepare('UPDATE club SET data = ?1 WHERE club_id = ?2')
+		.bind(JSON.stringify(updated), clubId)
+		.run()
+	return toDto(updated)
 }
 
 /** A club's custom tags (stored on the blob; empty when it has none). */

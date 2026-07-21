@@ -28,6 +28,16 @@ beforeAll(async () => {
 			account_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.accountId')) VIRTUAL
 		)`
 	).run()
+	// Image metadata (owned by the img worker, written by api on upload) — a club's
+	// gallery serves the whole image record behind each stored image name.
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS image (
+			data TEXT NOT NULL,
+			id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.Id')) VIRTUAL,
+			image_name TEXT GENERATED ALWAYS AS (json_extract(data, '$.ImageName')) VIRTUAL
+		)`
+	).run()
+
 	const insertAccount = env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 	await env.DB.batch(
 		[42, 9100, 9101].map((accountId) =>
@@ -565,6 +575,104 @@ describe('clubs endpoints', () => {
 		).toBe(401)
 		const anon = await exports.default.fetch(`${ORIGIN}/club/home/me`, { method: 'PUT' })
 		expect(anon.status).toBe(401)
+	})
+
+	test('PUT /club/:id/additionalimage/:index fills the club’s gallery slots', async () => {
+		type Image = { Id: number; ImageName: string; PlayerId: number }
+		type Details = { error: string; success: boolean; value: { AdditionalImages: Image[] } }
+		// The gallery is served as whole image records, joined from the image table the
+		// `api` worker writes on upload. Seed the rows those names point at.
+		const first = 'sharecamera/2026-07-21/e37fc41f-005e-4216-8f1e-a37dca953981.jpg'
+		const insertImage = env.DB.prepare('INSERT OR IGNORE INTO image (data) VALUES (?1)')
+		await env.DB.batch(
+			[first, 'b.jpg', 'c.jpg'].map((ImageName, i) =>
+				insertImage.bind(
+					JSON.stringify({
+						Id: 500 + i,
+						Type: 1,
+						Accessibility: 1,
+						AccessibilityLocked: false,
+						ImageName,
+						Description: null,
+						PlayerId: 7100,
+						TaggedPlayerIds: [],
+						RoomId: null,
+						PlayerEventId: null,
+						CreatedAt: '2026-07-21T00:00:00Z',
+						CheerCount: 0,
+						CommentCount: 0,
+					})
+				)
+			)
+		)
+		const create = await exports.default.fetch(`${ORIGIN}/club/create`, {
+			method: 'POST',
+			headers: { ...(await bearer('7100')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'name=Gallery',
+		})
+		const clubId = ((await create.json()) as { value: { ClubId: number } }).value.ClubId
+		const setImage = async (index: number, imageName: string, sub = '7100') =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}/additionalimage/${index}`, {
+				method: 'PUT',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams({ imageName }).toString(),
+			})
+
+		const names = (images: Image[]) => images.map((i) => i.ImageName)
+
+		// A fresh club has no gallery images.
+		const fresh = (await (
+			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
+		).json()) as { AdditionalImages: Image[] }
+		expect(fresh.AdditionalImages).toEqual([])
+
+		// The client's exact request: the storage worker's image name into slot 0. It
+		// comes back as the whole image record, not a bare name.
+		const set = (await (await setImage(0, first)).json()) as Details
+		expect(set).toMatchObject({ error: '', success: true })
+		expect(set.value.AdditionalImages).toEqual([
+			expect.objectContaining({ Id: 500, ImageName: first, PlayerId: 7100 }),
+		])
+
+		// Slots are positional: filling 2 while 1 is empty keeps them in that order, and
+		// the empty slot isn't served as a blank image.
+		const third = (await (await setImage(2, 'c.jpg')).json()) as Details
+		expect(names(third.value.AdditionalImages)).toEqual([first, 'c.jpg'])
+		const second = (await (await setImage(1, 'b.jpg')).json()) as Details
+		expect(names(second.value.AdditionalImages)).toEqual([first, 'b.jpg', 'c.jpg'])
+
+		// Re-PUTting a slot replaces just that image; an empty name clears it. A name with
+		// no image row still renders, as a placeholder record.
+		const replaced = (await (await setImage(0, 'a2.jpg')).json()) as Details
+		expect(names(replaced.value.AdditionalImages)).toEqual(['a2.jpg', 'b.jpg', 'c.jpg'])
+		expect(replaced.value.AdditionalImages[0]).toMatchObject({ Id: 0, ImageName: 'a2.jpg' })
+		const cleared = (await (await setImage(1, '')).json()) as Details
+		expect(names(cleared.value.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
+
+		// They're on the club's details payload, for everyone reading the club.
+		const details = (await (
+			await exports.default.fetch(`${ORIGIN}/club/${clubId}/details`)
+		).json()) as { AdditionalImages: Image[] }
+		expect(names(details.AdditionalImages)).toEqual(['a2.jpg', 'c.jpg'])
+
+		// There are only three slots, and only co-owners may set them.
+		expect((await setImage(3, 'd.jpg')).status).toBe(400)
+		expect((await setImage(0, 'hijack.jpg', '7101')).status).toBe(403)
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/club/${clubId}/additionalimage/0`, {
+					method: 'PUT',
+				})
+			).status
+		).toBe(401)
+		expect(
+			(
+				await exports.default.fetch(`${ORIGIN}/club/99999/additionalimage/0`, {
+					method: 'PUT',
+					headers: await bearer('7100'),
+				})
+			).status
+		).toBe(404)
 	})
 
 	test('GET /club/search filters by category/query and sorts', async () => {

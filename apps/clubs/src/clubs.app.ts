@@ -22,8 +22,10 @@ import {
 	getMembership,
 	joinClub,
 	leaveClub,
+	MAX_ADDITIONAL_IMAGES,
 	requestToJoinClub,
 	searchClubs,
+	setClubAdditionalImage,
 	setHomeClub,
 	updateClub,
 } from './clubs-db'
@@ -564,6 +566,42 @@ const app = new Hono<App>()
 		if (imageName === '') return clubError(c, 'imageName is required.')
 
 		const updated = await updateClub(c.env.DB, clubId, { mainImageName: imageName })
+		if (updated === null) return c.notFound()
+		return c.json({
+			error: '',
+			success: true,
+			value: await getClubDetails(c.env.DB, updated, id),
+		})
+	})
+
+	// One of the club's gallery images, by slot (`/additionalimage/{index}`, 0-based —
+	// the client PUTs the first image to 0, the second to 1). Takes the same
+	// `imageName` the `storage` worker handed back; an empty one clears that slot.
+	// Co-owner or above, like the main image. The slots are positional, so clearing
+	// one doesn't shift the others; they come back on `value.AdditionalImages`.
+	.put('/club/:clubId{[0-9]+}/additionalimage/:index{[0-9]+}', async (c) => {
+		const id = await authedId(c)
+		if (id === null) return c.body(null, 401)
+
+		const clubId = Number.parseInt(c.req.param('clubId'), 10)
+		const club = await getClub(c.env.DB, clubId)
+		if (club === null) return c.notFound()
+
+		const membership = await getMembership(c.env.DB, clubId, id)
+		if (membership < ClubMembershipType.Coowner) {
+			return c.json({ error: 'Insufficient permissions.', success: false, value: null }, 403)
+		}
+
+		const index = Number.parseInt(c.req.param('index'), 10)
+		if (index >= MAX_ADDITIONAL_IMAGES) {
+			return clubError(c, `A club has ${MAX_ADDITIONAL_IMAGES} additional image slots (0-based).`)
+		}
+
+		const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+		const key = Object.keys(body).find((k) => k.toLowerCase() === 'imagename')
+		const imageName = typeof body[key ?? ''] === 'string' ? (body[key ?? ''] as string).trim() : ''
+
+		const updated = await setClubAdditionalImage(c.env.DB, clubId, index, imageName)
 		if (updated === null) return c.notFound()
 		return c.json({
 			error: '',

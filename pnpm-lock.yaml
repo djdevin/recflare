@@ -262,6 +262,9 @@ importers:
 
   apps/clubs:
     dependencies:
+      '@repo/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
