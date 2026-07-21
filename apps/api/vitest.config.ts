@@ -21,17 +21,27 @@ export default defineConfig({
 						compatibilityDate: '2026-06-16',
 						compatibilityFlags: ['nodejs_compat'],
 						durableObjects: { RECFLARE_NOTIFICATIONS_HUB: 'NotificationsHub' },
-						// notifyPlayer records its last call so tests can assert the notification
-						// the worker pushed (type + payload); GET the DO to read it back.
+						// notifyPlayer records every call so tests can assert the notifications the
+						// worker pushed (type + payload). GET the DO for the most recent one,
+						// GET /all for the whole list (friend-graph changes notify both players),
+						// DELETE to reset it between assertions.
 						script: `
 							import { DurableObject } from 'cloudflare:workers'
 							export class NotificationsHub extends DurableObject {
+								sent = []
 								async notifyPlayer(playerId, notificationType, data) {
-									this.last = { playerId, notificationType, data }
+									this.sent.push({ playerId, notificationType, data })
 									return { delivered: 0, queued: true }
 								}
 								async broadcast() { return { delivered: 0 } }
-								async fetch() { return Response.json(this.last ?? null) }
+								async fetch(request) {
+									if (request.method === 'DELETE') {
+										this.sent = []
+										return new Response(null, { status: 204 })
+									}
+									if (new URL(request.url).pathname === '/all') return Response.json(this.sent)
+									return Response.json(this.sent.at(-1) ?? null)
+								}
 							}
 							export default { fetch() { return new Response('ok') } }
 						`,

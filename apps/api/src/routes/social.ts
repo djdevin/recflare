@@ -14,7 +14,7 @@ import {
 
 import type { Context } from 'hono'
 import type { App } from '../context'
-import type { RelationshipFlag } from '../relationships-db'
+import type { RelationshipChange, RelationshipFlag, RelationshipResponse } from '../relationships-db'
 
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
 const HUB_INSTANCE = 'global'
@@ -23,20 +23,15 @@ const HUB_INSTANCE = 'global'
 const RELATIONSHIP_CHANGED = 1
 
 /**
- * Apply a per-player relationship flag toggle (favorited/ignored/muted) and hand the
- * result to the client the way the Go server does: the resulting relationship rides a
- * `RelationshipChanged` hub notification to the caller, and the HTTP body is just the
- * `{ Success, Message }` ack. Hub failures are logged and swallowed — the DB write has
- * already committed, so a hub hiccup must not fail the request.
+ * Push a `RelationshipChanged` notification carrying `rel` to one player. Hub failures are
+ * logged and swallowed — the DB write has already committed, so a hub hiccup must not fail
+ * the request.
  */
-async function applyFlag(
+async function notifyRelationship(
 	c: Context<App>,
 	playerId: number,
-	otherId: number,
-	flag: RelationshipFlag,
-	value: boolean
-): Promise<Response> {
-	const rel = await setRelationshipFlag(c.env.DB, playerId, otherId, flag, value)
+	rel: RelationshipResponse
+): Promise<void> {
 	try {
 		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
 			playerId,
@@ -49,6 +44,39 @@ async function applyFlag(
 			error: err instanceof Error ? err.message : String(err),
 		})
 	}
+}
+
+/**
+ * Notify both players of a friend-graph change, each with the relationship projected from
+ * their own point of view — the target of a request sees `FriendRequestReceived` where the
+ * sender sees `Sent`, so the two payloads differ. A no-op mutation notifies nobody.
+ */
+async function notifyBoth(
+	c: Context<App>,
+	playerId: number,
+	otherId: number,
+	change: RelationshipChange
+): Promise<void> {
+	if (!change.changed) return
+	await notifyRelationship(c, playerId, change.self)
+	await notifyRelationship(c, otherId, change.other)
+}
+
+/**
+ * Apply a per-player relationship flag toggle (favorited/ignored/muted). The flags are
+ * private to the caller's own side of the row, so only the caller is notified. The
+ * resulting relationship rides the notification and the HTTP body is just the
+ * `{ Success, Message }` ack.
+ */
+async function applyFlag(
+	c: Context<App>,
+	playerId: number,
+	otherId: number,
+	flag: RelationshipFlag,
+	value: boolean
+): Promise<Response> {
+	const rel = await setRelationshipFlag(c.env.DB, playerId, otherId, flag, value)
+	await notifyRelationship(c, playerId, rel)
 	return c.json({ Success: true, Message: '' })
 }
 
@@ -92,12 +120,19 @@ export const socialRoutes = new Hono<App>({ strict: false })
 	// client calls this as a GET; the mutations accept GET or POST (the Go handlers
 	// matched any method). Auth-gated. Returns the resulting relationship from the
 	// caller's point of view.
+	//
+	// The four friend-graph mutations below change state both players can see, so each
+	// notifies BOTH sides with their own projection (see notifyBoth) on top of the HTTP
+	// response. A no-op — re-sending an outstanding request, accepting nothing pending —
+	// notifies nobody.
 	.on(['GET', 'POST'], '/api/relationships/v2/sendfriendrequest', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const target = await targetPlayerId(c)
 		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
-		return c.json(await sendFriendRequest(c.env.DB, id, target))
+		const change = await sendFriendRequest(c.env.DB, id, target)
+		await notifyBoth(c, id, target, change)
+		return c.json(change.self)
 	})
 
 	// Accept a pending friend request from another player (`?id=`). Auth-gated.
@@ -106,17 +141,21 @@ export const socialRoutes = new Hono<App>({ strict: false })
 		if (id === null) return unauthorized(c)
 		const target = await targetPlayerId(c)
 		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
-		return c.json(await acceptFriendRequest(c.env.DB, id, target))
+		const change = await acceptFriendRequest(c.env.DB, id, target)
+		await notifyBoth(c, id, target, change)
+		return c.json(change.self)
 	})
 
-	// Remove a friend / cancel a request / decline a request (`?id=`). Auth-gated.
+	// Remove a friend / cancel a request / decline a request (`?id=`). The row is kept as
+	// a None relationship so the per-side flags survive (see removeFriend). Auth-gated.
 	.on(['GET', 'POST'], '/api/relationships/v2/removefriend', async (c) => {
 		const id = await authedId(c)
 		if (id === null) return unauthorized(c)
 		const target = await targetPlayerId(c)
 		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
-		await removeFriend(c.env.DB, id, target)
-		return c.json({ success: true })
+		const change = await removeFriend(c.env.DB, id, target)
+		await notifyBoth(c, id, target, change)
+		return c.json(change.self)
 	})
 
 	// Directly add another player as a friend, no pending-request step (`?id=`). Auth-gated.
@@ -125,7 +164,9 @@ export const socialRoutes = new Hono<App>({ strict: false })
 		if (id === null) return unauthorized(c)
 		const target = await targetPlayerId(c)
 		if (target === null || target === id) return c.json({ error: 'invalid player id' }, 400)
-		return c.json(await addFriend(c.env.DB, id, target))
+		const change = await addFriend(c.env.DB, id, target)
+		await notifyBoth(c, id, target, change)
+		return c.json(change.self)
 	})
 
 	// Ignore / mute another player, and their inverses unignore / unmute (target

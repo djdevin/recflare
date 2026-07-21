@@ -39,7 +39,7 @@ export const imageRoutes = new Hono<App>({ strict: false })
 		if (!(candidate instanceof File)) return c.json({ error: 'No file found in request' }, 400)
 		const file = candidate
 
-		// `imgMeta` is a JSON blob describing the upload (the C# `SavedImageMetaDTO`),
+		// `imgMeta` is a JSON blob describing the upload (`SavedImageMetaDTO`),
 		// posted as a multipart field. It carries the metadata we record on the image
 		// (savedImageType, roomId, accessibility, description, taggedPlayerIds, …).
 		let meta: Record<string, unknown> = {}

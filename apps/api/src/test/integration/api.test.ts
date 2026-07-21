@@ -1517,6 +1517,24 @@ describe('relationships', () => {
 	// the relationship detail rides a RelationshipChanged hub notification instead.
 	const ACK = { Success: true, Message: '' }
 
+	// The notify DO is stubbed to record every notifyPlayer call (see vitest.config).
+	type Notification = {
+		playerId: number
+		notificationType: number
+		data: { PlayerID: number; RelationshipType: number; Favorited: number; Ignored: number }
+	}
+	const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+
+	/** Drop everything the hub stub has recorded so far. */
+	async function resetNotifications() {
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+	}
+
+	/** Every notification pushed since the last reset, in order. */
+	async function sentNotifications(): Promise<Notification[]> {
+		return (await (await hub().fetch('http://do/all')).json()) as Notification[]
+	}
+
 	// POST a flag mutation the real client way (form body `PlayerId=<id>`), returning
 	// the parsed ack body.
 	async function ackFlag(path: string, sub: string, playerId: number) {
@@ -1529,9 +1547,8 @@ describe('relationships', () => {
 		).json()) as { Success: boolean; Message: string }
 	}
 
-	// A player's own-side flags read straight from the relationship row. The None row a
-	// flag can create for an otherwise-unrelated pair isn't reported by v2/get, so the
-	// flag effect is verified here instead of through the (now ack-only) response.
+	// A player's own-side flags read straight from the relationship row — the flag
+	// endpoints return only an ack, so the effect is verified against the row itself.
 	async function ownFlags(playerId: number, otherId: number) {
 		const row = (await env.DB.prepare(
 			`SELECT requester_id, requester_favorited, requester_ignored, requester_muted,
@@ -1597,10 +1614,27 @@ describe('relationships', () => {
 			{ PlayerID: 500, RelationshipType: 3, Favorited: 0, Ignored: 0, Muted: 0 },
 		])
 
-		// 500 removes → neither side has a relationship.
+		// 500 removes → both sides drop to None. The row is kept (that's where the
+		// per-side flags live), so v2/get still reports the pair, now as None (0).
 		expect((await mutate('/api/relationships/v2/removefriend', '500', 501)).status).toBe(200)
-		expect(await relationships('500')).toEqual([])
-		expect(await relationships('501')).toEqual([])
+		expect(await relationships('500')).toEqual([
+			{ PlayerID: 501, RelationshipType: 0, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
+		expect(await relationships('501')).toEqual([
+			{ PlayerID: 500, RelationshipType: 0, Favorited: 0, Ignored: 0, Muted: 0 },
+		])
+	})
+
+	test('removefriend keeps the caller’s ignore flag', async () => {
+		// 760 befriends 761 then ignores them; dropping the friendship must not
+		// un-ignore them (the flag lives on the row the removal downgrades to None).
+		await mutate('/api/relationships/v2/addfriend', '760', 761)
+		await ackFlag('/api/relationships/v1/ignore', '760', 761)
+		await mutate('/api/relationships/v2/removefriend', '760', 761)
+		expect(await ownFlags(760, 761)).toMatchObject({ Ignored: 1 })
+		expect(await relationships('760')).toEqual([
+			{ PlayerID: 761, RelationshipType: 0, Favorited: 0, Ignored: 1, Muted: 0 },
+		])
 	})
 
 	test('addfriend makes them friends directly', async () => {
@@ -1689,8 +1723,10 @@ describe('relationships', () => {
 		// Mirrors ignore/mute: a bare None row is created with the caller's side flagged.
 		expect(await (await mutate('/api/relationships/v1/favorite', '730', 731)).json()).toEqual(ACK)
 		expect(await ownFlags(730, 731)).toMatchObject({ Favorited: 1 })
-		// A None row is not reported as a relationship by v2/get.
-		expect(await relationships('730')).toEqual([])
+		// The bare None row is reported by v2/get — it carries the flag.
+		expect(await relationships('730')).toEqual([
+			{ PlayerID: 731, RelationshipType: 0, Favorited: 1, Ignored: 0, Muted: 0 },
+		])
 	})
 
 	test('a self-targeted favorite is rejected', async () => {
@@ -1710,5 +1746,82 @@ describe('relationships', () => {
 		expect(last.playerId).toBe(750) // sent to the caller
 		expect(last.notificationType).toBe(1) // NotificationType.RelationshipChanged
 		expect(last.data).toMatchObject({ PlayerID: 751, Favorited: 1, RelationshipType: 0 })
+	})
+
+	test('sendfriendrequest notifies both players with their own projection', async () => {
+		await resetNotifications()
+		await mutate('/api/relationships/v2/sendfriendrequest', '770', 771)
+
+		// Both sides hear about it, each seeing the other player and their own side's
+		// type: the sender Sent (1), the recipient Received (2).
+		expect(await sentNotifications()).toEqual([
+			{
+				playerId: 770,
+				notificationType: 1,
+				data: { PlayerID: 771, RelationshipType: 1, Favorited: 0, Ignored: 0, Muted: 0 },
+			},
+			{
+				playerId: 771,
+				notificationType: 1,
+				data: { PlayerID: 770, RelationshipType: 2, Favorited: 0, Ignored: 0, Muted: 0 },
+			},
+		])
+	})
+
+	test('accepting notifies both players as Friend', async () => {
+		await mutate('/api/relationships/v2/sendfriendrequest', '780', 781)
+		await resetNotifications()
+		await mutate('/api/relationships/v2/acceptfriendrequest', '781', 780)
+
+		const sent = await sentNotifications()
+		expect(sent).toHaveLength(2)
+		// Friend (3) is symmetric, so both sides see the same type, each pointing at the other.
+		expect(sent).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					playerId: 780,
+					data: expect.objectContaining({ PlayerID: 781, RelationshipType: 3 }),
+				}),
+				expect.objectContaining({
+					playerId: 781,
+					data: expect.objectContaining({ PlayerID: 780, RelationshipType: 3 }),
+				}),
+			])
+		)
+	})
+
+	test('removefriend notifies both players with None', async () => {
+		await mutate('/api/relationships/v2/addfriend', '790', 791)
+		await resetNotifications()
+		await mutate('/api/relationships/v2/removefriend', '790', 791)
+
+		const sent = await sentNotifications()
+		expect(sent).toHaveLength(2)
+		expect(sent.map((n) => n.playerId).sort((a, b) => a - b)).toEqual([790, 791])
+		for (const n of sent) expect(n.data.RelationshipType).toBe(0)
+	})
+
+	test('a no-op friend request notifies nobody', async () => {
+		await mutate('/api/relationships/v2/sendfriendrequest', '810', 811)
+		await resetNotifications()
+
+		// Re-sending an already-outstanding request writes nothing, so nothing is pushed.
+		await mutate('/api/relationships/v2/sendfriendrequest', '810', 811)
+		expect(await sentNotifications()).toEqual([])
+
+		// Likewise accepting something that isn't pending (810 has no request to accept).
+		await mutate('/api/relationships/v2/acceptfriendrequest', '810', 811)
+		expect(await sentNotifications()).toEqual([])
+	})
+
+	test('crossing requests notify both players as Friend', async () => {
+		await mutate('/api/relationships/v2/sendfriendrequest', '820', 821)
+		await resetNotifications()
+		// 821's request crosses 820's → an immediate friendship, both sides told.
+		await mutate('/api/relationships/v2/sendfriendrequest', '821', 820)
+
+		const sent = await sentNotifications()
+		expect(sent).toHaveLength(2)
+		for (const n of sent) expect(n.data.RelationshipType).toBe(3)
 	})
 })

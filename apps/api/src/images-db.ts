@@ -37,10 +37,10 @@ export const SCHEMA_DDL: string[] = [
 ]
 
 /**
- * Saved-image categories from the C# `SavedImageType` enum — the value of a stored
- * image's `Type` (and the client's `imgMeta.savedImageType` on upload). Lives here in
- * the image data layer so both the upload route and the slideshow query share one
- * definition.
+ * Saved-image categories from the reference's `SavedImageType` enum — the value of a
+ * stored image's `Type` (and the client's `imgMeta.savedImageType` on upload). Lives
+ * here in the image data layer so both the upload route and the slideshow query share
+ * one definition.
  */
 export const SavedImageType = {
 	None: 0,

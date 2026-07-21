@@ -14,7 +14,7 @@
  * workers' migrations that share the database).
  */
 
-/** Relationship state from the perspective of the player asking (mirror of the C# enum). */
+/** Relationship state from the perspective of the player asking (mirrors the reference). */
 export enum RelationshipType {
 	None = 0,
 	FriendRequestSent = 1,
@@ -53,13 +53,41 @@ interface RelationshipRow {
 	target_muted: number
 }
 
-/** The per-player relationship projection returned to the client (the C# RelationshipResponse). */
+/** The per-player relationship projection returned to the client (RelationshipResponse). */
 export interface RelationshipResponse {
 	Favorited: number
 	Ignored: number
 	Muted: number
 	PlayerID: number
 	RelationshipType: RelationshipType
+}
+
+/**
+ * The result of a friend-graph mutation. These changes are visible to BOTH players, and
+ * each sees a different projection of the same row (the target of a request sees
+ * `FriendRequestReceived` where the sender sees `Sent`), so callers get both — `self` for
+ * the HTTP response and the acting player's notification, `other` for the target's.
+ *
+ * `changed` is false when the mutation was a no-op: re-sending a request that's already
+ * outstanding, befriending someone you're already friends with, accepting something that
+ * isn't pending. Nothing was written, so no RelationshipChanged notification should go out
+ * (the reference server is likewise silent on its no-change branch).
+ */
+export interface RelationshipChange {
+	self: RelationshipResponse
+	other: RelationshipResponse
+	changed: boolean
+}
+
+/** The projection reported for a pair with no stored relationship. */
+function noneResponse(otherId: number): RelationshipResponse {
+	return {
+		PlayerID: otherId,
+		RelationshipType: RelationshipType.None,
+		Favorited: 0,
+		Ignored: 0,
+		Muted: 0,
+	}
 }
 
 /** Flip a pending request to the other side's point of view; Friend/None are symmetric. */
@@ -85,6 +113,16 @@ function toResponse(row: RelationshipRow, playerId: number): RelationshipRespons
 	}
 }
 
+/** Project a written row for both players in the pair. */
+function toChange(
+	row: RelationshipRow,
+	playerId: number,
+	otherId: number,
+	changed: boolean
+): RelationshipChange {
+	return { self: toResponse(row, playerId), other: toResponse(row, otherId), changed }
+}
+
 /** Find the single row for an unordered pair (either direction), or null. */
 async function findPair(db: D1Database, a: number, b: number): Promise<RelationshipRow | null> {
 	return db
@@ -98,7 +136,10 @@ async function findPair(db: D1Database, a: number, b: number): Promise<Relations
 
 /**
  * All of a player's relationships, projected from that player's point of view.
- * `None` rows are omitted (a removed friend leaves no relationship to report).
+ *
+ * `None` rows are included: they are how an unfriending, or an ignore/mute of someone you
+ * were never friends with, is recorded, and they still carry that player's
+ * favorited/ignored/muted flags. Dropping them would lose the flags on the client.
  */
 export async function getRelationshipsForPlayer(
 	db: D1Database,
@@ -111,9 +152,7 @@ export async function getRelationshipsForPlayer(
 		)
 		.bind(playerId)
 		.all<RelationshipRow>()
-	return results
-		.filter((row) => row.relationship_type !== RelationshipType.None)
-		.map((row) => toResponse(row, playerId))
+	return results.map((row) => toResponse(row, playerId))
 }
 
 /**
@@ -121,14 +160,14 @@ export async function getRelationshipsForPlayer(
  * requester. Inserts a new row or, if one already exists for the pair (either
  * direction), rewrites it so the requester is normalized to `requesterId` and
  * the flags are preserved for whichever side each player is on. Returns the
- * relationship from `requesterId`'s point of view.
+ * row as written, for the caller to project onto whichever side it needs.
  */
 async function upsertPair(
 	db: D1Database,
 	requesterId: number,
 	targetId: number,
 	type: RelationshipType
-): Promise<RelationshipResponse> {
+): Promise<RelationshipRow> {
 	const existing = await findPair(db, requesterId, targetId)
 	if (!existing) {
 		await db
@@ -138,7 +177,17 @@ async function upsertPair(
 			)
 			.bind(requesterId, targetId, type)
 			.run()
-		return { PlayerID: targetId, RelationshipType: type, Favorited: 0, Ignored: 0, Muted: 0 }
+		return {
+			requester_id: requesterId,
+			target_id: targetId,
+			relationship_type: type,
+			requester_favorited: 0,
+			requester_ignored: 0,
+			requester_muted: 0,
+			target_favorited: 0,
+			target_ignored: 0,
+			target_muted: 0,
+		}
 	}
 
 	// Keep each player's flags with that player as the row is normalized to
@@ -175,93 +224,117 @@ async function upsertPair(
 		)
 		.run()
 	return {
-		PlayerID: targetId,
-		RelationshipType: type,
-		Favorited: reqFlags.favorited,
-		Ignored: reqFlags.ignored,
-		Muted: reqFlags.muted,
+		requester_id: requesterId,
+		target_id: targetId,
+		relationship_type: type,
+		requester_favorited: reqFlags.favorited,
+		requester_ignored: reqFlags.ignored,
+		requester_muted: reqFlags.muted,
+		target_favorited: tgtFlags.favorited,
+		target_ignored: tgtFlags.ignored,
+		target_muted: tgtFlags.muted,
 	}
 }
 
 /**
  * Send a friend request from `requesterId` to `targetId`. If the target already
  * has a pending request out to the requester, the two become friends instead
- * (the request crosses an existing one). Already-friends is left unchanged.
- * Returns the relationship from the requester's point of view.
+ * (the request crosses an existing one). Already-friends, and re-sending a request
+ * that's already outstanding, are no-ops.
  */
 export async function sendFriendRequest(
 	db: D1Database,
 	requesterId: number,
 	targetId: number
-): Promise<RelationshipResponse> {
+): Promise<RelationshipChange> {
 	const existing = await findPair(db, requesterId, targetId)
 	if (existing) {
-		if (existing.relationship_type === RelationshipType.Friend) {
-			return toResponse(existing, requesterId)
+		// Already friends, or we already have a request out to them — nothing to write.
+		if (
+			existing.relationship_type === RelationshipType.Friend ||
+			(existing.requester_id === requesterId &&
+				existing.relationship_type === RelationshipType.FriendRequestSent)
+		) {
+			return toChange(existing, requesterId, targetId, false)
 		}
 		// The target already requested us → crossing requests become a friendship.
 		if (
 			existing.requester_id === targetId &&
 			existing.relationship_type === RelationshipType.FriendRequestSent
 		) {
-			return upsertPair(db, requesterId, targetId, RelationshipType.Friend)
+			const row = await upsertPair(db, requesterId, targetId, RelationshipType.Friend)
+			return toChange(row, requesterId, targetId, true)
 		}
 	}
-	return upsertPair(db, requesterId, targetId, RelationshipType.FriendRequestSent)
+	const row = await upsertPair(db, requesterId, targetId, RelationshipType.FriendRequestSent)
+	return toChange(row, requesterId, targetId, true)
 }
 
 /**
  * `accepterId` accepts a pending friend request from `otherId`. Only upgrades to
- * Friend when a request from `otherId` is actually pending; otherwise the
- * current state is returned unchanged. Returns the relationship from the
- * accepter's point of view.
+ * Friend when a request from `otherId` is actually pending; otherwise the current
+ * state is returned as a no-op. (The reference server answers 403 there instead;
+ * we stay lenient, but either way nothing changed.)
  */
 export async function acceptFriendRequest(
 	db: D1Database,
 	accepterId: number,
 	otherId: number
-): Promise<RelationshipResponse> {
+): Promise<RelationshipChange> {
 	const existing = await findPair(db, accepterId, otherId)
 	if (
 		existing &&
 		existing.requester_id === otherId &&
 		existing.relationship_type === RelationshipType.FriendRequestSent
 	) {
-		// upsertPair projects for the requester (otherId); the accepter is the target,
-		// so re-project the written row from the accepter's point of view.
-		await upsertPair(db, otherId, accepterId, RelationshipType.Friend)
-		const updated = await findPair(db, accepterId, otherId)
-		if (updated) return toResponse(updated, accepterId)
+		const row = await upsertPair(db, otherId, accepterId, RelationshipType.Friend)
+		return toChange(row, accepterId, otherId, true)
 	}
 	return existing
-		? toResponse(existing, accepterId)
-		: { PlayerID: otherId, RelationshipType: RelationshipType.None, Favorited: 0, Ignored: 0, Muted: 0 }
+		? toChange(existing, accepterId, otherId, false)
+		: { self: noneResponse(otherId), other: noneResponse(accepterId), changed: false }
 }
 
 /**
  * Directly make `requesterId` and `targetId` friends (no pending request step).
- * Returns the relationship from the requester's point of view.
  */
 export async function addFriend(
 	db: D1Database,
 	requesterId: number,
 	targetId: number
-): Promise<RelationshipResponse> {
-	return upsertPair(db, requesterId, targetId, RelationshipType.Friend)
+): Promise<RelationshipChange> {
+	const existing = await findPair(db, requesterId, targetId)
+	if (existing && existing.relationship_type === RelationshipType.Friend) {
+		return toChange(existing, requesterId, targetId, false)
+	}
+	const row = await upsertPair(db, requesterId, targetId, RelationshipType.Friend)
+	return toChange(row, requesterId, targetId, true)
 }
 
 /**
  * Remove any relationship between the two players (unfriend / cancel request /
- * decline). Deletes the row entirely so neither side reports a relationship.
+ * decline).
+ *
+ * The row is set to `None` rather than deleted, matching the reference server: the
+ * per-player favorited/ignored/muted flags live on that row and must survive an
+ * unfriending (someone you ignored stays ignored after you drop them as a friend).
  */
-export async function removeFriend(db: D1Database, a: number, b: number): Promise<void> {
+export async function removeFriend(
+	db: D1Database,
+	playerId: number,
+	otherId: number
+): Promise<RelationshipChange> {
 	await db
 		.prepare(
-			`DELETE FROM relationship
+			`UPDATE relationship SET relationship_type = ?3
 			 WHERE (requester_id = ?1 AND target_id = ?2) OR (requester_id = ?2 AND target_id = ?1)`
 		)
-		.bind(a, b)
+		.bind(playerId, otherId, RelationshipType.None)
 		.run()
+	const updated = await findPair(db, playerId, otherId)
+	return updated
+		? toChange(updated, playerId, otherId, true)
+		: { self: noneResponse(otherId), other: noneResponse(playerId), changed: true }
 }
 
 /** A per-player relationship flag — each is stored on the player's own side of the row. */
@@ -308,7 +381,5 @@ export async function setRelationshipFlag(
 	}
 
 	const updated = await findPair(db, playerId, otherId)
-	return updated
-		? toResponse(updated, playerId)
-		: { PlayerID: otherId, RelationshipType: RelationshipType.None, Favorited: 0, Ignored: 0, Muted: 0 }
+	return updated ? toResponse(updated, playerId) : noneResponse(otherId)
 }
