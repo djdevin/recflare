@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { describeRoute } from 'hono-openapi'
 
 import charadesWords from '../../static/charades.json'
+import communityBoard from '../../static/community-board.json'
 import {
 	BareString,
 	idParam,
@@ -121,12 +122,12 @@ export const gameplayRoutes = new Hono<App>({ strict: false })
 			tags: ['Gameplay'],
 			summary: 'The current community board',
 			description:
-				'The rotating community board on the home screen. Not hydrated yet, so it is an ' +
-				'empty object.',
-			responses: { 200: json(JsonObject, 'An empty object') },
+				'The rotating community board on the home screen — featured player, featured room ' +
+				'group, announcement and image strips. Served verbatim from a static blob.',
+			responses: { 200: json(JsonObject, 'The community board') },
 		}),
-		(c) => c.json({})
-	) // TODO: hydrate from JSON/communityboard.json
+		(c) => c.json(communityBoard)
+	)
 	.get(
 		'/api/playerevents/v1/all',
 		describeRoute({
