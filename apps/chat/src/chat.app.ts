@@ -127,7 +127,12 @@ async function sendToThread(c: Context<App>) {
 		contents === undefined || contents === ''
 			? null
 			: await postMessage(c.env.DB, { chatThreadId, senderPlayerId: id, contents })
-	if (posted !== null) await pushChatMessage(c, posted)
+	if (posted !== null) {
+		await pushChatMessage(c, posted)
+		// Sending is reading: the reference answers with `lastReadMessageId` already at the
+		// message just posted, so the sender's own thread doesn't come back unread.
+		await markThreadRead(c.env.DB, chatThreadId, id, posted.chatMessageId)
+	}
 
 	const thread = await threadWithMessages(c, chatThreadId, id, DEFAULT_THREAD_MESSAGE_COUNT)
 	return c.json({
@@ -261,7 +266,10 @@ const app = new Hono<App>()
 			contents === undefined || contents === ''
 				? null
 				: await postMessage(c.env.DB, { chatThreadId, senderPlayerId: id, contents })
-		if (posted !== null) await pushChatMessage(c, posted)
+		if (posted !== null) {
+			await pushChatMessage(c, posted)
+			await markThreadRead(c.env.DB, chatThreadId, id, posted.chatMessageId)
+		}
 
 		const thread = await getThreadForPlayer(c.env.DB, chatThreadId, id)
 		if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)

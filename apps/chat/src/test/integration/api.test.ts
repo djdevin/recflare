@@ -102,6 +102,7 @@ describe('chat endpoints', () => {
 				playerIds: [player, 881002],
 				lastReadMessageId: 0,
 				chatThreadName: '',
+				chatThreadType: 0,
 				snoozedUntil: null,
 				isFavorited: false,
 			},
@@ -249,6 +250,7 @@ describe('thread storage', () => {
 			playerIds: [9489959, VIEWER],
 			lastReadMessageId: latest.chatMessageId,
 			chatThreadName: '',
+			chatThreadType: 0,
 			snoozedUntil: null,
 			isFavorited: false,
 		})
@@ -939,7 +941,13 @@ describe('POST /thread/:id', () => {
 
 		const body = (await res.json()) as {
 			chatResult: number
-			chatThread: { chatThreadId: number; playerIds: number[]; messages: ChatMessage[] }
+			chatThread: {
+				chatThreadId: number
+				playerIds: number[]
+				lastReadMessageId: number
+				chatThreadType: number
+				messages: ChatMessage[]
+			}
 		}
 		expect(body.chatResult).toBe(0)
 
@@ -954,6 +962,9 @@ describe('POST /thread/:id', () => {
 			moderationState: 0,
 		})
 		expect(body.chatThread.messages[1]).toMatchObject({ senderPlayerId: SYSTEM_SENDER_ID })
+
+		// Sending marks the thread read for the sender, so it doesn't come back unread.
+		expect(body.chatThread.lastReadMessageId).toBe(body.chatThread.messages[0]!.chatMessageId)
 
 		// And it's stored, not just echoed.
 		expect(await getThreadMessages(env.DB, chatThreadId)).toEqual(body.chatThread.messages)

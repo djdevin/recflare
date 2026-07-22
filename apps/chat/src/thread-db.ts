@@ -69,9 +69,19 @@ export interface ChatThread {
 	 * GetChatBetweenPlayers) and falls back to naming the members when it's blank.
 	 */
 	chatThreadName: string
+	/**
+	 * Which kind of conversation this is. Every thread the reference serves here comes back
+	 * as 0, and nothing in the worker distinguishes DMs from groups, so it's a constant —
+	 * but the field itself has to be present: the client deserializes it as a non-nullable
+	 * int and drops the whole response when it's missing.
+	 */
+	chatThreadType: number
 	snoozedUntil: string | null
 	isFavorited: boolean
 }
+
+/** The only thread type the reference ever serves. See `ChatThread.chatThreadType`. */
+const CHAT_THREAD_TYPE_DEFAULT = 0
 
 /** The joined row backing a rendered thread, before it's shaped for the client. */
 interface ThreadRow {
@@ -109,6 +119,7 @@ function toThread(row: ThreadRow): ChatThread {
 		lastReadMessageId: row.last_read_message_id ?? 0,
 		// Null in the column means "unnamed"; the client dereferences it unchecked.
 		chatThreadName: row.chat_thread_name ?? '',
+		chatThreadType: CHAT_THREAD_TYPE_DEFAULT,
 		snoozedUntil: row.snoozed_until,
 		isFavorited: row.is_favorited !== 0,
 	}
