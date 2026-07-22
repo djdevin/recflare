@@ -1990,4 +1990,16 @@ describe('openapi', () => {
 		const raw = await res.text()
 		expect(raw.match(/\$ref/g)).toBeNull()
 	})
+
+	// `z.int()` carries the safe-integer range as its bounds, which Scalar would
+	// otherwise show as the example value for every integer field (-9007199254740991).
+	// withCleanSpec() supplies a placeholder instead; this guards the wrapper staying
+	// wired up.
+	test('integer fields carry a placeholder example', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		const raw = await res.text()
+		const integers = raw.match(/"type":"integer"/g) ?? []
+		expect(integers.length).toBeGreaterThan(0)
+		expect(raw.match(/"example":12345/g)?.length).toBe(integers.length)
+	})
 })

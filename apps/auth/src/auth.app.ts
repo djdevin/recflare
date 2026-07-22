@@ -18,7 +18,7 @@ import {
 	setPresence,
 	verifyPassword,
 } from '@repo/domain'
-import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { intVar, logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { generateToken, TOKEN_TTL_SECONDS, validateAndGetAccountId } from '@repo/jwt'
 
 import {
@@ -720,36 +720,38 @@ const app = new Hono<App>()
 app.get(
 	'/openapi.json',
 	describeRoute({ hide: true }),
-	openAPIRouteHandler(app, {
-		documentation: {
-			info: {
-				title: 'recflare auth',
-				version: '1.0.0',
-				description: [
-					'Authentication and token issuance for recflare, a private-server reimplementation',
-					'of the Rec Room backend.',
-					'',
-					'The shapes here are **reverse-engineered from the game client**, which is the only',
-					'real consumer. They record observed behaviour rather than a designed contract, and',
-					'the handlers are deliberately lenient: missing or malformed fields generally fall',
-					'through to a graceful path instead of erroring. Nothing in this spec is enforced at',
-					'runtime, so treat a field marked required as "the client always sends it", not "the',
-					'server rejects it if absent".',
-				].join('\n'),
-			},
-			servers: [{ url: 'https://auth.recflare.net', description: 'Production' }],
-			components: {
-				securitySchemes: {
-					bearerAuth: {
-						type: 'http',
-						scheme: 'bearer',
-						bearerFormat: 'JWT',
-						description: 'An `access_token` from `POST /connect/token`.',
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare auth',
+					version: '1.0.0',
+					description: [
+						'Authentication and token issuance for recflare, a private-server reimplementation',
+						'of the Rec Room backend.',
+						'',
+						'The shapes here are **reverse-engineered from the game client**, which is the only',
+						'real consumer. They record observed behaviour rather than a designed contract, and',
+						'the handlers are deliberately lenient: missing or malformed fields generally fall',
+						'through to a graceful path instead of erroring. Nothing in this spec is enforced at',
+						'runtime, so treat a field marked required as "the client always sends it", not "the',
+						'server rejects it if absent".',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://auth.recflare.net', description: 'Production' }],
+				components: {
+					securitySchemes: {
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							bearerFormat: 'JWT',
+							description: 'An `access_token` from `POST /connect/token`.',
+						},
 					},
 				},
 			},
-		},
-	})
+		})
+	)
 )
 
 export default app

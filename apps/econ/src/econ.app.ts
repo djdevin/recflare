@@ -3,7 +3,7 @@ import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { consumeGift, createGift, getGift, getPendingGifts } from '@repo/domain'
-import { intVar, logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { intVar, logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 // The notification-type ids the hub carries (owned by the `notify` worker). Imported
@@ -1200,37 +1200,39 @@ const app = new Hono<App>({ strict: false })
 app.get(
 	'/openapi.json',
 	describeRoute({ hide: true }),
-	openAPIRouteHandler(app, {
-		documentation: {
-			info: {
-				title: 'recflare econ',
-				version: '1.0.0',
-				description: [
-					'Avatar and economy endpoints for recflare, a private-server reimplementation of the',
-					'Rec Room backend. The client calls these on the `econ` host; many are also served by',
-					'the `api` worker. Storefront catalogs are static assets (`sf{N}.json`); balances,',
-					'inventory, consumables, saved outfits and gift boxes are D1-backed.',
-					'',
-					'The shapes here are **reverse-engineered from the game client**, which is the only',
-					'real consumer. They record observed behaviour, not a designed contract; the handlers',
-					'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
-					'runtime — treat a field marked required as "the client always sends it", not "the',
-					'server rejects it if absent".',
-				].join('\n'),
-			},
-			servers: [{ url: 'https://econ.recflare.net', description: 'Production' }],
-			components: {
-				securitySchemes: {
-					bearerAuth: {
-						type: 'http',
-						scheme: 'bearer',
-						bearerFormat: 'JWT',
-						description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare econ',
+					version: '1.0.0',
+					description: [
+						'Avatar and economy endpoints for recflare, a private-server reimplementation of the',
+						'Rec Room backend. The client calls these on the `econ` host; many are also served by',
+						'the `api` worker. Storefront catalogs are static assets (`sf{N}.json`); balances,',
+						'inventory, consumables, saved outfits and gift boxes are D1-backed.',
+						'',
+						'The shapes here are **reverse-engineered from the game client**, which is the only',
+						'real consumer. They record observed behaviour, not a designed contract; the handlers',
+						'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
+						'runtime — treat a field marked required as "the client always sends it", not "the',
+						'server rejects it if absent".',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://econ.recflare.net', description: 'Production' }],
+				components: {
+					securitySchemes: {
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							bearerFormat: 'JWT',
+							description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+						},
 					},
 				},
 			},
-		},
-	})
+		})
+	)
 )
 
 export default app

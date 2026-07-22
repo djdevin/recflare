@@ -23,7 +23,7 @@ import {
 	setPresence,
 	setRoomInstanceInProgress,
 } from '@repo/domain'
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import {
@@ -1084,38 +1084,40 @@ async function sweepExpiredPresence(env: Env): Promise<void> {
 app.get(
 	'/openapi.json',
 	describeRoute({ hide: true }),
-	openAPIRouteHandler(app, {
-		documentation: {
-			info: {
-				title: 'recflare match',
-				version: '1.0.0',
-				description: [
-					'Matchmaking and presence for recflare, a private-server reimplementation of the Rec',
-					'Room backend. Rooms and room instances are D1-backed (matchmaking finds or creates a',
-					'`room_instance` per session); presence — the instance each player is currently in —',
-					'lives in the shared `presence` table and expires on a TTL. A cron sweep clears',
-					'expired presence and frees up instances a crashed player never left.',
-					'',
-					'The shapes here are **reverse-engineered from the game client**, which is the only',
-					'real consumer. They record observed behaviour, not a designed contract; the handlers',
-					'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
-					'runtime — treat a field marked required as "the client always sends it", not "the',
-					'server rejects it if absent".',
-				].join('\n'),
-			},
-			servers: [{ url: 'https://match.recflare.net', description: 'Production' }],
-			components: {
-				securitySchemes: {
-					bearerAuth: {
-						type: 'http',
-						scheme: 'bearer',
-						bearerFormat: 'JWT',
-						description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare match',
+					version: '1.0.0',
+					description: [
+						'Matchmaking and presence for recflare, a private-server reimplementation of the Rec',
+						'Room backend. Rooms and room instances are D1-backed (matchmaking finds or creates a',
+						'`room_instance` per session); presence — the instance each player is currently in —',
+						'lives in the shared `presence` table and expires on a TTL. A cron sweep clears',
+						'expired presence and frees up instances a crashed player never left.',
+						'',
+						'The shapes here are **reverse-engineered from the game client**, which is the only',
+						'real consumer. They record observed behaviour, not a designed contract; the handlers',
+						'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
+						'runtime — treat a field marked required as "the client always sends it", not "the',
+						'server rejects it if absent".',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://match.recflare.net', description: 'Production' }],
+				components: {
+					securitySchemes: {
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							bearerFormat: 'JWT',
+							description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+						},
 					},
 				},
 			},
-		},
-	})
+		})
+	)
 )
 
 // The HTTP surface is a standard Hono app, exported by name so it can be mounted

@@ -11,7 +11,7 @@ import {
 	searchAccounts,
 	updateAccount,
 } from '@repo/domain'
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import {
@@ -638,36 +638,38 @@ const app = new Hono<App>()
 app.get(
 	'/openapi.json',
 	describeRoute({ hide: true }),
-	openAPIRouteHandler(app, {
-		documentation: {
-			info: {
-				title: 'recflare accounts',
-				version: '1.0.0',
-				description: [
-					'Account reads, profile mutations and lookups for recflare, a private-server',
-					'reimplementation of the Rec Room backend. Accounts live in the shared `recflare`',
-					'D1 database, whose `account` schema is owned by the `auth` worker.',
-					'',
-					'The shapes here are **reverse-engineered from the game client**, which is the only',
-					'real consumer. They record observed behaviour, not a designed contract; the handlers',
-					'are lenient and reads fall back to a synthesized default account rather than 404.',
-					'Nothing in this spec is enforced at runtime — treat a field marked required as "the',
-					'client always sends it", not "the server rejects it if absent".',
-				].join('\n'),
-			},
-			servers: [{ url: 'https://accounts.recflare.net', description: 'Production' }],
-			components: {
-				securitySchemes: {
-					bearerAuth: {
-						type: 'http',
-						scheme: 'bearer',
-						bearerFormat: 'JWT',
-						description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare accounts',
+					version: '1.0.0',
+					description: [
+						'Account reads, profile mutations and lookups for recflare, a private-server',
+						'reimplementation of the Rec Room backend. Accounts live in the shared `recflare`',
+						'D1 database, whose `account` schema is owned by the `auth` worker.',
+						'',
+						'The shapes here are **reverse-engineered from the game client**, which is the only',
+						'real consumer. They record observed behaviour, not a designed contract; the handlers',
+						'are lenient and reads fall back to a synthesized default account rather than 404.',
+						'Nothing in this spec is enforced at runtime — treat a field marked required as "the',
+						'client always sends it", not "the server rejects it if absent".',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://accounts.recflare.net', description: 'Production' }],
+				components: {
+					securitySchemes: {
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							bearerFormat: 'JWT',
+							description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+						},
 					},
 				},
 			},
-		},
-	})
+		})
+	)
 )
 
 export default app
