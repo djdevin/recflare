@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute } from 'hono-openapi'
 
 import { authedId, unauthorized } from '../http'
 import {
@@ -20,6 +21,34 @@ import {
 	toSaveResult,
 	updateInvention,
 } from '../inventions-db'
+import {
+	AUTHED,
+	BareBoolean,
+	CustomAvatarItemsPage,
+	ErrorResponse,
+	form,
+	GeneratedGift,
+	GenerateGiftRequest,
+	idParam,
+	intQuery,
+	InventionDetails,
+	InventionDto,
+	InventionPersonalDetails,
+	InventionSaveResult,
+	InventionVersionDto,
+	json,
+	JsonArray,
+	jsonBody,
+	pageParams,
+	SaveInventionRequest,
+	SetTagsRequest,
+	SetTagsResponse,
+	stringQuery,
+	SuccessValueEnvelope,
+	TagFilters,
+	UNAUTHORIZED_RESPONSE,
+	UpdatePriceRequest,
+} from '../openapi'
 
 import type { Context } from 'hono'
 import type { App } from '../context'
@@ -52,129 +81,287 @@ async function creatorsInvention(
 // gift-box consume live in the `econ` worker, which the client calls on the econ host
 // — not here. Only the gift `generate` action remains on this worker.
 export const avatarRoutes = new Hono<App>({ strict: false })
-	.post('/api/avatar/v2/gifts/generate', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.post(
+		'/api/avatar/v2/gifts/generate',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Generate a gift box',
+			description:
+				'Mint the gift box a player earned (levelling up, a room reward). With no ' +
+				'EarnableRewards catalog wired up this always falls back to a token gift of a ' +
+				'random amount, and the box is not persisted — its `Id` is 0 and it cannot be ' +
+				'opened through the `econ` worker’s consume endpoint.',
+			security: AUTHED,
+			requestBody: form(GenerateGiftRequest, 'Where the gift was earned'),
+			responses: {
+				200: json(GeneratedGift, 'The generated (unpersisted) gift'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-		const giftContext =
-			typeof body.GiftContext === 'string' ? Number.parseInt(body.GiftContext, 10) || 0 : 0
-		const message = typeof body.Message === 'string' ? body.Message : ''
-		const xp = typeof body.Xp === 'string' ? Number.parseInt(body.Xp, 10) || 0 : 0
+			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+			const giftContext =
+				typeof body.GiftContext === 'string' ? Number.parseInt(body.GiftContext, 10) || 0 : 0
+			const message = typeof body.Message === 'string' ? body.Message : ''
+			const xp = typeof body.Xp === 'string' ? Number.parseInt(body.Xp, 10) || 0 : 0
 
-		// No EarnableRewards binding → always fall back to a token gift.
-		const tokenAmounts = [10, 25, 50, 100, 250, 500]
-		const currency = tokenAmounts[Math.floor(Math.random() * tokenAmounts.length)]
+			// No EarnableRewards binding → always fall back to a token gift.
+			const tokenAmounts = [10, 25, 50, 100, 250, 500]
+			const currency = tokenAmounts[Math.floor(Math.random() * tokenAmounts.length)]
 
-		return c.json({
-			Id: 0, // TODO: real id once gifts are persisted
-			FromPlayerId: 1,
-			ConsumableItemDesc: '',
-			AvatarItemDesc: '',
-			FriendlyName: '',
-			AvatarItemType: 0,
-			EquipmentPrefabName: '',
-			EquipmentModificationGuid: '',
-			CurrencyType: 2,
-			Currency: currency,
-			Xp: xp,
-			Level: 0,
-			Platform: -1,
-			PlatformsToSpawnOn: -1,
-			BalanceType: 0,
-			GiftContext: giftContext,
-			GiftRarity: 20,
-			Message: message,
-		})
-	})
+			return c.json({
+				Id: 0, // TODO: real id once gifts are persisted
+				FromPlayerId: 1,
+				ConsumableItemDesc: '',
+				AvatarItemDesc: '',
+				FriendlyName: '',
+				AvatarItemType: 0,
+				EquipmentPrefabName: '',
+				EquipmentModificationGuid: '',
+				CurrencyType: 2,
+				Currency: currency,
+				Xp: xp,
+				Level: 0,
+				Platform: -1,
+				PlatformsToSpawnOn: -1,
+				BalanceType: 0,
+				GiftContext: giftContext,
+				GiftRarity: 20,
+				Message: message,
+			})
+		}
+	)
 
 	// Custom avatar item gates — real Rec Room client endpoints with no backing
 	// implementation yet; we enable them. Flip to `false` to disable the
 	// corresponding flow. `isCreationAllowedForAccount` wraps its answer in the
 	// success/value envelope; the other two return a bare JSON boolean.
-	.get('/api/customAvatarItems/v1/isCreationAllowedForAccount', (c) =>
-		c.json({ success: true, value: null })
+	.get(
+		'/api/customAvatarItems/v1/isCreationAllowedForAccount',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'May this account create custom items?',
+			description:
+				'A feature gate with no backing implementation — we answer yes. Note this one ' +
+				'wraps its answer in the `{ success, value }` envelope while the two gates below ' +
+				'return a bare boolean.',
+			responses: { 200: json(SuccessValueEnvelope, 'Allowed') },
+		}),
+		(c) => c.json({ success: true, value: null })
 	)
-	.get('/api/customAvatarItems/v1/isCreationEnabled', (c) => c.json(true))
-	.get('/api/customAvatarItems/v1/isRenderingEnabled', (c) => c.json(true))
+	.get(
+		'/api/customAvatarItems/v1/isCreationEnabled',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Is custom-item creation enabled?',
+			description: 'A server-wide feature gate. Enabled; flip to `false` to disable the flow.',
+			responses: { 200: json(BareBoolean, 'A bare `true`') },
+		}),
+		(c) => c.json(true)
+	)
+	.get(
+		'/api/customAvatarItems/v1/isRenderingEnabled',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Is custom-item rendering enabled?',
+			description: 'A server-wide feature gate. Enabled; flip to `false` to disable the flow.',
+			responses: { 200: json(BareBoolean, 'A bare `true`') },
+		}),
+		(c) => c.json(true)
+	)
 
 	// The featured custom-avatar-item feed. No curated items yet → an empty list.
-	.get('/api/customAvatarItems/v1/featured', (c) => c.json([]))
+	.get(
+		'/api/customAvatarItems/v1/featured',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Featured custom avatar items',
+			description: 'The curated feed. Nothing is curated yet, so it is empty.',
+			responses: { 200: json(JsonArray, 'An empty list') },
+		}),
+		(c) => c.json([])
+	)
 
 	// The "hot" (trending) custom-avatar-item feed. No items yet → an empty list.
-	.get('/api/customAvatarItems/v1/hot', (c) => c.json([]))
+	.get(
+		'/api/customAvatarItems/v1/hot',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Trending custom avatar items',
+			description: 'The “hot” feed. No custom items exist yet, so it is empty.',
+			responses: { 200: json(JsonArray, 'An empty list') },
+		}),
+		(c) => c.json([])
+	)
 
 	// Custom avatar items created by a given account. No storage yet → an empty
 	// paginated result (matches the econ `customAvatarItems/v1/owned` shape).
-	.get('/api/customAvatarItems/v2/fromCreator/:accountId{[0-9]+}', (c) =>
-		c.json({ Results: [], TotalResults: 0 })
+	.get(
+		'/api/customAvatarItems/v2/fromCreator/:accountId{[0-9]+}',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'A creator’s custom avatar items',
+			description:
+				'The items an account has authored. Nothing stores custom items yet, so this is an ' +
+				'empty page — in the same shape as the `econ` worker’s `customAvatarItems/v1/owned`.',
+			parameters: [idParam('accountId', 'Creator account id')],
+			responses: { 200: json(CustomAvatarItemsPage, 'An empty page') },
+		}),
+		(c) => c.json({ Results: [], TotalResults: 0 })
 	)
 
 	// A single invention by id (`?inventionId=…`). Returns the stored RRInvention,
 	// or 404 when there's no such invention.
-	.get('/api/inventions/v1', async (c) => {
-		const inventionId = Number.parseInt(c.req.query('inventionId') ?? '', 10)
-		if (Number.isNaN(inventionId)) return c.json({ error: 'inventionId is required' }, 400)
-		const invention = await getInventionById(c.env.DB, inventionId)
-		return invention ? c.json(invention) : c.notFound()
-	})
+	.get(
+		'/api/inventions/v1',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'One invention by id',
+			description: 'The stored `RRInvention`. Public — an unpublished invention is served too.',
+			parameters: [intQuery('inventionId', 'Invention id; required')],
+			responses: {
+				200: json(InventionDto, 'The invention'),
+				400: json(ErrorResponse, 'Missing or non-numeric inventionId'),
+				404: { description: 'No such invention' },
+			},
+		}),
+		async (c) => {
+			const inventionId = Number.parseInt(c.req.query('inventionId') ?? '', 10)
+			if (Number.isNaN(inventionId)) return c.json({ error: 'inventionId is required' }, 400)
+			const invention = await getInventionById(c.env.DB, inventionId)
+			return invention ? c.json(invention) : c.notFound()
+		}
+	)
 
 	// The tag filter chips on the invention browse screen. Derived from the tags in
 	// use on published inventions — most popular first, top few pinned. Public.
-	.get('/api/inventions/v1/tagfilters', async (c) => c.json(await getInventionTagFilters(c.env.DB)))
+	.get(
+		'/api/inventions/v1/tagfilters',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Invention browse filter chips',
+			description:
+				'The filter chips on the invention browse screen, derived from the tags actually in ' +
+				'use on published inventions — most popular first, the top few pinned. ' +
+				'`TrendingFilters` is null: that needs recent-activity data we do not keep, and the ' +
+				'client treats null as absent.',
+			responses: { 200: json(TagFilters, 'The chips in use') },
+		}),
+		async (c) => c.json(await getInventionTagFilters(c.env.DB))
+	)
 
 	// A batch of inventions by id (`?id=1&id=2`, and each `id` may itself be a
 	// comma-separated list). Unknown ids are dropped rather than 404ing, and an empty
 	// request is an empty list. Auth is optional and only widens what you see: an
 	// unpublished invention comes back only to its creator. Bare array.
-	.get('/api/inventions/v2/batch', async (c) => {
-		const ids = c.req
-			.queries('id')
-			?.flatMap((raw) => raw.split(','))
-			.map((raw) => Number.parseInt(raw.trim(), 10))
-			.filter((id) => !Number.isNaN(id))
-		if (ids === undefined || ids.length === 0) return c.json([])
+	.get(
+		'/api/inventions/v2/batch',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Inventions by id, in bulk',
+			description:
+				'Look up several inventions at once. Unknown ids are dropped rather than 404ing, ' +
+				'and an empty request is an empty list. Auth is optional and only widens what you ' +
+				'see: an unpublished invention comes back only to its creator.',
+			parameters: [intQuery('id', 'Repeatable; each value may be a comma-separated list of ids')],
+			responses: { 200: json(InventionDto.array(), 'The inventions the caller may see') },
+		}),
+		async (c) => {
+			const ids = c.req
+				.queries('id')
+				?.flatMap((raw) => raw.split(','))
+				.map((raw) => Number.parseInt(raw.trim(), 10))
+				.filter((id) => !Number.isNaN(id))
+			if (ids === undefined || ids.length === 0) return c.json([])
 
-		const playerId = await authedId(c)
-		const inventions = await getInventionsByIds(c.env.DB, ids)
-		return c.json(
-			inventions.filter(
-				(i) => i.IsPublished || (playerId !== null && i.CreatorPlayerId === playerId)
+			const playerId = await authedId(c)
+			const inventions = await getInventionsByIds(c.env.DB, ids)
+			return c.json(
+				inventions.filter(
+					(i) => i.IsPublished || (playerId !== null && i.CreatorPlayerId === playerId)
+				)
 			)
-		)
-	})
+		}
+	)
 
 	// A room's inventions (`?id=76`) — published inventions created in that room,
 	// newest first. Paginated via skip/take (take defaults to 100). Bare array.
-	.get('/api/inventions/v1/room', async (c) => {
-		const roomId = Number.parseInt(c.req.query('id') ?? '', 10)
-		if (Number.isNaN(roomId)) return c.json({ error: 'id is required' }, 400)
-		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
-		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-		return c.json(await getInventionsByRoom(c.env.DB, roomId, skip, take))
-	})
+	.get(
+		'/api/inventions/v1/room',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'A room’s inventions',
+			description: 'Published inventions created in that room, newest first.',
+			parameters: [intQuery('id', 'Room id; required'), ...pageParams(100)],
+			responses: {
+				200: json(InventionDto.array(), 'The room’s inventions'),
+				400: json(ErrorResponse, 'Missing or non-numeric id'),
+			},
+		}),
+		async (c) => {
+			const roomId = Number.parseInt(c.req.query('id') ?? '', 10)
+			if (Number.isNaN(roomId)) return c.json({ error: 'id is required' }, 400)
+			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+			const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+			return c.json(await getInventionsByRoom(c.env.DB, roomId, skip, take))
+		}
+	)
 
 	// The signed-in player's own relationship to an invention (`/personaldetails/2`)
 	// — just whether they're cheering it. We store no cheers (nothing can cheer an
 	// invention yet), so this is always false; it stays a 200 for signed-out callers
 	// too, since the client only reads the flag.
-	.get('/api/inventions/v1/personaldetails/:inventionId{[0-9]+}', (c) =>
-		c.json({ IsCheering: false })
+	.get(
+		'/api/inventions/v1/personaldetails/:inventionId{[0-9]+}',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'The caller’s own relation to an invention',
+			description:
+				'Just whether the caller is cheering it. We store no cheers, so it is always false ' +
+				'— and this stays a 200 for signed-out callers too, since the client only reads the ' +
+				'flag.',
+			parameters: [idParam('inventionId', 'Invention id')],
+			responses: { 200: json(InventionPersonalDetails, 'Always not cheering') },
+		}),
+		(c) => c.json({ IsCheering: false })
 	)
 
 	// A single version of an invention (`?inventionId=…&version=…`) — the bare
 	// RRInventionVersion, which carries the blob name the client downloads. Public.
 	// Only the current version exists (nothing writes version history yet), so any
 	// other version number 404s rather than naming a blob that isn't there.
-	.get('/api/inventions/v1/version', async (c) => {
-		const inventionId = Number.parseInt(c.req.query('inventionId') ?? '', 10)
-		if (Number.isNaN(inventionId)) return c.json({ error: 'inventionId is required' }, 400)
-		const versionNumber = Number.parseInt(c.req.query('version') ?? '', 10)
-		if (Number.isNaN(versionNumber)) return c.json({ error: 'version is required' }, 400)
+	.get(
+		'/api/inventions/v1/version',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'One version of an invention',
+			description:
+				'The bare `RRInventionVersion`, which carries the blob name the client downloads. ' +
+				'Only the current version exists — nothing writes version history yet — so any ' +
+				'other version number 404s rather than naming a blob that is not there.',
+			parameters: [
+				intQuery('inventionId', 'Invention id; required'),
+				intQuery('version', 'Version number; required'),
+			],
+			responses: {
+				200: json(InventionVersionDto, 'The version'),
+				400: json(ErrorResponse, 'Missing inventionId or version'),
+				404: { description: 'No such invention, or not the current version' },
+			},
+		}),
+		async (c) => {
+			const inventionId = Number.parseInt(c.req.query('inventionId') ?? '', 10)
+			if (Number.isNaN(inventionId)) return c.json({ error: 'inventionId is required' }, 400)
+			const versionNumber = Number.parseInt(c.req.query('version') ?? '', 10)
+			if (Number.isNaN(versionNumber)) return c.json({ error: 'version is required' }, 400)
 
-		const version = await getInventionVersion(c.env.DB, inventionId, versionNumber)
-		return version === null ? c.notFound() : c.json(version)
-	})
+			const version = await getInventionVersion(c.env.DB, inventionId, versionNumber)
+			return version === null ? c.notFound() : c.json(version)
+		}
+	)
 
 	// Edit an invention's metadata. A GET that writes — that's what the client sends
 	// (`?inventionId=1&description=my+description`), with the fields to change as
@@ -183,67 +370,135 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 	// empty `description` clears it, but an empty `name`/`imageName` is ignored
 	// rather than blanking the invention. Publishing and pricing are separate
 	// endpoints. Auth-gated, creator only; answers the save envelope.
-	.get('/api/inventions/v1/update', async (c) => {
-		const gate = await creatorsInvention(c, Number.parseInt(c.req.query('inventionId') ?? '', 10))
-		if ('response' in gate) return gate.response
+	.get(
+		'/api/inventions/v1/update',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Edit an invention’s metadata',
+			description:
+				'A GET that writes — that is what the client sends, with the fields to change as ' +
+				'query params. Absent params keep their stored value. An empty `description` ' +
+				'clears it, but an empty `name`/`imageName` is ignored rather than blanking the ' +
+				'invention. Publishing and pricing are separate endpoints.',
+			security: AUTHED,
+			parameters: [
+				intQuery('inventionId', 'Invention id; required'),
+				stringQuery('name', 'New name; empty is ignored'),
+				stringQuery('description', 'New description; present-but-empty clears it'),
+				stringQuery('imageName', 'New thumbnail; empty is ignored'),
+				stringQuery('allowTrial', '`true`/`1` to allow trials'),
+				stringQuery('permission', 'A name like `useonly`, or the raw permission number'),
+			],
+			responses: {
+				200: json(InventionSaveResult, 'The updated invention, in the save envelope'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: json(ErrorResponse, 'Not the caller’s invention'),
+				404: { description: 'No such invention' },
+			},
+		}),
+		async (c) => {
+			const gate = await creatorsInvention(c, Number.parseInt(c.req.query('inventionId') ?? '', 10))
+			if ('response' in gate) return gate.response
 
-		// Query params arrive as strings; only the ones actually present are applied.
-		const nonEmpty = (name: string): string | undefined => {
-			const v = c.req.query(name)?.trim()
-			return v === undefined || v === '' ? undefined : v
+			// Query params arrive as strings; only the ones actually present are applied.
+			const nonEmpty = (name: string): string | undefined => {
+				const v = c.req.query(name)?.trim()
+				return v === undefined || v === '' ? undefined : v
+			}
+			const allowTrial = c.req.query('allowTrial')
+			const permission = c.req.query('permission')
+
+			const updated = await updateInvention(c.env.DB, gate.invention.InventionId, {
+				name: nonEmpty('name'),
+				// Present-but-empty clears the description, so this checks presence.
+				description: c.req.query('description'),
+				imageName: nonEmpty('imageName'),
+				allowTrial:
+					allowTrial === undefined
+						? undefined
+						: allowTrial.toLowerCase() === 'true' || allowTrial === '1',
+				generalPermission: permission === undefined ? undefined : parsePermissionLevel(permission),
+			})
+			return updated === null ? c.notFound() : c.json(toSaveResult(updated))
 		}
-		const allowTrial = c.req.query('allowTrial')
-		const permission = c.req.query('permission')
-
-		const updated = await updateInvention(c.env.DB, gate.invention.InventionId, {
-			name: nonEmpty('name'),
-			// Present-but-empty clears the description, so this checks presence.
-			description: c.req.query('description'),
-			imageName: nonEmpty('imageName'),
-			allowTrial:
-				allowTrial === undefined
-					? undefined
-					: allowTrial.toLowerCase() === 'true' || allowTrial === '1',
-			generalPermission: permission === undefined ? undefined : parsePermissionLevel(permission),
-		})
-		return updated === null ? c.notFound() : c.json(toSaveResult(updated))
-	})
+	)
 
 	// Publish an invention — this is what puts it into search and the feeds. Sets the
 	// permission other players get (`permissionLevel`, defaulting to UseOnly) and its
 	// `price`. Auth-gated, creator only; answers the save envelope.
-	.get('/api/inventions/v3/publish', async (c) => {
-		const gate = await creatorsInvention(c, Number.parseInt(c.req.query('inventionId') ?? '', 10))
-		if ('response' in gate) return gate.response
+	.get(
+		'/api/inventions/v3/publish',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Publish an invention',
+			description:
+				'What puts an invention into search and the feeds. Sets the permission other ' +
+				'players get (defaulting to UseOnly) and its price. Another GET that writes.',
+			security: AUTHED,
+			parameters: [
+				intQuery('inventionId', 'Invention id; required'),
+				stringQuery('permissionLevel', 'A name like `useonly`, or the raw number'),
+				intQuery('price', 'Price in tokens; negative is ignored'),
+			],
+			responses: {
+				200: json(InventionSaveResult, 'The published invention, in the save envelope'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: json(ErrorResponse, 'Not the caller’s invention'),
+				404: { description: 'No such invention' },
+			},
+		}),
+		async (c) => {
+			const gate = await creatorsInvention(c, Number.parseInt(c.req.query('inventionId') ?? '', 10))
+			if ('response' in gate) return gate.response
 
-		const permissionLevel = c.req.query('permissionLevel')
-		const price = Number.parseInt(c.req.query('price') ?? '', 10)
+			const permissionLevel = c.req.query('permissionLevel')
+			const price = Number.parseInt(c.req.query('price') ?? '', 10)
 
-		const published = await publishInvention(
-			c.env.DB,
-			gate.invention.InventionId,
-			permissionLevel === undefined ? undefined : parsePermissionLevel(permissionLevel),
-			Number.isNaN(price) || price < 0 ? undefined : price
-		)
-		return published === null ? c.notFound() : c.json(toSaveResult(published))
-	})
+			const published = await publishInvention(
+				c.env.DB,
+				gate.invention.InventionId,
+				permissionLevel === undefined ? undefined : parsePermissionLevel(permissionLevel),
+				Number.isNaN(price) || price < 0 ? undefined : price
+			)
+			return published === null ? c.notFound() : c.json(toSaveResult(published))
+		}
+	)
 
 	// Set an invention's price. Unlike update/publish this one POSTs a JSON body.
 	// Auth-gated, creator only; answers the save envelope.
-	.post('/api/inventions/v1/updateprice', async (c) => {
-		const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
-		if (body === null) return c.json({ error: 'Invalid request body' }, 400)
+	.post(
+		'/api/inventions/v1/updateprice',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Set an invention’s price',
+			description:
+				'Unlike update/publish, this one POSTs a JSON body. Creator only; a negative price ' +
+				'is rejected.',
+			security: AUTHED,
+			requestBody: jsonBody(UpdatePriceRequest, 'The invention and its new price'),
+			responses: {
+				200: json(InventionSaveResult, 'The repriced invention, in the save envelope'),
+				400: json(ErrorResponse, 'Unparseable body, or a price below 0'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: json(ErrorResponse, 'Not the caller’s invention'),
+				404: { description: 'No such invention' },
+			},
+		}),
+		async (c) => {
+			const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+			if (body === null) return c.json({ error: 'Invalid request body' }, 400)
 
-		const inventionId = typeof body.InventionId === 'number' ? body.InventionId : Number.NaN
-		const gate = await creatorsInvention(c, inventionId)
-		if ('response' in gate) return gate.response
+			const inventionId = typeof body.InventionId === 'number' ? body.InventionId : Number.NaN
+			const gate = await creatorsInvention(c, inventionId)
+			if ('response' in gate) return gate.response
 
-		const price = typeof body.Price === 'number' ? body.Price : Number.NaN
-		if (Number.isNaN(price) || price < 0) return c.json({ error: 'Price must be >= 0' }, 400)
+			const price = typeof body.Price === 'number' ? body.Price : Number.NaN
+			if (Number.isNaN(price) || price < 0) return c.json({ error: 'Price must be >= 0' }, 400)
 
-		const updated = await setInventionPrice(c.env.DB, gate.invention.InventionId, price)
-		return updated === null ? c.notFound() : c.json(toSaveResult(updated))
-	})
+			const updated = await setInventionPrice(c.env.DB, gate.invention.InventionId, price)
+			return updated === null ? c.notFound() : c.json(toSaveResult(updated))
+		}
+	)
 
 	// Replace an invention's tags. `CustomTags` are the creator's own (Type 0),
 	// `AutoTags` the ones the client derives from the invention (Type 2); both lists
@@ -251,69 +506,162 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 	// invention. Answers `{ Result, Tags }` — `Result` 0 is success, and `Tags` is the
 	// flat list of tag *names* (auto first, then custom); the typed `{ Tag, Type }`
 	// objects are what `v1/details` serves.
-	.post('/api/inventions/v1/settags', async (c) => {
-		const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
-		if (body === null) return c.json({ error: 'Invalid request body' }, 400)
+	.post(
+		'/api/inventions/v1/settags',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Replace an invention’s tags',
+			description:
+				'`CustomTags` are the creator’s own (Type 0), `AutoTags` the ones the client ' +
+				'derives from the invention (Type 2); both lists are replaced wholesale. Creator ' +
+				'only.\n\n' +
+				'Note the asymmetry: this answers the flat list of tag *names* (auto first, then ' +
+				'custom), while `v1/details` serves the typed `{ Tag, Type }` objects.',
+			security: AUTHED,
+			requestBody: jsonBody(SetTagsRequest, 'The replacement tag lists'),
+			responses: {
+				200: json(SetTagsResponse, 'The resulting tag names'),
+				400: json(ErrorResponse, 'Unparseable body'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: json(ErrorResponse, 'Not the caller’s invention'),
+				404: { description: 'No such invention' },
+			},
+		}),
+		async (c) => {
+			const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+			if (body === null) return c.json({ error: 'Invalid request body' }, 400)
 
-		const inventionId = typeof body.InventionId === 'number' ? body.InventionId : Number.NaN
-		const gate = await creatorsInvention(c, inventionId)
-		if ('response' in gate) return gate.response
+			const inventionId = typeof body.InventionId === 'number' ? body.InventionId : Number.NaN
+			const gate = await creatorsInvention(c, inventionId)
+			if ('response' in gate) return gate.response
 
-		const strings = (v: unknown): string[] =>
-			Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []
+			const strings = (v: unknown): string[] =>
+				Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []
 
-		const tags = await setInventionTags(
-			c.env.DB,
-			gate.invention.InventionId,
-			strings(body.AutoTags),
-			strings(body.CustomTags)
-		)
-		return c.json({ Result: 0, Tags: (tags ?? []).map((t) => t.Tag) })
-	})
+			const tags = await setInventionTags(
+				c.env.DB,
+				gate.invention.InventionId,
+				strings(body.AutoTags),
+				strings(body.CustomTags)
+			)
+			return c.json({ Result: 0, Tags: (tags ?? []).map((t) => t.Tag) })
+		}
+	)
 
 	// An invention's detail card (`?inventionId=…`) — just its tags, as `{ Tags }`.
 	// Untagged inventions report an empty list. 404s on unknown ids.
-	.get('/api/inventions/v1/details', async (c) => {
-		const inventionId = Number.parseInt(c.req.query('inventionId') ?? '', 10)
-		if (Number.isNaN(inventionId)) return c.json({ error: 'inventionId is required' }, 400)
-		const tags = await getInventionTags(c.env.DB, inventionId)
-		return tags === null ? c.notFound() : c.json({ Tags: tags })
-	})
+	.get(
+		'/api/inventions/v1/details',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'An invention’s detail card',
+			description:
+				'Which in practice is just its tags, as typed `{ Tag, Type }` objects. An untagged ' +
+				'invention reports an empty list.',
+			parameters: [intQuery('inventionId', 'Invention id; required')],
+			responses: {
+				200: json(InventionDetails, 'The invention’s tags'),
+				400: json(ErrorResponse, 'Missing or non-numeric inventionId'),
+				404: { description: 'No such invention' },
+			},
+		}),
+		async (c) => {
+			const inventionId = Number.parseInt(c.req.query('inventionId') ?? '', 10)
+			if (Number.isNaN(inventionId)) return c.json({ error: 'inventionId is required' }, 400)
+			const tags = await getInventionTags(c.env.DB, inventionId)
+			return tags === null ? c.notFound() : c.json({ Tags: tags })
+		}
+	)
 
 	// The "top today" invention feed — published inventions ranked by engagement
 	// (lifetime, not per-day: we keep no daily counters). Paginated via skip/take
 	// (take defaults to 50, as the client asks for). Bare array.
-	.get('/api/inventions/v1/toptoday', async (c) => {
-		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
-		const take = Number.parseInt(c.req.query('take') ?? '50', 10) || 50
-		return c.json(await getTopInventions(c.env.DB, skip, take))
-	})
+	.get(
+		'/api/inventions/v1/toptoday',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'The “top today” feed',
+			description:
+				'Published inventions ranked by engagement — lifetime, not per-day: we keep no ' +
+				'daily counters, so “today” is a label, not a window.',
+			parameters: pageParams(50),
+			responses: { 200: json(InventionDto.array(), 'The top inventions') },
+		}),
+		async (c) => {
+			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+			const take = Number.parseInt(c.req.query('take') ?? '50', 10) || 50
+			return c.json(await getTopInventions(c.env.DB, skip, take))
+		}
+	)
 
 	// The featured invention feed — curated (`IsFeatured`) inventions, falling back
 	// to the top feed while nothing is curated. Bare array, like toptoday.
-	.get('/api/inventions/v1/featured', async (c) => {
-		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
-		const take = Number.parseInt(c.req.query('take') ?? '50', 10) || 50
-		return c.json(await getFeaturedInventions(c.env.DB, skip, take))
-	})
+	.get(
+		'/api/inventions/v1/featured',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'The featured feed',
+			description:
+				'Curated (`IsFeatured`) inventions, falling back to the top feed while nothing is ' +
+				'curated — so this is never empty just because no one has picked favourites.',
+			parameters: pageParams(50),
+			responses: { 200: json(InventionDto.array(), 'The featured inventions') },
+		}),
+		async (c) => {
+			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+			const take = Number.parseInt(c.req.query('take') ?? '50', 10) || 50
+			return c.json(await getFeaturedInventions(c.env.DB, skip, take))
+		}
+	)
 
 	// Invention search/browse: published inventions matching `value` (matched against
 	// name + description; absent → browse everything published), newest first.
 	// Paginated via skip/take (take defaults to 100). Returns a bare array.
-	.get('/api/inventions/v2/search', async (c) => {
-		const value = c.req.query('value') ?? ''
-		const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
-		const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-		return c.json(await searchInventions(c.env.DB, value, skip, take))
-	})
+	.get(
+		'/api/inventions/v2/search',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Search / browse inventions',
+			description:
+				'Published inventions matching `value` (matched against name and description), ' +
+				'newest first. An absent `value` browses everything published — that is the ' +
+				'browse screen’s initial request.',
+			parameters: [
+				stringQuery('value', 'Search text; absent browses everything'),
+				...pageParams(100),
+			],
+			responses: { 200: json(InventionDto.array(), 'The matching inventions') },
+		}),
+		async (c) => {
+			const value = c.req.query('value') ?? ''
+			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+			const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+			return c.json(await searchInventions(c.env.DB, value, skip, take))
+		}
+	)
 
 	// The signed-in player's saved inventions ("my inventions"), newest first.
 	// Auth-gated; returns a bare array (empty when the player has saved none).
-	.get('/api/inventions/v2/mine', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
-		return c.json(await getInventionsByCreator(c.env.DB, id))
-	})
+	.get(
+		'/api/inventions/v2/mine',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'The caller’s own inventions',
+			description:
+				'“My inventions”, newest first — including unpublished ones, which nobody else can ' +
+				'see. Not paginated.',
+			security: AUTHED,
+			responses: {
+				200: json(InventionDto.array(), 'The caller’s inventions'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			return c.json(await getInventionsByCreator(c.env.DB, id))
+		}
+	)
 
 	// Save an invention's metadata. The data file itself is uploaded separately
 	// through the `storage` worker and referenced here by `inventionDataFilename` —
@@ -321,36 +669,57 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 	// omitted name/description is defaulted rather than rejected. Auth-gated; returns
 	// the `{ Status, Invention, InventionVersion }` envelope the client expects (the
 	// invention carries its assigned inventionId).
-	.post('/api/inventions/v6/save', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return unauthorized(c)
+	.post(
+		'/api/inventions/v6/save',
+		describeRoute({
+			tags: ['Inventions'],
+			summary: 'Save a new invention',
+			description:
+				'Records an invention’s metadata. The data file itself is uploaded separately ' +
+				'through the `storage` worker and referenced here by `inventionDataFilename` — the ' +
+				'one required field, since an invention with no data blob is unusable. An omitted ' +
+				'name/description is defaulted rather than rejected.\n\n' +
+				'A freshly saved invention is private: it shows up only in the creator’s own list ' +
+				'until they call `v3/publish`.',
+			security: AUTHED,
+			requestBody: jsonBody(SaveInventionRequest, 'The invention metadata (camelCase)'),
+			responses: {
+				200: json(InventionSaveResult, 'The stored invention, carrying its assigned id'),
+				400: json(ErrorResponse, 'Unparseable body, or no inventionDataFilename'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
 
-		const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
-		if (body === null) return c.json({ error: 'Invalid request body' }, 400)
+			const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+			if (body === null) return c.json({ error: 'Invalid request body' }, 400)
 
-		const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
-		const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined)
+			const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+			const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined)
 
-		const inventionDataFilename = str(body.inventionDataFilename)?.trim()
-		if (!inventionDataFilename) {
-			return c.json({ error: 'inventionDataFilename is required' }, 400)
+			const inventionDataFilename = str(body.inventionDataFilename)?.trim()
+			if (!inventionDataFilename) {
+				return c.json({ error: 'inventionDataFilename is required' }, 400)
+			}
+
+			const invention = await createInvention(c.env.DB, {
+				creatorPlayerId: id,
+				inventionDataFilename,
+				name: str(body.name),
+				description: str(body.description),
+				imageName: str(body.imageName),
+				instantiationCost: num(body.instantiationCost),
+				lightsCost: num(body.lightsCost),
+				chipsCost: num(body.chipsCost),
+				cloudVariablesCost: num(body.cloudVariablesCost),
+				aiCost: num(body.aiCost),
+				creationRoomId: num(body.creationRoomId),
+				referencedInventions: Array.isArray(body.referencedInventions)
+					? body.referencedInventions.filter((v): v is number => typeof v === 'number')
+					: undefined,
+			})
+			return c.json(toSaveResult(invention))
 		}
-
-		const invention = await createInvention(c.env.DB, {
-			creatorPlayerId: id,
-			inventionDataFilename,
-			name: str(body.name),
-			description: str(body.description),
-			imageName: str(body.imageName),
-			instantiationCost: num(body.instantiationCost),
-			lightsCost: num(body.lightsCost),
-			chipsCost: num(body.chipsCost),
-			cloudVariablesCost: num(body.cloudVariablesCost),
-			aiCost: num(body.aiCost),
-			creationRoomId: num(body.creationRoomId),
-			referencedInventions: Array.isArray(body.referencedInventions)
-				? body.referencedInventions.filter((v): v is number => typeof v === 'number')
-				: undefined,
-		})
-		return c.json(toSaveResult(invention))
-	})
+	)

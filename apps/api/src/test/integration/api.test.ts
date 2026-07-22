@@ -1850,3 +1850,144 @@ describe('relationships', () => {
 		for (const n of sent) expect(n.data.RelationshipType).toBe(3)
 	})
 })
+
+describe('openapi', () => {
+	test('GET /openapi.json documents every route', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		expect(res.status).toBe(200)
+		const spec = (await res.json()) as {
+			openapi: string
+			paths: Record<string, Record<string, { summary?: string }>>
+		}
+		expect(spec.openapi).toMatch(/^3\.1/)
+
+		// The spec route hides itself.
+		expect(spec.paths['/openapi.json']).toBeUndefined()
+
+		// Every route the worker serves is described. This is the drift guard: adding a
+		// route without a describeRoute() block fails here rather than silently shipping
+		// an incomplete spec. Hono's `:param` syntax becomes OpenAPI's `{param}`; the
+		// `.on(['GET','POST'], …)` relationship routes contribute both methods.
+		const documented = new Set(
+			Object.entries(spec.paths).flatMap(([path, ops]) =>
+				Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+			)
+		)
+		expect([...documented].sort()).toEqual([
+			'DELETE /api/images/v1/deletesaved',
+			'GET /api/PlayerReporting/v1/moderationBlockDetails',
+			'GET /api/PlayerReporting/v1/voteToKickReasons',
+			'GET /api/activities/charades/v1/words/{activity}',
+			'GET /api/announcement/v1/get',
+			'GET /api/communityboard/v2/current',
+			'GET /api/config/v1/amplitude',
+			'GET /api/config/v1/azurespeech',
+			'GET /api/config/v1/backtrace',
+			'GET /api/config/v2',
+			'GET /api/consumables/v2/getUnlocked',
+			'GET /api/customAvatarItems/v1/featured',
+			'GET /api/customAvatarItems/v1/hot',
+			'GET /api/customAvatarItems/v1/isCreationAllowedForAccount',
+			'GET /api/customAvatarItems/v1/isCreationEnabled',
+			'GET /api/customAvatarItems/v1/isRenderingEnabled',
+			'GET /api/customAvatarItems/v2/fromCreator/{accountId}',
+			'GET /api/equipment/v2/getUnlocked',
+			'GET /api/gameconfigs/v1/all',
+			'GET /api/images/v1/slideshow',
+			'GET /api/images/v2/named',
+			'GET /api/images/v3/feed/player/{playerId}',
+			'GET /api/images/v4/player/{playerId}',
+			'GET /api/images/v4/room/{roomId}',
+			'GET /api/images/v5/cheered/bulk',
+			'GET /api/images/v5/player/{playerId}',
+			'GET /api/images/v6',
+			'GET /api/inventions/v1',
+			'GET /api/inventions/v1/details',
+			'GET /api/inventions/v1/featured',
+			'GET /api/inventions/v1/personaldetails/{inventionId}',
+			'GET /api/inventions/v1/room',
+			'GET /api/inventions/v1/tagfilters',
+			'GET /api/inventions/v1/toptoday',
+			'GET /api/inventions/v1/update',
+			'GET /api/inventions/v1/version',
+			'GET /api/inventions/v2/batch',
+			'GET /api/inventions/v2/mine',
+			'GET /api/inventions/v2/search',
+			'GET /api/inventions/v3/publish',
+			'GET /api/keepsakes/categories',
+			'GET /api/keepsakes/globalconfig',
+			'GET /api/keepsakes/rooms/{roomId}',
+			'GET /api/messages/v1/favoriteFriendOnlineStatus',
+			'GET /api/messages/v2/get',
+			'GET /api/playerReputation/v1/{id}',
+			'GET /api/playerReputation/v2/bulk',
+			'GET /api/playerevents/v1/all',
+			'GET /api/playerevents/v1/club/{clubId}',
+			'GET /api/playerevents/v1/clubs',
+			'GET /api/playerevents/v1/tagfilters',
+			'GET /api/players/v1/progression/{id}',
+			'GET /api/players/v2/progression/bulk',
+			'GET /api/quickPlay/v1/getandclear',
+			'GET /api/relationships/v1/favorite',
+			'GET /api/relationships/v1/ignore',
+			'GET /api/relationships/v1/mute',
+			'GET /api/relationships/v1/unfavorite',
+			'GET /api/relationships/v1/unignore',
+			'GET /api/relationships/v1/unmute',
+			'GET /api/relationships/v2/acceptfriendrequest',
+			'GET /api/relationships/v2/addfriend',
+			'GET /api/relationships/v2/get',
+			'GET /api/relationships/v2/removefriend',
+			'GET /api/relationships/v2/sendfriendrequest',
+			'GET /api/roomkeys/v1/mine',
+			'GET /api/roomkeys/v1/room',
+			'GET /api/rooms/v1/filters',
+			'GET /api/versioncheck/v4',
+			'GET /voice/config',
+			'POST /api/CampusCard/v1/UpdateAndGetSubscription',
+			'POST /api/PlayerReporting/v1/deviceId',
+			'POST /api/PlayerReporting/v1/hile',
+			'POST /api/avatar/v2/gifts/generate',
+			'POST /api/gamesight/event',
+			'POST /api/images/v1/cheer',
+			'POST /api/images/v4/uploadsaved',
+			'POST /api/inventions/v1/settags',
+			'POST /api/inventions/v1/updateprice',
+			'POST /api/inventions/v6/save',
+			'POST /api/playerReputation/v1/bulk',
+			'POST /api/playerReputation/v2/bulk',
+			'POST /api/players/v1/progression/bulk',
+			'POST /api/players/v2/progression/bulk',
+			'POST /api/relationships/v1/favorite',
+			'POST /api/relationships/v1/ignore',
+			'POST /api/relationships/v1/mute',
+			'POST /api/relationships/v1/unfavorite',
+			'POST /api/relationships/v1/unignore',
+			'POST /api/relationships/v1/unmute',
+			'POST /api/relationships/v2/acceptfriendrequest',
+			'POST /api/relationships/v2/addfriend',
+			'POST /api/relationships/v2/removefriend',
+			'POST /api/relationships/v2/sendfriendrequest',
+			'POST /api/rooms/v1/verifyRole',
+			'POST /api/sanitize/v1',
+			'POST /api/sanitize/v1/isPure',
+			'POST /api/v1/progression/bulk',
+		])
+
+		// Every operation carries a summary — an undescribed one renders as a bare path.
+		for (const [path, ops] of Object.entries(spec.paths)) {
+			for (const [method, op] of Object.entries(ops)) {
+				expect(op.summary, `${method.toUpperCase()} ${path} has no summary`).toBeTruthy()
+			}
+		}
+	})
+
+	// Schemas are inlined rather than $ref'd into components: a `.meta({ id })`'d schema
+	// used in a response emits a $ref this hono-openapi + zod v4 setup does not always
+	// hoist, leaving a dangling reference that breaks the docs UI.
+	test('the spec has no $refs', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		const raw = await res.text()
+		expect(raw.match(/\$ref/g)).toBeNull()
+	})
+})

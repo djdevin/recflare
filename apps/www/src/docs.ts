@@ -21,6 +21,7 @@ export const DOCUMENTED_SERVICES: ReadonlyArray<{ slug: string; title: string }>
 	{ slug: 'accounts', title: 'accounts — profiles & lookups' },
 	{ slug: 'match', title: 'match — matchmaking & presence' },
 	{ slug: 'econ', title: 'econ — avatar & economy' },
+	{ slug: 'api', title: 'api — everything else' },
 ]
 
 /** Path (served as a static asset) of the self-hosted Scalar standalone bundle. */

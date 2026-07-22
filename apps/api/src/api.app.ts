@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { withNotFound, withOnError } from '@repo/hono-helpers'
@@ -51,5 +52,49 @@ const app = new Hono<App>({ strict: false })
 	.route('/', inventoryRoutes)
 	.route('/', roomRoutes)
 	.route('/', imageRoutes)
+
+// The generated spec. Documentation only — no request is validated against it (see
+// openapi.ts). `hide: true` keeps this route out of its own output.
+app.get(
+	'/openapi.json',
+	describeRoute({ hide: true }),
+	openAPIRouteHandler(app, {
+		documentation: {
+			info: {
+				title: 'recflare api',
+				version: '1.0.0',
+				description: [
+					'The catch-all Game API for recflare, a private-server reimplementation of the Rec',
+					'Room backend: everything the client calls that has not been split out into its own',
+					'worker yet. Today that is config, the friend graph, inventions, saved photos,',
+					'reputation and the assorted sinks the client hits while loading. Relationships,',
+					'inventions and images are D1-backed; several endpoints are still stubs, noted per',
+					'route.',
+					'',
+					'Expect this surface to shrink. Paths that also exist on a dedicated worker (avatar,',
+					'equipment, consumables and objectives on `econ`) are already served there — the',
+					'client calls that host and the copy here is a stub, which each route says.',
+					'',
+					'The shapes are **reverse-engineered from the game client**, which is the only real',
+					'consumer. They record observed behaviour, not a designed contract; the handlers are',
+					'lenient and parse bodies defensively. Nothing in this spec is enforced at runtime —',
+					'treat a field marked required as "the client always sends it", not "the server',
+					'rejects it if absent".',
+				].join('\n'),
+			},
+			servers: [{ url: 'https://api.recflare.net', description: 'Production' }],
+			components: {
+				securitySchemes: {
+					bearerAuth: {
+						type: 'http',
+						scheme: 'bearer',
+						bearerFormat: 'JWT',
+						description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+					},
+				},
+			},
+		},
+	})
+)
 
 export default app
