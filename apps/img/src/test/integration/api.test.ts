@@ -226,4 +226,36 @@ describe('img endpoints', () => {
 		const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, signature, body)
 		expect(ok).toBe(true)
 	})
+
+	it('GET /openapi.json documents every route', async () => {
+		const res = await SELF.fetch(`${ORIGIN}/openapi.json`)
+		expect(res.status).toBe(200)
+		const spec = (await res.json()) as {
+			openapi: string
+			paths: Record<string, Record<string, { summary?: string }>>
+		}
+		expect(spec.openapi).toMatch(/^3\.1/)
+
+		// The spec route hides itself.
+		expect(spec.paths['/openapi.json']).toBeUndefined()
+
+		// Every route the worker serves is described. This is the drift guard: adding a
+		// route without a describeRoute() block fails here rather than silently shipping
+		// an incomplete spec. Hono's `:param` syntax becomes OpenAPI's `{param}`.
+		const documented = new Set(
+			Object.entries(spec.paths).flatMap(([path, ops]) =>
+				Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+			)
+		)
+		expect([...documented].sort()).toEqual(['GET /', 'GET /{key}'])
+
+		// Every operation carries a summary — a path present but undescribed is not
+		// documentation.
+		for (const ops of Object.values(spec.paths)) {
+			for (const op of Object.values(ops)) expect(op.summary).toBeTruthy()
+		}
+
+		// Schemas must inline: a `$ref` here is a dangling reference (see openapi.ts).
+		expect(JSON.stringify(spec).includes('"$ref"')).toBe(false)
+	})
 })

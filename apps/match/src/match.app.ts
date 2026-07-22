@@ -424,9 +424,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Presence'],
 			summary: 'Login ack (no-op)',
-			description:
-				'A no-op ack. Must NOT touch presence — the client fires this going online, and ' +
+			description: [
+				'A no-op ack. Must NOT touch presence — the client fires this going online, and',
 				'clearing presence here would bounce the player to the dorm.',
+			].join(' '),
 			responses: { 200: EMPTY_OK },
 		}),
 		(c) => c.body(null, 200)
@@ -456,11 +457,12 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Presence'],
 			summary: 'Clear presence on logout',
-			description:
-				'Clears the player’s presence so they read offline immediately and the instance ' +
-				'they were in frees up. EXCEPTION: a logout whose presence still points at the ' +
-				'Orientation seed (instance -2) is left as a no-op, so the account-creation ' +
+			description: [
+				'Clears the player’s presence so they read offline immediately and the instance',
+				'they were in frees up. EXCEPTION: a logout whose presence still points at the',
+				'Orientation seed (instance -2) is left as a no-op, so the account-creation',
 				'bootstrap isn’t wiped. An unauthenticated logout is also a no-op.',
+			].join(' '),
 			responses: { 200: EMPTY_OK },
 		}),
 		async (c) => {
@@ -487,9 +489,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Presence'],
 			summary: 'Disconnect notification (no-op ack)',
-			description:
-				'Posted when the client drops a room. Not acted on — presence is cleared by logout ' +
+			description: [
+				'Posted when the client drops a room. Not acted on — presence is cleared by logout',
 				'and otherwise expires on its TTL.',
+			].join(' '),
 			responses: { 200: EMPTY_OK },
 		}),
 		(c) => c.body(null, 200)
@@ -500,9 +503,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Presence'],
 			summary: 'Batch player presence lookup',
-			description:
-				'Returns each requested player’s presence. `id` is repeatable and each value may ' +
+			description: [
+				'Returns each requested player’s presence. `id` is repeatable and each value may',
 				'be a comma-separated list. With no ids, serves a single default (online) player.',
+			].join(' '),
 			parameters: [
 				{
 					name: 'id',
@@ -536,11 +540,12 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Presence'],
 			summary: 'Presence heartbeat',
-			description:
-				'Merges the posted status fields into stored presence and echoes back the player ' +
-				'payload. Re-writes the row (refreshing its TTL) only when something changed or the ' +
-				'TTL is close to lapsing, so a still player isn’t written on every beat. With no ' +
+			description: [
+				'Merges the posted status fields into stored presence and echoes back the player',
+				'payload. Re-writes the row (refreshing its TTL) only when something changed or the',
+				'TTL is close to lapsing, so a still player isn’t written on every beat. With no',
 				'stored presence the player isn’t in a room yet (roomInstance null, isOnline false).',
+			].join(' '),
 			security: AUTHED,
 			requestBody: jsonBody(
 				HeartbeatRequestSchema,
@@ -618,9 +623,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Presence'],
 			summary: 'Set status visibility',
-			description:
-				'Updates the stored presence’s status visibility. No-op when the player has no live ' +
+			description: [
+				'Updates the stored presence’s status visibility. No-op when the player has no live',
 				'presence or an unauthenticated/invalid token — always acks 200.',
+			].join(' '),
 			requestBody: form(StatusVisibilityRequest, 'The statusVisibility value'),
 			responses: { 200: EMPTY_OK },
 		}),
@@ -650,10 +656,11 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Go to a room',
-			description:
-				'Resolves the room (numeric id or name; `dormroom` → the player’s personal dorm), ' +
-				'finds or creates an instance, and stores it as presence. `JoinMode=2` requests a ' +
+			description: [
+				'Resolves the room (numeric id or name; `dormroom` → the player’s personal dorm),',
+				'finds or creates an instance, and stores it as presence. `JoinMode=2` requests a',
 				'private instance.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
 			parameters: [
@@ -693,10 +700,11 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Matchmake with no target (preserve or dorm)',
-			description:
-				'Returns the player’s current instance if they have one (so Orientation isn’t warped ' +
-				'away), else their personal dorm when authed, or the shared offline dorm when not. ' +
+			description: [
+				'Returns the player’s current instance if they have one (so Orientation isn’t warped',
+				'away), else their personal dorm when authed, or the shared offline dorm when not.',
 				'Not auth-gated.',
+			].join(' '),
 			responses: {
 				200: json(MatchmakeResponse, 'Current, personal-dorm, or offline-dorm instance'),
 			},
@@ -729,10 +737,11 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Matchmake into a club’s clubhouse',
-			description:
-				'Looks the club up, checks the caller is a member of it, and places them into an ' +
-				'instance of its clubhouse room. Returns errorCode 20 with a null instance when the ' +
+			description: [
+				'Looks the club up, checks the caller is a member of it, and places them into an',
+				'instance of its clubhouse room. Returns errorCode 20 with a null instance when the',
 				'club is unknown, has no clubhouse set, or the caller isn’t a member.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
 			parameters: [
@@ -788,9 +797,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Matchmake into a specific subroom',
-			description:
-				'Enters a specific subroom (scene) of a room. The subroom decides the scene loaded ' +
+			description: [
+				'Enters a specific subroom (scene) of a room. The subroom decides the scene loaded',
 				'and which instances are joinable; an unknown subroom falls back to the room’s first.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
 			parameters: [
@@ -833,9 +843,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Matchmake into a room (default subroom)',
-			description:
-				'The 2023 client’s two-segment matchmake. Resolves the room from D1 so the instance ' +
+			description: [
+				'The 2023 client’s two-segment matchmake. Resolves the room from D1 so the instance',
 				'carries its real scene, and stores it as presence.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
 			parameters: [{ name: 'roomId', in: 'path', required: true, schema: { type: 'string' } }],
@@ -859,10 +870,11 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Matchmake into a room by id or name',
-			description:
-				'Single-segment matchmake. `dorm` → the player’s personal dorm; otherwise resolves ' +
-				'the room by id or name. (Note: this dorm keyword is `dorm`, while goto/room uses ' +
+			description: [
+				'Single-segment matchmake. `dorm` → the player’s personal dorm; otherwise resolves',
+				'the room by id or name. (Note: this dorm keyword is `dorm`, while goto/room uses',
 				'`dormroom`.)',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
 			parameters: [
@@ -902,9 +914,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Navigation'],
 			summary: 'Go to the dorm',
-			description:
-				'Authed → the player’s personal dorm (persisted as presence); unauthenticated → the ' +
+			description: [
+				'Authed → the player’s personal dorm (persisted as presence); unauthenticated → the',
 				'shared offline dorm. Unlike matchmake/none, this always goes to the dorm.',
+			].join(' '),
 			responses: { 200: json(MatchmakeResponse, 'The dorm instance') },
 		}),
 		async (c) => {
@@ -958,9 +971,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Room instance'],
 			summary: 'Set instance in-progress flag',
-			description:
-				'The room owner flips the instance’s in-progress flag when a session starts (e.g. a ' +
+			description: [
+				'The room owner flips the instance’s in-progress flag when a session starts (e.g. a',
 				'round begins). Body is `inProgress=True|False`.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(InProgressRequest, 'The inProgress flag'),
 			parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -996,9 +1010,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Room instance'],
 			summary: 'A room’s live instances',
-			description:
-				'The owner’s view of active sessions of their room. Auth-gated and gated to the ' +
+			description: [
+				'The owner’s view of active sessions of their room. Auth-gated and gated to the',
 				'room’s creator or a co-owner (403 otherwise). Unknown room → 404.',
+			].join(' '),
 			security: AUTHED,
 			parameters: [
 				{
@@ -1096,12 +1111,6 @@ app.get(
 						'`room_instance` per session); presence — the instance each player is currently in —',
 						'lives in the shared `presence` table and expires on a TTL. A cron sweep clears',
 						'expired presence and frees up instances a crashed player never left.',
-						'',
-						'The shapes here are **reverse-engineered from the game client**, which is the only',
-						'real consumer. They record observed behaviour, not a designed contract; the handlers',
-						'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
-						'runtime — treat a field marked required as "the client always sends it", not "the',
-						'server rejects it if absent".',
 					].join('\n'),
 				},
 				servers: [{ url: 'https://match.recflare.net', description: 'Production' }],

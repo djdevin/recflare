@@ -1306,4 +1306,73 @@ describe('clubs endpoints', () => {
 		// Deleting twice 404s rather than reporting success.
 		expect((await del(clubId, '860')).status).toBe(404)
 	})
+
+	test('GET /openapi.json documents every route', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
+		expect(res.status).toBe(200)
+		const spec = (await res.json()) as {
+			openapi: string
+			paths: Record<string, Record<string, { summary?: string }>>
+		}
+		expect(spec.openapi).toMatch(/^3\.1/)
+
+		// The spec route hides itself.
+		expect(spec.paths['/openapi.json']).toBeUndefined()
+
+		// Every schema inlines: a `.meta({ id })` on any of them would emit a $ref this
+		// setup doesn't always hoist into components.schemas, leaving it dangling.
+		expect(JSON.stringify(spec).includes('"$ref"')).toBe(false)
+
+		// Every route the worker serves is described. This is the drift guard: adding a
+		// route without a describeRoute() block fails here rather than silently shipping
+		// an incomplete spec. Hono's `:param` syntax (regex constraints and all) becomes
+		// OpenAPI's `{param}`; the `.on([...])` clubhouse and additionalimage routes
+		// contribute both their methods, and modifydetails/modify both their paths.
+		const documented = new Set(
+			Object.entries(spec.paths).flatMap(([path, ops]) =>
+				Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+			)
+		)
+		expect([...documented].sort()).toEqual([
+			'DELETE /club/home/me',
+			'DELETE /club/{clubId}',
+			'DELETE /club/{clubId}/additionalimage/{index}',
+			'DELETE /club/{clubId}/clubhouse',
+			'GET /announcements/club/{clubId}',
+			'GET /announcements/v2/mine/unread',
+			'GET /club/categoryTags',
+			'GET /club/home/me',
+			'GET /club/mine/created',
+			'GET /club/mine/member',
+			'GET /club/search',
+			'GET /club/{clubId}',
+			'GET /club/{clubId}/details',
+			'GET /club/{clubId}/hasDisabledClubChat',
+			'GET /club/{clubId}/mainimage',
+			'GET /club/{clubId}/members',
+			'GET /subscription/details/{accountId}',
+			'GET /subscription/details/{subscription}',
+			'GET /subscription/mine/member',
+			'GET /subscription/subscriberCount/{accountId}',
+			'POST /announcements/club/{clubId}',
+			'POST /club/create',
+			'POST /club/{clubId}/join',
+			'POST /club/{clubId}/leave',
+			'POST /club/{clubId}/members/leave',
+			'PUT /club/home/me',
+			'PUT /club/{clubId}/additionalimage/{index}',
+			'PUT /club/{clubId}/clubhouse',
+			'PUT /club/{clubId}/mainimage',
+			'PUT /club/{clubId}/members/requesttojoin',
+			'PUT /club/{clubId}/minlevel',
+			'PUT /club/{clubId}/modify',
+			'PUT /club/{clubId}/modifydetails',
+		])
+
+		// Every operation carries a summary — a path present but undescribed is not
+		// documentation.
+		for (const ops of Object.values(spec.paths)) {
+			for (const op of Object.values(ops)) expect(op.summary).toBeTruthy()
+		}
+	})
 })

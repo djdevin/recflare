@@ -1,11 +1,34 @@
 import { Hono } from 'hono'
+import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
 import { NotificationType } from '../../notify/src/notification-types'
 import { getThreadMessages } from './message-db'
+import {
+	AUTHED,
+	ChatMessageDto,
+	ChatResult,
+	ChatThreadDto,
+	ChatThreadWithMessagesDto,
+	CreateThreadRequest,
+	CreateThreadResponse,
+	FavoriteThreadRequest,
+	form,
+	json,
+	messageCountParam,
+	NOT_A_MEMBER_RESPONSE,
+	RenameThreadRequest,
+	SendMessageRequest,
+	SendMessageResponse,
+	ServiceStatus,
+	SnoozeThreadRequest,
+	THREAD_ID_PARAM,
+	UNAUTHORIZED_RESPONSE,
+	WithMembersRequest,
+} from './openapi'
 import {
 	addThreadMember,
 	getOrCreateThreadWithMembers,
@@ -218,6 +241,74 @@ async function formField(c: Context<App>, name: string): Promise<string | undefi
 	return typeof value === 'string' ? value : c.req.query(name)
 }
 
+/**
+ * A concise `describeRoute` spec for one of the thread-scoped actions that answers the
+ * bare ChatResult integer rather than an HTTP status — rename, leave, snooze, favorite,
+ * add-member and the read-pointer moves. They share the auth gate, the `:id` path param,
+ * and the "3 when the caller isn't on the thread" behaviour.
+ */
+function chatResultRoute(
+	summary: string,
+	description: string,
+	extra: {
+		requestBody?: ReturnType<typeof form>
+		parameters?: unknown[]
+		successDescription?: string
+		/** Set for the read-pointer routes, which 404 a non-member instead of answering 3. */
+		notFound?: boolean
+	} = {}
+) {
+	return describeRoute({
+		tags: ['Chat'],
+		summary,
+		description,
+		security: AUTHED,
+		parameters: [THREAD_ID_PARAM, ...((extra.parameters ?? []) as never[])],
+		...(extra.requestBody === undefined ? {} : { requestBody: extra.requestBody }),
+		responses: {
+			200: json(
+				ChatResult,
+				extra.successDescription ??
+					'The ChatResult (0 on success, 3 when the caller isn’t on the thread)'
+			),
+			401: UNAUTHORIZED_RESPONSE,
+			...(extra.notFound === true ? { 404: NOT_A_MEMBER_RESPONSE } : {}),
+		},
+	})
+}
+
+/**
+ * The `describeRoute` spec shared by the two spellings of "send to an existing thread".
+ * `/thread/{id}` is what the client posts; `/thread/{id}/message` is the same call under
+ * the reference's other spelling, and both land in `sendToThread`.
+ */
+function sendToThreadRoute(spelling: string) {
+	return describeRoute({
+		tags: ['Messages'],
+		summary: `Send a message to an existing thread (${spelling})`,
+		description: [
+			'Every message after the one that opened the conversation. Answers',
+			'`{ chatResult, chatThread }` — the WHOLE thread with its messages, not just the message',
+			'that was sent, so the client re-renders the conversation from one response. Blank or',
+			'missing `messageContents` stores nothing and reports invalid-arguments (1), still with',
+			'the thread attached, rather than an error status. Sending is reading: the sender’s own',
+			'`lastReadMessageId` comes back already at the message just posted. Pushes',
+			'ChatMessageReceived to every member, the sender included — the client doesn’t fold the',
+			'HTTP response into its local cache, so without a self-targeted push its own outgoing',
+			'message doesn’t appear until the thread is refetched. Note the hub frame’s `Id` is a',
+			'STRING: the client dispatches on it and silently drops a numeric one.',
+		].join(' '),
+		security: AUTHED,
+		parameters: [THREAD_ID_PARAM],
+		requestBody: form(SendMessageRequest, 'The message envelope'),
+		responses: {
+			200: json(SendMessageResponse, 'The ChatResult plus the whole thread with its messages'),
+			401: UNAUTHORIZED_RESPONSE,
+			404: NOT_A_MEMBER_RESPONSE,
+		},
+	})
+}
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -232,17 +323,45 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	.get('/', (c) => c.json({ service: 'chat', status: 'ok' }))
+	.get(
+		'/',
+		describeRoute({
+			tags: ['Service'],
+			summary: 'Service liveness',
+			description: 'A fixed `{ service, status }` body. No auth — a plain liveness probe.',
+			responses: { 200: json(ServiceStatus, 'Always `{ service: "chat", status: "ok" }`') },
+		}),
+		(c) => c.json({ service: 'chat', status: 'ok' })
+	)
 
 	// The player's own thread list, newest conversation first — each thread carrying its
 	// latest message and the caller's own read/snooze/favorite state. `MessageCount` is
 	// the page size (of threads, despite the name). Membership scopes the query, so a
 	// player only ever sees their own threads.
-	.get('/thread', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
-		return c.json(await getThreadsForPlayer(c.env.DB, id, { limit: messageCount(c) }))
-	})
+	.get(
+		'/thread',
+		describeRoute({
+			tags: ['Threads'],
+			summary: 'The caller’s thread list',
+			description: [
+				'Every thread the caller is a member of, newest conversation first — each carrying its',
+				'`latestMessage` and the caller’s own read/snooze/favorite state. `MessageCount` is the',
+				'page size (of THREADS, despite the name). Membership scopes the query, so a player',
+				'only ever sees their own threads.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [messageCountParam(DEFAULT_MESSAGE_COUNT)],
+			responses: {
+				200: json(ChatThreadDto.array(), 'The caller’s threads, newest first (empty when none)'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
+			return c.json(await getThreadsForPlayer(c.env.DB, id, { limit: messageCount(c) }))
+		}
+	)
 
 	// Send to a set of players (`ids=155&ids=2&messageContents=…`) — the client's
 	// create-thread-and-post-first-message call, in one. Resolves to the thread those
@@ -252,33 +371,60 @@ const app = new Hono<App>()
 	// (`{"Type":0,"Version":1,"Data":"…"}`) and is stored verbatim, unparsed. The client
 	// also sends it blank, right after /thread/withmembers: that opens the thread without
 	// posting an empty message, and reports invalid-arguments the way the reference does.
-	.post('/thread', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.post(
+		'/thread',
+		describeRoute({
+			tags: ['Threads'],
+			summary: 'Open a thread with a set of players and post the first message',
+			description: [
+				'The client’s create-thread-and-post-first-message call, in one. Resolves to the thread',
+				'those players already share rather than opening a second one. `messageContents` is the',
+				'same envelope a message carries and is stored verbatim, unparsed; the client also sends',
+				'it blank right after `/thread/withmembers`, which opens the thread without posting and',
+				'reports invalid-arguments. Answers a `{ chatThread, chatResult }` wrapper, not a bare',
+				'thread. Pushes ChatMessageReceived to every member (including the sender).',
+			].join(' '),
+			security: AUTHED,
+			requestBody: form(CreateThreadRequest, 'The member ids and the first message'),
+			responses: {
+				200: json(CreateThreadResponse, 'The thread plus the result of the first message'),
+				400: {
+					description: [
+						'Fewer than 2 members (naming only yourself) or more than 50, counting the caller',
+						'(empty body)',
+					].join(' '),
+				},
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const members = [...new Set([id, ...(await memberIds(c))])]
-		if (members.length < 2 || members.length > MAX_THREAD_MEMBERS) return c.body(null, 400)
+			const members = [...new Set([id, ...(await memberIds(c))])]
+			if (members.length < 2 || members.length > MAX_THREAD_MEMBERS) return c.body(null, 400)
 
-		const chatThreadId = await getOrCreateThreadWithMembers(c.env.DB, members, id)
+			const chatThreadId = await getOrCreateThreadWithMembers(c.env.DB, members, id)
 
-		const contents = (await formField(c, 'messageContents'))?.trim()
-		const posted =
-			contents === undefined || contents === ''
-				? null
-				: await postMessage(c.env.DB, { chatThreadId, senderPlayerId: id, contents })
-		if (posted !== null) {
-			await pushChatMessage(c, posted)
-			await markThreadRead(c.env.DB, chatThreadId, id, posted.chatMessageId)
+			const contents = (await formField(c, 'messageContents'))?.trim()
+			const posted =
+				contents === undefined || contents === ''
+					? null
+					: await postMessage(c.env.DB, { chatThreadId, senderPlayerId: id, contents })
+			if (posted !== null) {
+				await pushChatMessage(c, posted)
+				await markThreadRead(c.env.DB, chatThreadId, id, posted.chatMessageId)
+			}
+
+			const thread = await getThreadForPlayer(c.env.DB, chatThreadId, id)
+			if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)
+			// The reference answers a wrapper here, not a bare thread.
+			return c.json({
+				chatThread: thread,
+				chatResult: posted === null ? CHAT_INVALID_ARGUMENTS : CHAT_SUCCESS,
+			})
 		}
-
-		const thread = await getThreadForPlayer(c.env.DB, chatThreadId, id)
-		if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)
-		// The reference answers a wrapper here, not a bare thread.
-		return c.json({
-			chatThread: thread,
-			chatResult: posted === null ? CHAT_INVALID_ARGUMENTS : CHAT_SUCCESS,
-		})
-	})
+	)
 
 	// "Open the chat with these people" — the client's GetChatBetweenPlayers. Fetch or
 	// create: the thread whose membership is exactly `ids` plus the caller, opened only
@@ -288,21 +434,48 @@ const app = new Hono<App>()
 	// Answers the thread with a `messages` array (what `messageCount` sizes) rather than
 	// the list's single `latestMessage`, so the client can open straight into the
 	// conversation. The array is always present, empty for a brand-new thread.
-	.post('/thread/withmembers', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.post(
+		'/thread/withmembers',
+		describeRoute({
+			tags: ['Threads'],
+			summary: 'Fetch or open the thread with exactly these members',
+			description: [
+				'The client’s GetChatBetweenPlayers. Fetch-or-create: the thread whose membership is',
+				'exactly `ids` plus the caller, opened only if they don’t already share one (returning a',
+				'fresh empty thread each call would bury the real conversation). Answers the thread with',
+				'a `messages` array — what `messageCount` sizes — rather than the list’s single',
+				'`latestMessage`, so the client can open straight into the conversation. The array is',
+				'always present, empty for a brand-new thread.',
+			].join(' '),
+			security: AUTHED,
+			requestBody: form(WithMembersRequest, 'The member ids and the page size'),
+			responses: {
+				200: json(ChatThreadWithMessagesDto, 'The thread with a page of its messages'),
+				400: {
+					description: [
+						'Fewer than 2 members (naming only yourself) or more than 50, counting the caller',
+						'(empty body)',
+					].join(' '),
+				},
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const members = [...new Set([id, ...(await memberIds(c))])]
-		// A thread needs someone else in it; naming only yourself is a bad request
-		// rather than a lonely thread.
-		if (members.length < 2 || members.length > MAX_THREAD_MEMBERS) return c.body(null, 400)
+			const members = [...new Set([id, ...(await memberIds(c))])]
+			// A thread needs someone else in it; naming only yourself is a bad request
+			// rather than a lonely thread.
+			if (members.length < 2 || members.length > MAX_THREAD_MEMBERS) return c.body(null, 400)
 
-		const chatThreadId = await getOrCreateThreadWithMembers(c.env.DB, members, id)
-		const limit = await formMessageCount(c, DEFAULT_THREAD_MESSAGE_COUNT)
-		const thread = await threadWithMessages(c, chatThreadId, id, limit)
-		if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)
-		return c.json(thread)
-	})
+			const chatThreadId = await getOrCreateThreadWithMembers(c.env.DB, members, id)
+			const limit = await formMessageCount(c, DEFAULT_THREAD_MESSAGE_COUNT)
+			const thread = await threadWithMessages(c, chatThreadId, id, limit)
+			if (thread === null) throw new Error(`thread ${chatThreadId} vanished after creation`)
+			return c.json(thread)
+		}
+	)
 
 	// A page of one thread's messages, newest first — a bare array, not a thread object.
 	// The client reads a conversation through either spelling: `/thread/2?messageCount=50`
@@ -320,15 +493,36 @@ const app = new Hono<App>()
 	//
 	// 404s only for a thread the caller isn't in, not for one that's simply empty: a
 	// thread just opened with someone has no messages yet and still has to open.
-	.get('/thread/:id{[0-9]+}', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.get(
+		'/thread/:id{[0-9]+}',
+		describeRoute({
+			tags: ['Threads'],
+			summary: 'One thread with its recent messages',
+			description: [
+				'What the client opens a conversation with (`/thread/13?messageCount=50`). An OBJECT —',
+				'the same shape `/thread/withmembers` answers: the client parses this one as a thread',
+				"and rejects a bare array (\"expected '{', actual '['\"). Only `/thread/{id}/message`",
+				'serves an array. 404s only for a thread the caller isn’t in, not for one that’s simply',
+				'empty — a thread just opened with someone has no messages yet and still has to open.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [THREAD_ID_PARAM, messageCountParam(DEFAULT_THREAD_MESSAGE_COUNT)],
+			responses: {
+				200: json(ChatThreadWithMessagesDto, 'The thread with a page of its messages'),
+				401: UNAUTHORIZED_RESPONSE,
+				404: NOT_A_MEMBER_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		const limit = messageCount(c, DEFAULT_THREAD_MESSAGE_COUNT)
-		const thread = await threadWithMessages(c, chatThreadId, id, limit)
-		return thread === null ? c.notFound() : c.json(thread)
-	})
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			const limit = messageCount(c, DEFAULT_THREAD_MESSAGE_COUNT)
+			const thread = await threadWithMessages(c, chatThreadId, id, limit)
+			return thread === null ? c.notFound() : c.json(thread)
+		}
+	)
 
 	// Send a message to a thread that already exists — every message after the one that
 	// opened the conversation. `/thread/18` is what the client posts; `/thread/18/message`
@@ -337,25 +531,40 @@ const app = new Hono<App>()
 	// Answers the SendMessageResponse wrapper (`{chatMessage, chatResult}`), not a bare
 	// message. Blank or missing contents is invalid-arguments with no message attached,
 	// rather than an error status.
-	.post('/thread/:id{[0-9]+}', (c) => sendToThread(c))
-	.post('/thread/:id{[0-9]+}/message', (c) => sendToThread(c))
+	.post('/thread/:id{[0-9]+}', sendToThreadRoute('`/thread/{id}`'), (c) => sendToThread(c))
+	.post('/thread/:id{[0-9]+}/message', sendToThreadRoute('`/thread/{id}/message`'), (c) =>
+		sendToThread(c)
+	)
 
 	// Rename a thread (`name=my chat`). Any member may rename — there's no owner — and an
 	// empty name clears it back to unnamed, which renders as the member list. Answers a
 	// bare ChatResult: 3 when the caller isn't on the thread, 0 on success.
-	.on(['POST', 'PUT'], '/thread/:id{[0-9]+}/rename', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.on(
+		['POST', 'PUT'],
+		'/thread/:id{[0-9]+}/rename',
+		chatResultRoute(
+			'Rename a thread',
+			[
+				'Any member may rename — there is no owner — and an empty name clears it back to unnamed,',
+				'which renders as the member list. The name is truncated to 128 characters rather than',
+				'rejected. Answers a bare ChatResult: 3 when the caller isn’t on the thread, 0 on success.',
+			].join(' '),
+			{ requestBody: form(RenameThreadRequest, 'The new name') }
+		),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
-			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+				return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			}
+
+			const name = ((await formField(c, 'name')) ?? '').trim().slice(0, MAX_THREAD_NAME_LENGTH)
+			await setThreadName(c.env.DB, chatThreadId, name)
+			return c.json(CHAT_SUCCESS)
 		}
-
-		const name = ((await formField(c, 'name')) ?? '').trim().slice(0, MAX_THREAD_NAME_LENGTH)
-		await setThreadName(c.env.DB, chatThreadId, name)
-		return c.json(CHAT_SUCCESS)
-	})
+	)
 
 	// Leave a thread. The thread and its history survive — only the caller's membership
 	// goes, so they stop seeing it and the remaining members keep the conversation.
@@ -363,25 +572,39 @@ const app = new Hono<App>()
 	// A "Player <@U…> left" notice is posted first, so the others see why the roster
 	// changed; the leaver is still a member at that moment and gets the push too, which
 	// is what tells their client the thread is gone.
-	.on(['POST', 'DELETE'], '/thread/:id{[0-9]+}/leave', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.on(
+		['POST', 'DELETE'],
+		'/thread/:id{[0-9]+}/leave',
+		chatResultRoute(
+			'Leave a thread',
+			[
+				'The thread and its history survive — only the caller’s membership goes, so they stop',
+				'seeing it and the remaining members keep the conversation. A "Player <@U…> left" system',
+				'notice is posted first so the others see why the roster changed; the leaver is still a',
+				'member at that moment and gets the push too, which is what tells their client the thread',
+				'is gone.',
+			].join(' ')
+		),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
-			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+				return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			}
+
+			const notice = await postMessage(c.env.DB, {
+				chatThreadId,
+				senderPlayerId: SYSTEM_SENDER_ID,
+				contents: leftChatContents(id),
+			})
+			await pushChatMessage(c, notice)
+
+			await removeThreadMember(c.env.DB, chatThreadId, id)
+			return c.json(CHAT_SUCCESS)
 		}
-
-		const notice = await postMessage(c.env.DB, {
-			chatThreadId,
-			senderPlayerId: SYSTEM_SENDER_ID,
-			contents: leftChatContents(id),
-		})
-		await pushChatMessage(c, notice)
-
-		await removeThreadMember(c.env.DB, chatThreadId, id)
-		return c.json(CHAT_SUCCESS)
-	})
+	)
 
 	// Snooze or unsnooze a thread (`snooze=True`), for the caller alone — snoozing is a
 	// per-member setting, so it never affects what anyone else sees.
@@ -390,34 +613,60 @@ const app = new Hono<App>()
 	// `True` is therefore stored as a far-future instant meaning "muted indefinitely", and
 	// `False` clears it. If the real server instead snoozes for a fixed window, this is
 	// the one line to change.
-	.on(['POST', 'PUT'], '/thread/:id{[0-9]+}/snooze', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.on(
+		['POST', 'PUT'],
+		'/thread/:id{[0-9]+}/snooze',
+		chatResultRoute(
+			'Snooze or unsnooze a thread',
+			[
+				'Per-member, for the caller alone — it never affects what anyone else sees. The client',
+				'sends a boolean while the field it reads back (`snoozedUntil`) is a time, so `True` is',
+				'stored as a far-future instant (9999-12-31T23:59:59Z) meaning "muted indefinitely" and',
+				'`False` clears it.',
+			].join(' '),
+			{ requestBody: form(SnoozeThreadRequest, 'The snooze flag') }
+		),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
-			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+				return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			}
+
+			const on = await formBool(c, 'snooze')
+			await setThreadSnoozed(c.env.DB, chatThreadId, id, on ? SNOOZED_INDEFINITELY : null)
+			return c.json(CHAT_SUCCESS)
 		}
-
-		const on = await formBool(c, 'snooze')
-		await setThreadSnoozed(c.env.DB, chatThreadId, id, on ? SNOOZED_INDEFINITELY : null)
-		return c.json(CHAT_SUCCESS)
-	})
+	)
 
 	// Favorite or unfavorite a thread (`favorite=True`), for the caller alone — like
 	// snoozing, it's a per-member flag that pins the thread in their own inbox.
-	.on(['PUT', 'POST'], '/thread/:id{[0-9]+}/favorite', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.on(
+		['PUT', 'POST'],
+		'/thread/:id{[0-9]+}/favorite',
+		chatResultRoute(
+			'Favorite or unfavorite a thread',
+			[
+				'Like snoozing, a per-member flag that pins the thread in the caller’s own inbox and',
+				'leaves everyone else’s untouched.',
+			].join(' '),
+			{ requestBody: form(FavoriteThreadRequest, 'The favorite flag') }
+		),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
-			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+				return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			}
+
+			await setThreadFavorited(c.env.DB, chatThreadId, id, await formBool(c, 'favorite'))
+			return c.json(CHAT_SUCCESS)
 		}
-
-		await setThreadFavorited(c.env.DB, chatThreadId, id, await formBool(c, 'favorite'))
-		return c.json(CHAT_SUCCESS)
-	})
+	)
 
 	// Add a player to a thread (`/thread/20/member/2`). Gated on the caller already being
 	// in it — you can only pull someone into a conversation you're part of.
@@ -426,23 +675,48 @@ const app = new Hono<App>()
 	// the caller isn't a member (which doubles as "no such thread", keeping a thread's
 	// existence private), 4 when the target is already on it, 0 on success. Idempotent —
 	// re-adding an existing member changes nothing.
-	.post('/thread/:id{[0-9]+}/member/:playerId{[0-9]+}', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.post(
+		'/thread/:id{[0-9]+}/member/:playerId{[0-9]+}',
+		chatResultRoute(
+			'Add a player to a thread',
+			[
+				'Gated on the caller already being in it — you can only pull someone into a conversation',
+				'you’re part of. Answers a bare ChatResult rather than an HTTP status, as the reference',
+				'does: 3 when the caller isn’t a member (which doubles as "no such thread", keeping a',
+				'thread’s existence private), 4 when the target is already on it, 0 on success.',
+				'Idempotent — re-adding an existing member changes nothing.',
+			].join(' '),
+			{
+				parameters: [
+					{
+						name: 'playerId',
+						in: 'path',
+						required: true,
+						description: 'The account id to add (digits only)',
+						schema: { type: 'string' },
+					},
+				],
+				successDescription: '0 success · 3 caller not a member · 4 target already on the thread',
+			}
+		),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
-			return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			if (!(await isThreadMember(c.env.DB, chatThreadId, id))) {
+				return c.json(CHAT_MEMBERSHIP_NOT_FOUND)
+			}
+
+			const playerId = Number.parseInt(c.req.param('playerId'), 10)
+			if (await isThreadMember(c.env.DB, chatThreadId, playerId)) {
+				return c.json(CHAT_PLAYER_ALREADY_ON_THREAD)
+			}
+
+			await addThreadMember(c.env.DB, chatThreadId, playerId)
+			return c.json(CHAT_SUCCESS)
 		}
-
-		const playerId = Number.parseInt(c.req.param('playerId'), 10)
-		if (await isThreadMember(c.env.DB, chatThreadId, playerId)) {
-			return c.json(CHAT_PLAYER_ALREADY_ON_THREAD)
-		}
-
-		await addThreadMember(c.env.DB, chatThreadId, playerId)
-		return c.json(CHAT_SUCCESS)
-	})
+	)
 
 	// Move the caller's read pointer — `/thread/15/read` for the whole thread, or
 	// `/thread/15/message/:messageId/read` for a specific message, which the client uses
@@ -452,23 +726,116 @@ const app = new Hono<App>()
 	// The pointer only moves forward, and never past the thread's real latest message: an
 	// id the client made up (or one it read from a synthetic message) can't strand the
 	// thread as permanently read.
-	.on(['PUT', 'POST'], '/thread/:id{[0-9]+}/read', (c) => markRead(c))
-	.on(['PUT', 'POST'], '/thread/:id{[0-9]+}/message/:messageId{[0-9]+}/read', (c) =>
-		markRead(c, Number.parseInt(c.req.param('messageId'), 10))
+	.on(
+		['PUT', 'POST'],
+		'/thread/:id{[0-9]+}/read',
+		chatResultRoute(
+			'Mark a whole thread read',
+			[
+				'Moves the caller’s read pointer to the thread’s latest message. The pointer only moves',
+				'forward and never past the thread’s real latest message, so an id the client made up',
+				'can’t strand the thread as permanently read. 404s for a thread the caller isn’t on.',
+			].join(' '),
+			{ successDescription: 'Always 0 (success)', notFound: true }
+		),
+		(c) => markRead(c)
+	)
+	.on(
+		['PUT', 'POST'],
+		'/thread/:id{[0-9]+}/message/:messageId{[0-9]+}/read',
+		chatResultRoute(
+			'Mark read up to a specific message',
+			[
+				'What the client sends when the view sits on a message rather than the bottom. Same',
+				'forward-only, clamped pointer as the whole-thread form. 404s for a thread the caller',
+				'isn’t on.',
+			].join(' '),
+			{
+				parameters: [
+					{
+						name: 'messageId',
+						in: 'path',
+						required: true,
+						description: 'The message to read up to (digits only)',
+						schema: { type: 'string' },
+					},
+				],
+				successDescription: 'Always 0 (success)',
+				notFound: true,
+			}
+		),
+		(c) => markRead(c, Number.parseInt(c.req.param('messageId'), 10))
 	)
 
 	// A page of one thread's messages, newest first — a bare array, unlike /thread/:id.
 	// `MessageCount` is the page size. 404 rather than 403 for a thread the caller isn't
 	// in: whether a thread exists is itself private, so a non-member gets the same answer
 	// as for a thread that's gone.
-	.get('/thread/:id{[0-9]+}/message', async (c) => {
-		const id = await authedId(c)
-		if (id === null) return c.body(null, 401)
+	.get(
+		'/thread/:id{[0-9]+}/message',
+		describeRoute({
+			tags: ['Messages'],
+			summary: 'A page of one thread’s messages',
+			description: [
+				'Newest first — a bare ARRAY, unlike `/thread/{id}`, which serves the thread object.',
+				'`MessageCount` is the page size. 404 rather than 403 for a thread the caller isn’t in:',
+				'whether a thread exists is itself private, so a non-member gets the same answer as for a',
+				'thread that’s gone. An empty thread is still a 200 with `[]`.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [THREAD_ID_PARAM, messageCountParam(DEFAULT_MESSAGE_COUNT)],
+			responses: {
+				200: json(ChatMessageDto.array(), 'The page of messages, newest first (empty when none)'),
+				401: UNAUTHORIZED_RESPONSE,
+				404: NOT_A_MEMBER_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
 
-		const chatThreadId = Number.parseInt(c.req.param('id'), 10)
-		if (!(await isThreadMember(c.env.DB, chatThreadId, id))) return c.notFound()
+			const chatThreadId = Number.parseInt(c.req.param('id'), 10)
+			if (!(await isThreadMember(c.env.DB, chatThreadId, id))) return c.notFound()
 
-		return c.json(await getThreadMessages(c.env.DB, chatThreadId, { limit: messageCount(c) }))
-	})
+			return c.json(await getThreadMessages(c.env.DB, chatThreadId, { limit: messageCount(c) }))
+		}
+	)
+
+// The generated spec. Documentation only — no request is validated against it (see
+// openapi.ts). `hide: true` keeps this route out of its own output.
+app.get(
+	'/openapi.json',
+	describeRoute({ hide: true }),
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare chat',
+					version: '1.0.0',
+					description: [
+						'Chat threads and messages for recflare, a private-server reimplementation of the Rec',
+						'Room backend. A thread is a conversation — a DM pair, a named group, or a system',
+						'thread — and membership is both the authorization gate and the `playerIds` the client',
+						'renders. Threads, membership and messages are D1-backed; every message also fans out',
+						'over the `notify` hub Durable Object as a ChatMessageReceived frame, so a conversation',
+						'updates live instead of on the next poll. (The hub frame carries a STRING `Id` — the',
+						'client dispatches on it and silently drops a numeric one.)',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://chat.recflare.net', description: 'Production' }],
+				components: {
+					securitySchemes: {
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							bearerFormat: 'JWT',
+							description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+						},
+					},
+				},
+			},
+		})
+	)
+)
 
 export default app

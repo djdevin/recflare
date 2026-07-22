@@ -1,8 +1,11 @@
 import { crop, PhotonImage, resize, SamplingFilter } from '@cf-wasm/photon'
 import { Hono } from 'hono'
+import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
+
+import { imageBytes, json, ServiceStatus } from './openapi'
 
 import type { App, Env } from './context'
 
@@ -197,16 +200,144 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	.get('/', (c) => c.json({ service: 'img', status: 'ok' }))
+	.get(
+		'/',
+		describeRoute({
+			tags: ['Images'],
+			summary: 'Service status',
+			description: 'Liveness probe. Always `{ service: "img", status: "ok" }`.',
+			responses: { 200: json(ServiceStatus, 'The worker is up') },
+		}),
+		(c) => c.json({ service: 'img', status: 'ok' })
+	)
 
-	// Stream an image straight from the R2 bucket by key, e.g.
-	// `GET /DefaultProfileImage.jpg`. The key may contain slashes for nested
-	// objects. Supports conditional requests via If-None-Match.
-	//
-	// When the client appends `?sig=p1`, the response body is RSA-SHA1 signed and
-	// the signature returned in a `Content-Signature` header. Signing requires the
-	// full body, so the object is buffered.
-	.get('/:key{.+}', async (c) => {
+// The generated spec. Documentation only — no request is validated against it (see
+// openapi.ts). `hide: true` keeps this route out of its own output.
+//
+// Registered BEFORE the `/:key{.+}` catch-all below: that route matches every path and
+// always returns a Response (the DefaultProfileImage.jpg fallback when nothing is
+// stored), so anything declared after it is unreachable. The spec is still complete —
+// `openAPIRouteHandler` walks `app.routes` at request time, after the catch-all has
+// been registered.
+app.get(
+	'/openapi.json',
+	describeRoute({ hide: true }),
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare img',
+					version: '1.0.0',
+					description: [
+						'Image hosting for recflare, a private-server reimplementation of the Rec Room',
+						'backend. Serves every image the client renders — profile photos, room thumbnails,',
+						'club banners and the photo feed — from an R2 bucket, with bundled static assets',
+						'(`static/`) taking precedence over the bucket and `DefaultProfileImage.jpg` served',
+						'as the fallback when a key is missing. Optional on-the-fly center-crop and resize',
+						'run through the Photon WASM codec; `?sig=p1` adds the RSA-SHA1 `Content-Signature`',
+						'header the client verifies against `KEY:RSA:p1.rec.net`.',
+						'',
+						'Note that this worker only serves bytes: the image metadata the client lists (the',
+						'`SavedImage` records behind `/api/images/...`) lives in the `api` worker, which',
+						'points at keys here.',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://img.recflare.net', description: 'Production' }],
+			},
+		})
+	)
+)
+
+// Stream an image straight from the R2 bucket by key, e.g.
+// `GET /DefaultProfileImage.jpg`. The key may contain slashes for nested
+// objects. Supports conditional requests via If-None-Match.
+//
+// When the client appends `?sig=p1`, the response body is RSA-SHA1 signed and
+// the signature returned in a `Content-Signature` header. Signing requires the
+// full body, so the object is buffered.
+app.get(
+	'/:key{.+}',
+	describeRoute({
+		tags: ['Images'],
+		summary: 'Serve an image by key',
+		description: [
+			'Serves the image stored under `key`, which may contain slashes for nested objects',
+			'(e.g. `Base/Clearcut.jpg`). A bundled static asset always wins over an R2 object of',
+			'the same key; when neither exists the bundled `DefaultProfileImage.jpg` is served',
+			'with a 200 rather than a 404, so the client never renders a broken image.',
+			'',
+			'Responses carry `Cache-Control: public, max-age=31536000, immutable` — an uploaded',
+			'image is never rewritten in place, a new image gets a new key.',
+			'',
+			'`?width`/`?height`/`?cropSquare=1` run the body through the Photon codec and always',
+			'return JPEG with no `ETag` (the source etag no longer describes the body), and the',
+			'`If-None-Match` precondition is skipped. An out-of-range or non-integer dimension is',
+			'ignored and the original is served — never an error.',
+		].join('\n'),
+		parameters: [
+			{
+				name: 'key',
+				in: 'path',
+				required: true,
+				description: 'Object key; may contain slashes. A key containing `..` is rejected (400).',
+				schema: { type: 'string' },
+			},
+			{
+				name: 'width',
+				in: 'query',
+				required: false,
+				description: [
+					'Output width. Only 128, 256, 512 or 1024 are honoured — any other value is',
+					'ignored and the source served untouched. Given alone, height follows the aspect ratio.',
+				].join(' '),
+				schema: { type: 'integer', enum: [128, 256, 512, 1024], example: 512 },
+			},
+			{
+				name: 'height',
+				in: 'query',
+				required: false,
+				description:
+					'Output height, same allowed set as `width`. Given alone, width follows the aspect ratio.',
+				schema: { type: 'integer', enum: [128, 256, 512, 1024], example: 512 },
+			},
+			{
+				name: 'cropSquare',
+				in: 'query',
+				required: false,
+				description: [
+					'`1` center-crops the source to a square before any resize. Used for the square',
+					'profile/thumbnail slots. Any other value is ignored.',
+				].join(' '),
+				schema: { type: 'string', enum: ['1'] },
+			},
+			{
+				name: 'sig',
+				in: 'query',
+				required: false,
+				description: [
+					'`p1` RSA-SHA1 signs the response body and returns it as',
+					'`Content-Signature: key-id=KEY:RSA:p1.rec.net; data=<base64>`. Signed over the',
+					'bytes actually returned, i.e. the resized body when a transform applies. Omitted',
+					'when the worker has no `IMG_SIGNING_KEY`.',
+				].join(' '),
+				schema: { type: 'string', enum: ['p1'] },
+			},
+			{
+				name: 'If-None-Match',
+				in: 'header',
+				required: false,
+				description:
+					'Conditional request against the R2 object etag. Ignored when a transform is requested.',
+				schema: { type: 'string' },
+			},
+		],
+		responses: {
+			200: imageBytes('The image bytes (or the DefaultProfileImage.jpg fallback)'),
+			304: { description: 'If-None-Match matched the stored object etag; no body' },
+			400: { description: 'The key contained `..`; no body' },
+		},
+	}),
+	async (c) => {
 		const key = c.req.param('key')
 		if (key.includes('..')) return c.body(null, 400)
 
@@ -255,6 +386,7 @@ const app = new Hono<App>()
 		}
 
 		return new Response(object.body, { headers })
-	})
+	}
+)
 
 export default app

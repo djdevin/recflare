@@ -382,9 +382,10 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Avatar'],
 			summary: 'The player’s avatar items',
-			description:
-				'The items the player has bought (from buyItem, in the inventory table) prepended ' +
+			description: [
+				'The items the player has bought (from buyItem, in the inventory table) prepended',
 				'to the default catalog. A player who has bought nothing gets just the catalog.',
+			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(JsonArray, 'Owned items followed by the default catalog'),
@@ -407,10 +408,11 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Avatar'],
 			summary: 'Owned custom avatar items',
-			description:
-				'Paginated owned custom items. Empty stub for now. The client requests this when ' +
-				'custom-item creation is allowed; a 404 shows as “Failed to download unlocked ' +
+			description: [
+				'Paginated owned custom items. Empty stub for now. The client requests this when',
+				'custom-item creation is allowed; a 404 shows as “Failed to download unlocked',
 				'avatar items”.',
+			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(CustomAvatarItemsResponse, 'Paginated results (empty for now)'),
@@ -462,9 +464,10 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Avatar'],
 			summary: 'The player’s own avatar',
-			description:
-				'The avatar JSON blob stored on the account row, or the default outfit when none is ' +
+			description: [
+				'The avatar JSON blob stored on the account row, or the default outfit when none is',
 				'saved (the client NREs on an empty OutfitSelections).',
+			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(JsonObject, 'The stored avatar blob (or the default)'),
@@ -565,11 +568,12 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Avatar'],
 			summary: 'Save an outfit into a slot',
-			description:
-				'Writes the posted outfit into the given `Slot` (overwriting it) and echoes it back. ' +
-				'The payload is stored verbatim — its inner fields are JSON-in-a-string from the ' +
-				'client’s own serializer. A missing/non-integer `Slot` is a 400 (guessing would ' +
+			description: [
+				'Writes the posted outfit into the given `Slot` (overwriting it) and echoes it back.',
+				'The payload is stored verbatim — its inner fields are JSON-in-a-string from the',
+				'client’s own serializer. A missing/non-integer `Slot` is a 400 (guessing would',
 				'silently overwrite another outfit).',
+			].join(' '),
 			security: AUTHED,
 			requestBody: jsonBody(SaveOutfitRequest, 'The outfit, with a target Slot'),
 			responses: {
@@ -601,9 +605,10 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Gifts'],
 			summary: 'Pending gift boxes',
-			description:
-				'The player’s unopened gift boxes from their purchases (and, later, from other ' +
+			description: [
+				'The player’s unopened gift boxes from their purchases (and, later, from other',
 				'players). The item was already granted at purchase, so an unopened box is cosmetic.',
+			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(JsonArray, 'Unopened gift boxes (empty when none)'),
@@ -635,12 +640,13 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Gifts'],
 			summary: 'Open (consume) a gift box',
-			description:
-				'Deletes the box (the item was already granted at purchase). Always answers the ' +
-				'`{ error, success, value }` envelope with HTTP 200 — even with no token, a zero id, ' +
-				'or a box already gone — because the client parses it to finish opening the box. The ' +
-				'delete is scoped to the caller; opening someone else’s box is 403. Also served by ' +
+			description: [
+				'Deletes the box (the item was already granted at purchase). Always answers the',
+				'`{ error, success, value }` envelope with HTTP 200 — even with no token, a zero id,',
+				'or a box already gone — because the client parses it to finish opening the box. The',
+				'delete is scoped to the caller; opening someone else’s box is 403. Also served by',
 				'the `api` worker.',
+			].join(' '),
 			requestBody: form(ConsumeGiftRequest, 'The gift-box id'),
 			responses: {
 				200: json(ConsumeEnvelope, 'Success envelope'),
@@ -680,9 +686,10 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Avatar'],
 			summary: 'Another player’s avatar (render subset)',
-			description:
-				'The public render subset used to draw another player’s avatar. No auth. Falls back ' +
+			description: [
+				'The public render subset used to draw another player’s avatar. No auth. Falls back',
 				'to the default outfit when the player hasn’t saved one.',
+			].join(' '),
 			parameters: [
 				{
 					name: 'id',
@@ -726,10 +733,11 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Equipment'],
 			summary: 'Update owned equipment',
-			description:
-				'Applies the posted `Favorited` flags to the caller’s owned equipment, matched by ' +
-				'`ModificationGuid`. Everything else in each entry is ignored, and a guid the caller ' +
+			description: [
+				'Applies the posted `Favorited` flags to the caller’s owned equipment, matched by',
+				'`ModificationGuid`. Everything else in each entry is ignored, and a guid the caller',
 				'doesn’t own is silently skipped. Empty body on success.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: jsonBody(EquipmentUpdateRequest, 'The entries to update'),
 			responses: {
@@ -782,10 +790,11 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Consumables'],
 			summary: 'Unlocked consumables',
-			description:
-				'The consumables the player has bought (from buyItem, in the consumable table), ' +
-				'grouped by item into the unlocked-consumable DTO (Ids/CreatedAts per instance, ' +
+			description: [
+				'The consumables the player has bought (from buyItem, in the consumable table),',
+				'grouped by item into the unlocked-consumable DTO (Ids/CreatedAts per instance,',
 				'Count their sum). [] when they’ve bought none.',
+			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(JsonArray, 'Grouped unlocked consumables (empty when none)'),
@@ -808,10 +817,11 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Consumables'],
 			summary: 'Consume a quantity of an owned consumable',
-			description:
-				'Reduces the given consumable instance’s count by `DeltaCount` (default 1), deleting ' +
-				'the row at zero. Scoped to the caller. Pushes a ConsumableMappingRemoved socket ' +
+			description: [
+				'Reduces the given consumable instance’s count by `DeltaCount` (default 1), deleting',
+				'the row at zero. Scoped to the caller. Pushes a ConsumableMappingRemoved socket',
 				'notification. Envelope mirrors the gift-consume ack.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: jsonBody(ConsumeConsumableRequest, 'The consumable id and delta'),
 			responses: {
@@ -848,10 +858,11 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Storefront'],
 			summary: 'Currency balance',
-			description:
-				'The player’s balance in a CurrencyType (the client fetches `/balance/2`, ' +
-				'RecCenterTokens, on load). A first read seeds their starting balance. An unknown or ' +
+			description: [
+				'The player’s balance in a CurrencyType (the client fetches `/balance/2`,',
+				'RecCenterTokens, on load). A first read seeds their starting balance. An unknown or',
 				'non-account currency returns a 0 balance rather than 404.',
+			].join(' '),
 			security: AUTHED,
 			parameters: [
 				{
@@ -932,12 +943,13 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Storefront'],
 			summary: 'Buy a storefront item',
-			description:
-				'Looks the item up in its storefront catalog, confirms the client’s `RequestedPrice` ' +
-				'still matches, debits the buyer atomically, grants the item (into the inventory or ' +
-				'consumable table), and returns a gift box. A `Gift` block routes the item to another ' +
-				'player, but the caller always pays. `Balance` in the response is the CHANGE (negated ' +
+			description: [
+				'Looks the item up in its storefront catalog, confirms the client’s `RequestedPrice`',
+				'still matches, debits the buyer atomically, grants the item (into the inventory or',
+				'consumable table), and returns a gift box. A `Gift` block routes the item to another',
+				'player, but the caller always pays. `Balance` in the response is the CHANGE (negated',
 				'price), not the new total. Pushes a StorefrontBalanceUpdate socket notification.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: jsonBody(BuyItemRequest, 'The item, currency, price, and optional Gift'),
 			responses: {
@@ -1136,10 +1148,11 @@ const app = new Hono<App>({ strict: false })
 		describeRoute({
 			tags: ['Econ'],
 			summary: 'Report weekly-challenge progress',
-			description:
-				'Stubbed: with no challenge-progress store we persist nothing and never mark a ' +
-				'challenge complete. Echoes the identifying fields back with `Complete: false` so the ' +
+			description: [
+				'Stubbed: with no challenge-progress store we persist nothing and never mark a',
+				'challenge complete. Echoes the identifying fields back with `Complete: false` so the',
 				'client gets a well-formed body.',
+			].join(' '),
 			requestBody: jsonBody(ChallengeProgressRequest, 'Challenge ids + the evaluated rule tree'),
 			responses: { 200: json(ChallengeProgressResponse, 'Echoed fields, Complete false') },
 		}),
@@ -1211,12 +1224,6 @@ app.get(
 						'Rec Room backend. The client calls these on the `econ` host; many are also served by',
 						'the `api` worker. Storefront catalogs are static assets (`sf{N}.json`); balances,',
 						'inventory, consumables, saved outfits and gift boxes are D1-backed.',
-						'',
-						'The shapes here are **reverse-engineered from the game client**, which is the only',
-						'real consumer. They record observed behaviour, not a designed contract; the handlers',
-						'are lenient and parse bodies defensively. Nothing in this spec is enforced at',
-						'runtime — treat a field marked required as "the client always sends it", not "the',
-						'server rejects it if absent".',
 					].join('\n'),
 				},
 				servers: [{ url: 'https://econ.recflare.net', description: 'Production' }],

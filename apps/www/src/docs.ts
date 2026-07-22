@@ -21,6 +21,11 @@ export const DOCUMENTED_SERVICES: ReadonlyArray<{ slug: string; title: string }>
 	{ slug: 'accounts', title: 'accounts — profiles & lookups' },
 	{ slug: 'match', title: 'match — matchmaking & presence' },
 	{ slug: 'econ', title: 'econ — avatar & economy' },
+	{ slug: 'clubs', title: 'clubs — clubs & clubhouses' },
+	{ slug: 'chat', title: 'chat — threads & messages' },
+	{ slug: 'img', title: 'img — image serving & resizing' },
+	{ slug: 'storage', title: 'storage — uploads to the CDN bucket' },
+	{ slug: 'playersettings', title: 'playersettings — per-player settings' },
 	{ slug: 'api', title: 'api — everything else' },
 ]
 
@@ -46,9 +51,13 @@ function overviewSpec(): Record<string, unknown> {
 		'---',
 		'',
 		'These specs are **descriptive, not enforced** — they document a protocol',
-		'reverse-engineered from the game client (the only real consumer), so a field',
-		'marked required means "the client always sends it", not "the server rejects it if',
-		'absent". Each service also serves its own spec at `https://<service>.<domain>/openapi.json`.',
+		'reverse-engineered from the game client (the only real consumer). They record',
+		'observed behaviour, not a designed contract, and the handlers are lenient: they',
+		'parse bodies defensively rather than rejecting them. So a field marked required',
+		'means "the client always sends it", not "the server rejects it if absent".',
+		'',
+		'This applies to every service below; the individual specs don’t repeat it. Each',
+		'service also serves its own spec at `https://<service>.<domain>/openapi.json`.',
 	].join('\n')
 	return {
 		openapi: '3.1.0',

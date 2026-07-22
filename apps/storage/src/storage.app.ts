@@ -1,8 +1,19 @@
 import { Hono } from 'hono'
+import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
+
+import {
+	AUTHED,
+	ErrorResponse,
+	json,
+	text,
+	UNAUTHORIZED_RESPONSE,
+	UPLOAD_REQUEST_BODY,
+	UploadResponse,
+} from './openapi'
 
 import type { App } from './context'
 
@@ -72,9 +83,18 @@ const app = new Hono<App>()
 	.onError(withOnError())
 	.notFound(withNotFound())
 
-	.get('/', async (c) => {
-		return c.text('hello, world!')
-	})
+	.get(
+		'/',
+		describeRoute({
+			tags: ['Meta'],
+			summary: 'Health check',
+			description: 'Plain-text liveness probe. No auth.',
+			responses: { 200: text('Service is up (`hello, world!`)') },
+		}),
+		async (c) => {
+			return c.text('hello, world!')
+		}
+	)
 
 	// File upload. Auth-gated — any valid account token is allowed (no role check).
 	// Multipart form with `FileType` (the client's UploadFileType enum) and a binary
@@ -83,40 +103,99 @@ const app = new Hono<App>()
 	// (the `<upload-date>/<random-name>` part the `cdn` worker serves back) the client
 	// references it by. Also accepts a name-only post (no binary) that just echoes
 	// back an explicit `name`/`filename`/`imagename`. Mirrors the reference `Upload`.
-	.post('/upload', async (c) => {
-		const id = await validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
-		if (id === null) return c.body(null, 401)
+	.post(
+		'/upload',
+		describeRoute({
+			tags: ['Upload'],
+			summary: 'Upload a file',
+			description: [
+				'Stores the posted file in the shared CDN R2 bucket under',
+				'`<type-subfolder>/<upload-date>/<random-name>` and returns the',
+				'`<upload-date>/<random-name>` part the client references it by (the same name the',
+				'`cdn` worker serves back). The subfolder comes from `FileType`; RoomSave (1) lands',
+				'under `room/` so the cdn worker’s `GET /room/:dataBlob` finds it, and an Invention',
+				'(5) keeps a `.inv` extension on both the key and the returned name. Auth-gated —',
+				'any valid account token is allowed, no role check. A post with no binary part but',
+				'an explicit `imageName` / `filename` / `name` just echoes that name back. Mirrors',
+				'the reference server’s `Upload`.',
+			].join(' '),
+			security: AUTHED,
+			requestBody: UPLOAD_REQUEST_BODY,
+			responses: {
+				200: json(UploadResponse, 'The stored (or echoed) file name'),
+				400: json(ErrorResponse, 'Unknown/missing FileType, or neither a file nor a name'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await validateAndGetAccountId(c.req.raw, await c.env.JWT_SECRET.get())
+			if (id === null) return c.body(null, 401)
 
-		const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 
-		// The binary part is identified by being a file (filename/content-type),
-		// not by its field name — matching the reference's part detection.
-		const file = Object.values(body).find((v): v is File => v instanceof File)
+			// The binary part is identified by being a file (filename/content-type),
+			// not by its field name — matching the reference's part detection.
+			const file = Object.values(body).find((v): v is File => v instanceof File)
 
-		if (file) {
-			const fileType = textField(body, 'filetype') ?? '0'
-			const subfolder = subfolderForFileType(fileType)
-			if (subfolder === undefined) {
-				// makeUploadName == "" → no destination for an unknown/missing type.
-				return c.json({ error: 'missing or unknown FileType' }, 400)
+			if (file) {
+				const fileType = textField(body, 'filetype') ?? '0'
+				const subfolder = subfolderForFileType(fileType)
+				if (subfolder === undefined) {
+					// makeUploadName == "" → no destination for an unknown/missing type.
+					return c.json({ error: 'missing or unknown FileType' }, 400)
+				}
+				// Folder each upload under its date (e.g. `room/2026-02-03/<uuid>`) so the
+				// bucket stays browsable. The date is part of the returned name, so the key
+				// the `cdn` worker reads back (`<subfolder>/<name>`) still round-trips — as
+				// does the extension, which is why it goes on the key, not just the name.
+				const datePrefix = new Date().toISOString().slice(0, 10)
+				const filename = `${datePrefix}/${crypto.randomUUID()}${extensionForFileType(fileType)}`
+				await c.env.CDN_ASSETS.put(`${subfolder}/${filename}`, await file.arrayBuffer(), {
+					httpMetadata: { contentType: file.type || 'application/octet-stream' },
+				})
+				return c.json({ filename })
 			}
-			// Folder each upload under its date (e.g. `room/2026-02-03/<uuid>`) so the
-			// bucket stays browsable. The date is part of the returned name, so the key
-			// the `cdn` worker reads back (`<subfolder>/<name>`) still round-trips — as
-			// does the extension, which is why it goes on the key, not just the name.
-			const datePrefix = new Date().toISOString().slice(0, 10)
-			const filename = `${datePrefix}/${crypto.randomUUID()}${extensionForFileType(fileType)}`
-			await c.env.CDN_ASSETS.put(`${subfolder}/${filename}`, await file.arrayBuffer(), {
-				httpMetadata: { contentType: file.type || 'application/octet-stream' },
-			})
-			return c.json({ filename })
+
+			// No binary — accept an explicit name and echo it straight back.
+			const explicitName = textField(body, 'imagename', 'filename', 'name')
+			if (explicitName) return c.json({ filename: explicitName })
+
+			return c.json({ error: 'missing filename or valid upload data' }, 400)
 		}
+	)
 
-		// No binary — accept an explicit name and echo it straight back.
-		const explicitName = textField(body, 'imagename', 'filename', 'name')
-		if (explicitName) return c.json({ filename: explicitName })
-
-		return c.json({ error: 'missing filename or valid upload data' }, 400)
-	})
+// The generated spec. Documentation only — no request is validated against it (see
+// openapi.ts). `hide: true` keeps this route out of its own output.
+app.get(
+	'/openapi.json',
+	describeRoute({ hide: true }),
+	withCleanSpec(
+		openAPIRouteHandler(app, {
+			documentation: {
+				info: {
+					title: 'recflare storage',
+					version: '1.0.0',
+					description: [
+						'File uploads for recflare, a private-server reimplementation of the Rec Room',
+						'backend. The client posts room saves, holotars, images, videos, inventions and',
+						'room metadata here; each lands in the shared CDN R2 bucket under a folder chosen',
+						'by its `FileType`, and the `cdn` worker serves them back from the same bucket.',
+					].join('\n'),
+				},
+				servers: [{ url: 'https://storage.recflare.net', description: 'Production' }],
+				components: {
+					securitySchemes: {
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							bearerFormat: 'JWT',
+							description: 'An `access_token` from the auth worker’s `POST /connect/token`.',
+						},
+					},
+				},
+			},
+		})
+	)
+)
 
 export default app

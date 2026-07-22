@@ -1,6 +1,8 @@
 import { SELF } from 'cloudflare:test'
 import { expect, it } from 'vitest'
 
+import { DOCUMENTED_SERVICES } from '../../docs'
+
 it('rejects unauthenticated account reads', async () => {
 	const res = await SELF.fetch('https://example.com/api/me')
 	expect(res.status).toBe(401)
@@ -54,7 +56,9 @@ it('serves the aggregated docs page with a source per documented service', async
 	const html = await res.text()
 	// Mounts the self-hosted Scalar bundle (not a CDN) and lists every service's spec.
 	expect(html).toContain('/docs/scalar.standalone.js')
-	for (const slug of ['auth', 'accounts', 'match', 'econ']) {
+	// Driven off the constant so adding a service can't leave the page (or this test)
+	// behind.
+	for (const { slug } of DOCUMENTED_SERVICES) {
 		expect(html).toContain(`/docs/openapi/${slug}.json`)
 	}
 })

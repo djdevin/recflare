@@ -247,13 +247,14 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Cached login'],
 			summary: 'Accounts linked to a platform id',
-			description:
-				'Accounts the client may offer on its login screen for this platform identity. ' +
-				'Filtered to those a `cached_login` grant would actually accept, so an entry here ' +
-				'is always redeemable. An unknown id yields `[]` (not a 404) and the client falls ' +
-				'back to a fresh login or create_account. ' +
-				'EXCEPT platform 1 (Oculus), which is stubbed: it ignores the id and returns one ' +
+			description: [
+				'Accounts the client may offer on its login screen for this platform identity.',
+				'Filtered to those a `cached_login` grant would actually accept, so an entry here',
+				'is always redeemable. An unknown id yields `[]` (not a 404) and the client falls',
+				'back to a fresh login or create_account.',
+				'EXCEPT platform 1 (Oculus), which is stubbed: it ignores the id and returns one',
 				'canned, non-redeemable entry with `requirePassword: true`.',
+			].join(' '),
 			parameters: [
 				{
 					name: 'platform',
@@ -306,11 +307,12 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Cached login'],
 			summary: 'Bulk cached-login lookup (friends resolution)',
-			description:
-				'Resolves many platform ids at once. Results are flattened across all ids, so the ' +
-				'response cannot be mapped back to a specific input id — the client uses each ' +
-				"entry's own `platformId`. Unlike the single-id route, results are NOT filtered to " +
+			description: [
+				'Resolves many platform ids at once. Results are flattened across all ids, so the',
+				'response cannot be mapped back to a specific input id — the client uses each',
+				'entry’s own `platformId`. Unlike the single-id route, results are NOT filtered to',
 				'redeemable accounts. Unknown ids contribute nothing; a body with no `id` yields `[]`.',
+			].join(' '),
 			requestBody: form(PlatformIdsRequest, 'Repeated `id=` form fields'),
 			responses: { 200: json(CachedLogin.array(), 'Flattened accounts across every id') },
 		}),
@@ -373,8 +375,10 @@ const app = new Hono<App>()
 				200: json(TokenResponse, 'Access token, refresh token and granted scopes'),
 				400: json(
 					OAuthError,
-					'Unusable grant: bad credentials, an unverifiable or non-Steam platform, an ' +
-						'invalid/expired refresh token, a missing account identifier, or a signup cap reached'
+					[
+						'Unusable grant: bad credentials, an unverifiable or non-Steam platform, an',
+						'invalid/expired refresh token, a missing account identifier, or a signup cap reached',
+					].join(' ')
 				),
 				500: json(
 					OAuthError,
@@ -654,10 +658,11 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Account'],
 			summary: "Change the caller's password",
-			description:
-				'Stores a PBKDF2 hash on the account row; the raw password is never persisted. ' +
-				'When the account already has a password, `oldPassword` must match. The first time ' +
+			description: [
+				'Stores a PBKDF2 hash on the account row; the raw password is never persisted.',
+				'When the account already has a password, `oldPassword` must match. The first time',
 				'a password is set, `oldPassword` is empty — which is what the client sends.',
+			].join(' '),
 			security: [{ bearerAuth: [] }],
 			requestBody: form(ChangePasswordRequest, 'New password, plus the old one when one is set'),
 			responses: {
@@ -729,13 +734,6 @@ app.get(
 					description: [
 						'Authentication and token issuance for recflare, a private-server reimplementation',
 						'of the Rec Room backend.',
-						'',
-						'The shapes here are **reverse-engineered from the game client**, which is the only',
-						'real consumer. They record observed behaviour rather than a designed contract, and',
-						'the handlers are deliberately lenient: missing or malformed fields generally fall',
-						'through to a graceful path instead of erroring. Nothing in this spec is enforced at',
-						'runtime, so treat a field marked required as "the client always sends it", not "the',
-						'server rejects it if absent".',
 					].join('\n'),
 				},
 				servers: [{ url: 'https://auth.recflare.net', description: 'Production' }],

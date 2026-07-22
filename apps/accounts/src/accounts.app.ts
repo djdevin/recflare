@@ -179,9 +179,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Self'],
 			summary: 'The caller’s own account',
-			description:
-				'The private self DTO, including owner-only fields (email, remaining username ' +
+			description: [
+				'The private self DTO, including owner-only fields (email, remaining username',
 				'changes). An account with no stored row falls back to a synthesized default.',
+			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(SelfAccountDto, 'The caller’s account'),
@@ -232,9 +233,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Lookup'],
 			summary: 'Look up many accounts by id',
-			description:
-				'Accepts repeated `id` query params and/or comma-separated lists. Every requested ' +
+			description: [
+				'Accepts repeated `id` query params and/or comma-separated lists. Every requested',
 				'id appears in the response — ids with no stored row get a synthesized default.',
+			].join(' '),
 			parameters: [
 				{
 					name: 'id',
@@ -325,9 +327,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Self'],
 			summary: 'Create an account',
-			description:
-				'Mints a new account with an auto-assigned random username (players don’t choose ' +
+			description: [
+				'Mints a new account with an auto-assigned random username (players don’t choose',
 				'one initially). Not auth-gated. `platformId` is parsed but not yet persisted.',
+			].join(' '),
 			requestBody: form(CreateAccountRequest, 'Platform fields'),
 			responses: { 200: json(CreateAccountResult, 'The created account, in a result envelope') },
 		}),
@@ -375,9 +378,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Lookup'],
 			summary: 'An account’s privacy settings',
-			description:
-				'Nothing stores per-player privacy yet; the id is echoed and recent history is ' +
+			description: [
+				'Nothing stores per-player privacy yet; the id is echoed and recent history is',
 				'reported visible (a bare `{}` fails the client’s deserializer).',
+			].join(' '),
 			parameters: [
 				{
 					name: 'id',
@@ -431,10 +435,11 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Profile'],
 			summary: 'Change username',
-			description:
-				'Rejects a name taken by another account and requires a remaining change; on ' +
-				'success the name is persisted and the counter decremented. Always HTTP 200 — ' +
+			description: [
+				'Rejects a name taken by another account and requires a remaining change; on',
+				'success the name is persisted and the counter decremented. Always HTTP 200 —',
 				'failures carry a message in `error` (see the UsernameResult envelope).',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(UsernameRequest, 'The desired username'),
 			responses: {
@@ -529,9 +534,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Profile'],
 			summary: 'Set identity flags',
-			description:
-				'`identityFlags` bitmask. In the public DTO, so the update is broadcast via ' +
+			description: [
+				'`identityFlags` bitmask. In the public DTO, so the update is broadcast via',
 				'AccountUpdate.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(IdentityFlagsRequest, 'The identityFlags bitmask'),
 			responses: {
@@ -561,9 +567,10 @@ const app = new Hono<App>()
 		describeRoute({
 			tags: ['Profile'],
 			summary: 'Set personal pronouns',
-			description:
-				'Posted as `pronounFlags`. The response carries no account, so the client learns ' +
+			description: [
+				'Posted as `pronounFlags`. The response carries no account, so the client learns',
 				'the new value only from the broadcast AccountUpdate.',
+			].join(' '),
 			security: AUTHED,
 			requestBody: form(PronounsRequest, 'The pronounFlags bitmask'),
 			responses: {
@@ -648,12 +655,6 @@ app.get(
 						'Account reads, profile mutations and lookups for recflare, a private-server',
 						'reimplementation of the Rec Room backend. Accounts live in the shared `recflare`',
 						'D1 database, whose `account` schema is owned by the `auth` worker.',
-						'',
-						'The shapes here are **reverse-engineered from the game client**, which is the only',
-						'real consumer. They record observed behaviour, not a designed contract; the handlers',
-						'are lenient and reads fall back to a synthesized default account rather than 404.',
-						'Nothing in this spec is enforced at runtime — treat a field marked required as "the',
-						'client always sends it", not "the server rejects it if absent".',
 					].join('\n'),
 				},
 				servers: [{ url: 'https://accounts.recflare.net', description: 'Production' }],

@@ -159,3 +159,35 @@ it('POST /upload 400s when there is neither a file nor a name', async () => {
 	})
 	expect(res.status).toBe(400)
 })
+
+it('GET /openapi.json documents every route', async () => {
+	const res = await SELF.fetch(`${ORIGIN}/openapi.json`)
+	expect(res.status).toBe(200)
+	const spec = (await res.json()) as {
+		openapi: string
+		paths: Record<string, Record<string, { summary?: string }>>
+	}
+	expect(spec.openapi).toMatch(/^3\.1/)
+
+	// The spec route hides itself.
+	expect(spec.paths['/openapi.json']).toBeUndefined()
+
+	// Every route the worker serves is described. This is the drift guard: adding a
+	// route without a describeRoute() block fails here rather than silently shipping
+	// an incomplete spec.
+	const documented = new Set(
+		Object.entries(spec.paths).flatMap(([path, ops]) =>
+			Object.keys(ops).map((method) => `${method.toUpperCase()} ${path}`)
+		)
+	)
+	expect([...documented].sort()).toEqual(['GET /', 'POST /upload'])
+
+	// Every operation carries a summary — a path present but undescribed is not
+	// documentation.
+	for (const ops of Object.values(spec.paths)) {
+		for (const op of Object.values(ops)) expect(op.summary).toBeTruthy()
+	}
+
+	// Every schema inlines: a `$ref` here would be a dangling reference (see openapi.ts).
+	expect(JSON.stringify(spec).includes('"$ref"')).toBe(false)
+})
