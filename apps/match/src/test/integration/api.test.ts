@@ -10,6 +10,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import {
 	countPlayersInInstance,
+	GAME_VERSION,
 	getRoomInstance,
 	PRESENCE_SCHEMA_DDL,
 	ROOM_INSTANCE_SCHEMA_DDL,
@@ -200,7 +201,7 @@ describe('public endpoints', () => {
 		// fields, which only ever carry values in a matchmaking response.
 		expect(await res.json()).toEqual([
 			{
-				appVersion: '20230302',
+				appVersion: GAME_VERSION,
 				deviceClass: 0,
 				errorCode: 0,
 				isOnline: false,
@@ -234,7 +235,7 @@ describe('public endpoints', () => {
 		const res = await exports.default.fetch(`${ORIGIN}/player`)
 		expect(res.status).toBe(200)
 		const players = (await res.json()) as Array<{ playerId: number; isOnline: boolean }>
-		expect(players[0]).toMatchObject({ playerId: 1, isOnline: true, appVersion: '20230302' })
+		expect(players[0]).toMatchObject({ playerId: 1, isOnline: true, appVersion: GAME_VERSION })
 	})
 
 	test('POST /goto/none returns the offline dorm', async () => {
@@ -702,7 +703,7 @@ describe('auth-gated endpoints', () => {
 					deviceClass: 0,
 					vrMovementMode: 1,
 					platform: 0,
-					appVersion: '20230302',
+					appVersion: GAME_VERSION,
 					expiresAt,
 				})
 			)
@@ -761,7 +762,7 @@ describe('auth-gated endpoints', () => {
 						deviceClass: 0,
 						vrMovementMode: 1,
 						platform: 0,
-						appVersion: '20230302',
+						appVersion: GAME_VERSION,
 						expiresAt,
 					})
 				)
@@ -879,7 +880,7 @@ describe('auth-gated endpoints', () => {
 					deviceClass: 0,
 					vrMovementMode: 1,
 					platform: 0,
-					appVersion: '20230302',
+					appVersion: GAME_VERSION,
 					expiresAt: nowSeconds() + 800,
 				})
 			)

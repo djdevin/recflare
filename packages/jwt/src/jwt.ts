@@ -10,6 +10,8 @@
 
 import { sign, verify } from 'hono/jwt'
 
+import { GAME_VERSION } from '@repo/domain'
+
 /** Token lifetime in seconds (mirrored in the `expires_in` response field). */
 export const TOKEN_TTL_SECONDS = 3600
 
@@ -127,8 +129,7 @@ export async function generateToken(
 			idp: 'local',
 			platform,
 			platform_id: platformId,
-			'rn.ver': '20230302',
-			// Same PlatformType int as the `platform` claim — it was pinned to Steam.
+			'rn.ver': GAME_VERSION,
 			'rn.plat': platform,
 			role: [...BASE_ROLES, ...extraRoles],
 			scope: TOKEN_SCOPES,

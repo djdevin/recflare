@@ -2,6 +2,8 @@ import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
+import { GAME_VERSION } from '@repo/domain'
+
 import '../../api.app'
 
 import { createImage, getImageByName, SCHEMA_DDL as IMAGES_SCHEMA_DDL } from '../../images-db'
@@ -135,9 +137,14 @@ describe('public endpoints', () => {
 		expect(body).toMatchObject({ ReportBudget: 125, VersionRegex: '.*' })
 	})
 
-	test('GET /api/versioncheck/v4', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4`)
+	test('GET /api/versioncheck/v4 reports current for the matching build', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4?v=${GAME_VERSION}`)
 		expect(await res.json()).toMatchObject({ VersionStatus: 0 })
+	})
+
+	test('GET /api/versioncheck/v4 flags a mismatched build', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4?v=19990101`)
+		expect(await res.json()).toMatchObject({ VersionStatus: 1 })
 	})
 
 	test('GET /api/relationships/v2/get returns empty array for a player with none', async () => {

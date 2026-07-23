@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { describeRoute } from 'hono-openapi'
 
+import { GAME_VERSION } from '@repo/domain'
+
 import apiConfigV2 from '../../static/api-config-v2.json'
 import gameConfigsV1All from '../../static/gameconfigs-v1-all.json'
 import {
@@ -97,13 +99,14 @@ export const configRoutes = new Hono<App>({ strict: false })
 			tags: ['Config'],
 			summary: 'Client version check',
 			description:
-				'Whether the client build is current. Always the “up to date, nothing islanded” ' +
-				'answer — this server does not gate on client version.',
-			responses: { 200: json(VersionCheck, 'Always current') },
+				'Whether the client build is current. Compares the client’s `?v=` build against ' +
+				'our target `GAME_VERSION`: `VersionStatus` is 0 when they match, 1 when the ' +
+				'client is on a different build.',
+			responses: { 200: json(VersionCheck, 'Version status') },
 		}),
 		(c) =>
 			c.json({
-				VersionStatus: 0,
+				VersionStatus: c.req.query('v') === GAME_VERSION ? 0 : 1,
 				UpdateNotificationStage: 0,
 				IsVersionIslanded: false,
 				IsCrossPlayDisabled: false,

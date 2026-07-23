@@ -135,9 +135,9 @@ export const ApiConfigV2 = JsonObject.describe(
 	'The static client config, plus a ShareBaseUrl templated from the deploy domain'
 )
 
-/** `GET /api/versioncheck/v4` — always the "you are up to date" answer. */
+/** `GET /api/versioncheck/v4` — whether the client's `?v=` build matches GAME_VERSION. */
 export const VersionCheck = z.object({
-	VersionStatus: z.int().describe('0 = current'),
+	VersionStatus: z.int().describe('0 = current, 1 = client on a different build'),
 	UpdateNotificationStage: z.int(),
 	IsVersionIslanded: z.boolean(),
 	IsCrossPlayDisabled: z.boolean(),

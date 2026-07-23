@@ -10,6 +10,7 @@
 		"check:types": "run-tsc"
 	},
 	"dependencies": {
+		"@repo/domain": "workspace:*",
 		"hono": "4.12.27"
 	},
 	"devDependencies": {

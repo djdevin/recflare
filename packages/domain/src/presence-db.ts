@@ -24,6 +24,14 @@
 /** Presence is kept this long (s) after the last matchmake/heartbeat refresh. */
 export const PRESENCE_TTL_SECONDS = 900
 
+/**
+ * Game build version reported in presence (and echoed in the auth token's `rn.ver`
+ * claim). This is a server-side constant — the client doesn't supply it, and an
+ * empty value breaks the client's presence/version handling. Matches our target
+ * 2023 client build.
+ */
+export const GAME_VERSION = '20230414'
+
 /** Schema DDL (mirror of migrations/0006_presence.sql). */
 export const PRESENCE_SCHEMA_DDL: string[] = [
 	`CREATE TABLE IF NOT EXISTS presence (

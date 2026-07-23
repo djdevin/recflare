@@ -6,6 +6,7 @@ import {
 	countAccountsByPlatformId,
 	countAccountsBySignupIp,
 	createAccount,
+	GAME_VERSION,
 	getAccount,
 	getAccountByUsername,
 	getAccountsByPlatformId,
@@ -139,7 +140,7 @@ async function placeNewPlayerInOrientation(
 		deviceClass,
 		vrMovementMode: 1,
 		platform: 0,
-		appVersion: '20230302',
+		appVersion: GAME_VERSION,
 	})
 }
 

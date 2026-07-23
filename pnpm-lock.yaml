@@ -881,6 +881,9 @@ importers:
 
   packages/jwt:
     dependencies:
+      '@repo/domain':
+        specifier: workspace:*
+        version: link:../domain
       hono:
         specifier: 4.12.27
         version: 4.12.27

@@ -7,6 +7,7 @@ import {
 	createRoomInstance,
 	deleteExpiredPresence,
 	deletePresence,
+	GAME_VERSION,
 	getAccount,
 	getClubSummary,
 	getExpiredPresenceInstanceIds,
@@ -139,13 +140,6 @@ type Presence = StoredPresence<RoomInstance>
  * ahead of expiry (the client heartbeats many times inside this window).
  */
 const PRESENCE_REFRESH_THRESHOLD = 300
-
-/**
- * Game build version reported in presence. This is a server-side constant — the
- * client doesn't supply it, and an empty value breaks the client's
- * presence/version handling. Matches our target 2023 client build.
- */
-const GAME_VERSION = '20230302'
 
 /**
  * Default `/player` payload, served whenever the `id` is missing/invalid or the
