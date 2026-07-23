@@ -194,6 +194,20 @@ export const gameplayRoutes = new Hono<App>({ strict: false })
 		}),
 		(c) => c.json({ ContinuationToken: '', Events: [] })
 	)
+	// Live player-event search (the "happening now" browse query). No player-event
+	// storage yet, so there's nothing live to return — a bare empty array.
+	.get(
+		'/api/playerevents/v1/searchlive',
+		describeRoute({
+			tags: ['Gameplay'],
+			summary: 'Search live player events',
+			description:
+				'The "happening now" search on the player-events browse screen. No player-event ' +
+				'storage yet, so there are no live events — returns an empty list.',
+			responses: { 200: json(JsonArray, 'An empty list') },
+		}),
+		(c) => c.json([])
+	)
 	.get(
 		'/api/announcement/v1/get',
 		describeRoute({

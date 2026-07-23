@@ -219,6 +219,13 @@ describe('public endpoints', () => {
 		expect(await one.json()).toEqual({ ContinuationToken: '', Events: [] })
 	})
 
+	test('GET /api/playerevents/v1/searchlive returns an empty list', async () => {
+		// No player-event storage yet → nothing live to return.
+		const res = await exports.default.fetch(`${ORIGIN}/api/playerevents/v1/searchlive`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('GET /api/PlayerReporting/v1/moderationBlockDetails reports "not blocked"', async () => {
 		const res = await exports.default.fetch(
 			`${ORIGIN}/api/PlayerReporting/v1/moderationBlockDetails`
@@ -1931,6 +1938,7 @@ describe('openapi', () => {
 			'GET /api/playerevents/v1/all',
 			'GET /api/playerevents/v1/club/{clubId}',
 			'GET /api/playerevents/v1/clubs',
+			'GET /api/playerevents/v1/searchlive',
 			'GET /api/playerevents/v1/tagfilters',
 			'GET /api/players/v1/progression/{id}',
 			'GET /api/players/v2/progression/bulk',
