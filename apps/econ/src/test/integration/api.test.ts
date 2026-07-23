@@ -356,6 +356,39 @@ describe('econ endpoints', () => {
 		expect(res.status).toBe(400)
 	})
 
+	test('POST /api/avatar/v4/saved/set stores like v3 but acks with { Success, Slot }', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/saved/set`, {
+			method: 'POST',
+			body: JSON.stringify(SAVED_OUTFIT),
+		})
+		expect(anon.status).toBe(401)
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/saved/set`, {
+			method: 'POST',
+			headers: { ...(await bearer('25')), 'Content-Type': 'application/json' },
+			body: JSON.stringify(SAVED_OUTFIT),
+		})
+		expect(res.status).toBe(200)
+		// v4 answers a lean ack, not the echoed outfit.
+		expect(await res.json()).toEqual({ Success: true, Slot: SAVED_OUTFIT.Slot })
+
+		// Shares the v3 outfit table, so the v3 read serves the outfit back verbatim.
+		const saved = await exports.default.fetch(`${ORIGIN}/api/avatar/v3/saved`, {
+			headers: await bearer('25'),
+		})
+		expect(await saved.json()).toEqual([SAVED_OUTFIT])
+	})
+
+	test('POST /api/avatar/v4/saved/set 400s without an integer Slot', async () => {
+		const { Slot: _Slot, ...noSlot } = SAVED_OUTFIT
+		const res = await exports.default.fetch(`${ORIGIN}/api/avatar/v4/saved/set`, {
+			method: 'POST',
+			headers: { ...(await bearer('26')), 'Content-Type': 'application/json' },
+			body: JSON.stringify(noSlot),
+		})
+		expect(res.status).toBe(400)
+	})
+
 	test('GET /api/avatar/v2/gifts 401s without a token, returns [] with one', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/avatar/v2/gifts`)
 		expect(anon.status).toBe(401)
@@ -1156,6 +1189,7 @@ describe('econ endpoints', () => {
 			'POST /api/avatar/v2/gifts/consume',
 			'POST /api/avatar/v2/set',
 			'POST /api/avatar/v3/saved/set',
+			'POST /api/avatar/v4/saved/set',
 			'POST /api/challenge/v2/updateProgress',
 			'POST /api/consumables/v1/consume',
 			'POST /api/gamerewards/v1/request',

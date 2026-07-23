@@ -51,6 +51,7 @@ import {
 	JsonObject,
 	OpaqueJsonBody,
 	SaveOutfitRequest,
+	SaveOutfitV4Response,
 	SubscriptionResponse,
 	UNAUTHORIZED_RESPONSE,
 } from './openapi'
@@ -86,6 +87,26 @@ async function authedId(c: Context<App>): Promise<number | null> {
 /** Results.Unauthorized() equivalent — 401 with empty body. */
 function unauthorized(c: Context<App>) {
 	return c.body(null, 401)
+}
+
+/**
+ * Shared parse/validate/store for the save-outfit routes (v3 and v4). Persists the
+ * posted outfit into its `Slot` verbatim and returns the stored `Outfit`; on the
+ * unauth or bad-body path it returns the Response to send directly (401, or 400 for a
+ * non-object body or missing/non-integer `Slot`). Callers format the success body — v3
+ * echoes the whole outfit, v4 answers a lean `{ Success, Slot }` ack.
+ */
+async function persistPostedOutfit(c: Context<App>): Promise<Outfit | Response> {
+	const id = await authedId(c)
+	if (id === null) return unauthorized(c)
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+		return c.body(null, 400)
+	}
+	if (!Number.isInteger(body.Slot)) return c.body(null, 400)
+	const outfit = body as Outfit
+	await setOutfit(c.env.DB, id, outfit)
+	return outfit
 }
 
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
@@ -563,6 +584,11 @@ const app = new Hono<App>({ strict: false })
 	//
 	// A missing/non-integer `Slot` is a 400 rather than a default slot — guessing would
 	// silently overwrite an outfit the player didn't mean to touch.
+	//
+	// v3 and v4 share this handler: newer clients POST to /v4/saved/set with the same
+	// payload shape (Slot, PreviewImageName, OutfitSelections(V2), FaceFeatures, Skin/HairColor,
+	// CustomAvatarItems) and expect the same slot-overwrite semantics, so they store into the
+	// same outfit table and read back through /api/avatar/v3/saved.
 	.post(
 		'/api/avatar/v3/saved/set',
 		describeRoute({
@@ -583,16 +609,38 @@ const app = new Hono<App>({ strict: false })
 			},
 		}),
 		async (c) => {
-			const id = await authedId(c)
-			if (id === null) return unauthorized(c)
-			const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
-			if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-				return c.body(null, 400)
-			}
-			if (!Number.isInteger(body.Slot)) return c.body(null, 400)
-			const outfit = body as Outfit
-			await setOutfit(c.env.DB, id, outfit)
-			return c.json(outfit)
+			const result = await persistPostedOutfit(c)
+			if (result instanceof Response) return result
+			return c.json(result)
+		}
+	)
+
+	// v4 of the save-outfit route. Same payload, table and slot-overwrite semantics as v3
+	// (see above) — newer clients moved to /v4/saved/set. The one difference is the response:
+	// v4 answers a lean `{ Success, Slot }` acknowledgement rather than echoing the whole
+	// outfit back. The outfit is read back through /api/avatar/v3/saved either way.
+	.post(
+		'/api/avatar/v4/saved/set',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Save an outfit into a slot (v4)',
+			description: [
+				'Writes the posted outfit into the given `Slot` (overwriting it), same as',
+				'`POST /api/avatar/v3/saved/set`, but answers a lean `{ Success, Slot }` ack instead',
+				'of echoing the outfit. A missing/non-integer `Slot` is a 400.',
+			].join(' '),
+			security: AUTHED,
+			requestBody: jsonBody(SaveOutfitRequest, 'The outfit, with a target Slot'),
+			responses: {
+				200: json(SaveOutfitV4Response, 'Save acknowledgement'),
+				400: { description: 'Non-object body or missing/non-integer Slot (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const result = await persistPostedOutfit(c)
+			if (result instanceof Response) return result
+			return c.json({ Success: true, Slot: result.Slot })
 		}
 	)
 

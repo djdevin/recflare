@@ -178,6 +178,15 @@ export const SaveOutfitRequest = z
 	.describe('Plus opaque outfit fields (OutfitSelectionsV2, FaceFeatures, …) stored verbatim')
 
 /**
+ * `POST /api/avatar/v4/saved/set` response — a lean acknowledgement. Unlike v3 (which
+ * echoes the whole outfit), v4 answers just the success flag and the slot it wrote.
+ */
+export const SaveOutfitV4Response = z.object({
+	Success: z.boolean(),
+	Slot: z.int().describe('The slot that was written'),
+})
+
+/**
  * `PUT /api/equipment/v1/update` JSON body — the client's favourite toggles. It echoes
  * back the whole entry it was served, but only `Favorited` is written; the rest is
  * ignored (as on the reference server).
