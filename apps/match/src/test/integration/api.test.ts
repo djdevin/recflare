@@ -10,6 +10,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import {
 	countPlayersInInstance,
+	createRoomInstance,
 	GAME_VERSION,
 	getRoomInstance,
 	PRESENCE_SCHEMA_DDL,
@@ -142,6 +143,25 @@ beforeAll(async () => {
 		insertMember.bind(4, 122, 1), // pending request — not a member yet
 		insertMember.bind(4, 123, -1), // banned
 		insertMember.bind(5, 120, 100),
+	])
+
+	// Relationship table (owned by the api worker) — matchmake reads it to push a
+	// presence update to the player's friends. Seed friendships for player 9700.
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS relationship (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			requester_id INTEGER NOT NULL,
+			target_id INTEGER NOT NULL,
+			relationship_type INTEGER NOT NULL DEFAULT 0
+		)`
+	).run()
+	const insertRel = env.DB.prepare(
+		'INSERT INTO relationship (requester_id, target_id, relationship_type) VALUES (?1, ?2, ?3)'
+	)
+	await env.DB.batch([
+		insertRel.bind(9700, 9701, 3), // friends (9700 requested) — friend is the target
+		insertRel.bind(9702, 9700, 3), // friends (9702 requested) — friend is the requester
+		insertRel.bind(9700, 9703, 1), // pending request out — 9703 is NOT a friend
 	])
 })
 
@@ -691,6 +711,31 @@ describe('auth-gated endpoints', () => {
 		})
 	})
 
+	test('heartbeat pushes a PresenceHeartbeatResponse over the websocket', async () => {
+		// The notify DO is stubbed to record every send (see vitest.config).
+		type Sent = { playerId: number; notificationType: number; data: Record<string, unknown> }
+		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+
+		const headers = await bearer('9600')
+		await exports.default.fetch(`${ORIGIN}/matchmake/dorm`, { method: 'POST', headers })
+		const res = await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+			method: 'POST',
+			headers: { ...headers, 'Content-Type': 'application/json' },
+			body: JSON.stringify({ statusVisibility: 2 }),
+		})
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Record<string, unknown>
+
+		const sent = (await (await hub().fetch('http://do/all')).json()) as Sent[]
+		// Exactly one frame: PresenceHeartbeatResponse (4) to the beating player, whose
+		// payload is the very presence the HTTP body carried.
+		expect(sent).toHaveLength(1)
+		expect(sent[0].playerId).toBe(9600)
+		expect(sent[0].notificationType).toBe(4) // NotificationType.PresenceHeartbeatResponse
+		expect(sent[0].data).toEqual(body)
+	})
+
 	// Seed presence directly into D1 with a chosen `expiresAt` (epoch seconds) so the
 	// TTL-refresh branch can be exercised deterministically (independent of timing).
 	const seedPresence = (id: number, expiresAt: number) =>
@@ -956,6 +1001,262 @@ describe('auth-gated endpoints', () => {
 		expect((await coOwner.json()) as unknown[]).toHaveLength(instances.length)
 	})
 
+	test('POST /invite pushes a game-invite MessageReceived to the target', async () => {
+		// The notify DO is stubbed to record every notifyPlayer call (see vitest.config).
+		type Sent = {
+			playerId: number
+			notificationType: number
+			data: {
+				Id: number
+				FromPlayerId: number
+				ToPlayerId: number
+				Type: number
+				Data: string
+				SentTime: string
+				RoomId: number | null
+			}
+		}
+		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+		const reset = () => hub().fetch('http://do/all', { method: 'DELETE' })
+		const sent = async (): Promise<Sent[]> =>
+			(await (await hub().fetch('http://do/all')).json()) as Sent[]
+
+		await reset()
+
+		// A live instance of room 2 to invite the target into.
+		const instance = await createRoomInstance(env.DB, {
+			ownerAccountId: 42,
+			roomId: 2,
+			subRoomId: 2,
+			photonRoomId: crypto.randomUUID(),
+			name: '^RecCenter',
+			maxCapacity: 12,
+		})
+
+		const invite = async (body: string, sub?: string): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/invite`, {
+				method: 'POST',
+				headers: {
+					...(sub === undefined ? {} : await bearer(sub)),
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body,
+			})
+
+		// The client's exact request: player 42 invites 153 into their instance.
+		const res = await invite(`playerId=153&roomInstanceId=${instance.roomInstanceId}`, '42')
+		expect(res.status).toBe(200)
+
+		const notes = await sent()
+		expect(notes).toHaveLength(1)
+		expect(notes[0].playerId).toBe(153) // delivered to the invitee, not the caller
+		expect(notes[0].notificationType).toBe(2) // NotificationType.MessageReceived
+		expect(notes[0].data).toMatchObject({
+			FromPlayerId: 42, // the caller
+			ToPlayerId: 153,
+			Type: 0, // MessageType.GameInvite
+			Data: String(instance.roomInstanceId), // raw roomInstanceId string
+			RoomId: 2, // resolved from the instance
+		})
+		expect(notes[0].data.Id).toBeGreaterThan(0)
+		expect(typeof notes[0].data.SentTime).toBe('string')
+
+		// A missing token is a 401 and a missing/zero/non-numeric playerId a 400 — and
+		// none of them push a notification.
+		await reset()
+		expect((await invite('playerId=153')).status).toBe(401)
+		expect((await invite('playerId=0', '42')).status).toBe(400)
+		expect((await invite('playerId=abc', '42')).status).toBe(400)
+		expect(await sent()).toHaveLength(0)
+
+		// An unknown (or absent) room instance still delivers the invite — just with a null
+		// RoomId (which the real hub drops from the frame).
+		const noRoom = await invite('playerId=153&roomInstanceId=999999', '42')
+		expect(noRoom.status).toBe(200)
+		const after = await sent()
+		expect(after).toHaveLength(1)
+		expect(after[0].data.RoomId).toBeNull()
+		expect(after[0].data.Data).toBe('999999')
+	})
+
+	test('matchmake pushes SubscriptionUpdatePresence to the player’s friends', async () => {
+		// The notify DO is stubbed to record every send (see vitest.config). The friend
+		// fan-out is a single batch call carrying the friend ids.
+		type Batch = {
+			playerIds: number[]
+			notificationType: number
+			data: {
+				playerId: number
+				statusVisibility: number
+				isOnline: boolean
+				appVersion: string
+				roomInstance: Record<string, unknown> | null
+			}
+		}
+		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+
+		// 9700 enters RecCenter (room 2, public).
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+			method: 'POST',
+			headers: await bearer('9700'),
+		})
+		expect(res.status).toBe(200)
+		const mm = (await res.json()) as { roomInstance: { roomInstanceId: number } }
+
+		const sent = (await (await hub().fetch('http://do/all')).json()) as Batch[]
+		expect(sent).toHaveLength(1)
+		const batch = sent[0]
+		// Delivered to the two friends (in both graph directions), not the pending-request
+		// player (9703).
+		expect(batch.playerIds.slice().sort((a, b) => a - b)).toEqual([9701, 9702])
+		expect(batch.notificationType).toBe(12) // NotificationType.SubscriptionUpdatePresence
+		expect(batch.data).toMatchObject({
+			playerId: 9700,
+			statusVisibility: 0, // Everyone — not hidden from friends
+			isOnline: true,
+			appVersion: GAME_VERSION, // a STRING, matching the client build
+		})
+		expect(typeof batch.data.appVersion).toBe('string')
+		// The redacted instance the friends see: the room just entered (read back from the
+		// player's stored presence). photonRoomId and dataBlob are blanked so a friend can't
+		// use the leaked Photon room id to join a private instance directly; photonRegion is
+		// dropped entirely.
+		expect(batch.data.roomInstance).toMatchObject({
+			roomId: 2,
+			roomInstanceId: mm.roomInstance.roomInstanceId,
+			photonRoomId: '', // blanked
+			dataBlob: '', // blanked
+		})
+		expect(batch.data.roomInstance).not.toHaveProperty('photonRegion')
+		expect(batch.data.roomInstance).toHaveProperty('photonRegionId')
+
+		// A player with no friends triggers no fan-out (empty list → no hub call).
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+		await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+			method: 'POST',
+			headers: await bearer('9999'),
+		})
+		expect(await (await hub().fetch('http://do/all')).json()).toEqual([])
+	})
+
+	test('POST /matchmake/player/:id follows a friend into their room, friends only', async () => {
+		// 9800 is friends with 9801 (in a room) and 9803 (not in any room); 9802 is not a
+		// friend.
+		const insertRel = env.DB.prepare(
+			'INSERT INTO relationship (requester_id, target_id, relationship_type) VALUES (?1, ?2, ?3)'
+		)
+		await env.DB.batch([insertRel.bind(9800, 9801, 3), insertRel.bind(9803, 9800, 3)])
+
+		const follow = async (targetId: number, sub?: string): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/matchmake/player/${targetId}`, {
+				method: 'POST',
+				...(sub === undefined ? {} : { headers: await bearer(sub) }),
+			})
+		type Result = {
+			errorCode: number
+			roomInstance: { roomInstanceId: number; photonRoomId: string; roomId: number } | null
+		}
+
+		// The friend (9801) enters RecCenter → they now have a presence with an instance.
+		const friendMM = (await (
+			await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+				method: 'POST',
+				headers: await bearer('9801'),
+			})
+		).json()) as Result
+
+		// 9800 follows 9801 → placed into the SAME instance, with the real (un-redacted)
+		// Photon room id, since they're authorized to join.
+		const res = await follow(9801, '9800')
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as Result
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance?.roomInstanceId).toBe(friendMM.roomInstance?.roomInstanceId)
+		expect(body.roomInstance?.photonRoomId).toBe(friendMM.roomInstance?.photonRoomId)
+		expect(body.roomInstance?.photonRoomId).not.toBe('')
+
+		// And 9800's presence now points at that instance (the heartbeat replays it).
+		const hb = (await (
+			await exports.default.fetch(`${ORIGIN}/player/heartbeat`, {
+				method: 'POST',
+				headers: { ...(await bearer('9800')), 'Content-Type': 'application/json' },
+				body: '{}',
+			})
+		).json()) as { roomInstance: { roomInstanceId: number } | null }
+		expect(hb.roomInstance?.roomInstanceId).toBe(friendMM.roomInstance?.roomInstanceId)
+
+		// A non-friend can't be followed → NoSuchRoom, null instance (no leak of their state).
+		expect(await (await follow(9802, '9800')).json()).toEqual({ errorCode: 20, roomInstance: null })
+		// You can't follow yourself.
+		expect(await (await follow(9800, '9800')).json()).toEqual({ errorCode: 20, roomInstance: null })
+		// A friend who isn't in any room → nothing to join.
+		expect(await (await follow(9803, '9800')).json()).toEqual({ errorCode: 20, roomInstance: null })
+
+		// No token → 401.
+		expect((await follow(9801)).status).toBe(401)
+	})
+
+	test('POST /matchmake/room/:id invites AdditionalPlayerIds (party) into the instance', async () => {
+		// Party invites go out as game invites over notifyPlayer (see vitest stub). 9850 has
+		// no friends, so the only recorded sends are the party invites (no presence fan-out).
+		type Invite = {
+			playerId: number
+			notificationType: number
+			data: {
+				FromPlayerId: number
+				ToPlayerId: number
+				Type: number
+				Data: string
+				RoomId: number | null
+			}
+		}
+		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+		const reset = () => hub().fetch('http://do/all', { method: 'DELETE' })
+		const sent = async (): Promise<Invite[]> =>
+			(await (await hub().fetch('http://do/all')).json()) as Invite[]
+
+		const matchmake = async (body: string, sub = '9850'): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+				method: 'POST',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body,
+			})
+
+		// The client's exact request shape (the extra fields are accepted and ignored), one
+		// party member.
+		await reset()
+		const res = await matchmake(
+			'BypassMovementModeRestriction=False&LoginLock=abc&AdditionalPlayerIds=153&MaxPersistenceVersion=51&JoinMode=0'
+		)
+		expect(res.status).toBe(200)
+		const instance = ((await res.json()) as { roomInstance: { roomInstanceId: number } })
+			.roomInstance
+
+		const invites = await sent()
+		expect(invites).toHaveLength(1)
+		expect(invites[0].playerId).toBe(153) // delivered to the party member
+		expect(invites[0].notificationType).toBe(2) // NotificationType.MessageReceived
+		expect(invites[0].data).toMatchObject({
+			FromPlayerId: 9850, // the party leader (caller)
+			ToPlayerId: 153,
+			Type: 0, // MessageType.GameInvite
+			Data: String(instance.roomInstanceId), // the instance the leader landed in
+			RoomId: 2,
+		})
+
+		// Multiple ids (comma-separated), de-duplicated, and the leader themselves is skipped.
+		await reset()
+		await matchmake('AdditionalPlayerIds=153,154,153,9850&JoinMode=0')
+		const many = await sent()
+		expect(many.map((i) => i.playerId).sort((a, b) => a - b)).toEqual([153, 154])
+
+		// No AdditionalPlayerIds → nobody is invited.
+		await reset()
+		await matchmake('JoinMode=0')
+		expect(await sent()).toEqual([])
+	})
+
 	test('GET /openapi.json documents every route', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/openapi.json`)
 		expect(res.status).toBe(200)
@@ -983,8 +1284,10 @@ describe('auth-gated endpoints', () => {
 			'GET /rooms/requiring/rrplus',
 			'POST /goto/none',
 			'POST /goto/room/{room}',
+			'POST /invite',
 			'POST /matchmake/club/{clubId}',
 			'POST /matchmake/none',
+			'POST /matchmake/player/{playerId}',
 			'POST /matchmake/room/{roomId}',
 			'POST /matchmake/room/{roomId}/{subRoomId}',
 			'POST /matchmake/{room}',

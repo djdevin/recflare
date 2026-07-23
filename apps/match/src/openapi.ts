@@ -166,3 +166,27 @@ export const StatusVisibilityRequest = z.object({
 export const JoinModeRequest = z.object({
 	JoinMode: z.string().optional().describe('"2" requests a private instance'),
 })
+
+/**
+ * The room-matchmake form body (`/matchmake/room/:roomId[/:subRoomId]`). Beyond
+ * `JoinMode` the 2023 client posts `AdditionalPlayerIds` — the caller's party — so each
+ * of them is invited (a game invite) into the instance the leader lands in. May repeat
+ * and/or be comma-separated. Other fields the client sends (`LoginLock`,
+ * `MaxPersistenceVersion`, `BypassMovementModeRestriction`) are accepted and ignored.
+ */
+export const MatchmakeRoomRequest = z.object({
+	JoinMode: z.string().optional().describe('"2" requests a private instance'),
+	AdditionalPlayerIds: z
+		.string()
+		.optional()
+		.describe('Party members to invite into the room; repeatable and/or comma-separated'),
+})
+
+/** `POST /invite` form body — invite a player into the caller's room instance. */
+export const InviteRequest = z.object({
+	playerId: z.string().describe('The account to invite; a non-zero integer (else 400)'),
+	roomInstanceId: z
+		.string()
+		.optional()
+		.describe('The caller’s room instance to invite them into; resolves the invite’s RoomId'),
+})

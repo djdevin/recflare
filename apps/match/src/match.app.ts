@@ -3,6 +3,7 @@ import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	areFriends,
 	canManageRoom,
 	createRoomInstance,
 	deleteExpiredPresence,
@@ -11,21 +12,28 @@ import {
 	getAccount,
 	getClubSummary,
 	getExpiredPresenceInstanceIds,
+	getFriendIds,
 	getJoinableInstance,
 	getOrCreateDormRoom,
 	getPresence,
 	getPresences,
 	getRoomById,
 	getRoomByName,
+	getRoomInstance,
 	getRoomInstancesByRoom,
 	isClubMember,
+	MessageType,
 	refreshInstanceFullness,
 	RoomInstanceType,
 	setPresence,
 	setRoomInstanceInProgress,
 } from '@repo/domain'
-import { withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
+
+// Value import of the notify worker's NotificationType enum (its bundle has no runtime
+// deps), so /invite sends a typed MessageReceived frame instead of a magic number.
+import { NotificationType } from '../../notify/src/notification-types'
 
 import {
 	AUTHED,
@@ -34,10 +42,12 @@ import {
 	form,
 	HeartbeatRequest as HeartbeatRequestSchema,
 	InProgressRequest,
+	InviteRequest,
 	JoinModeRequest,
 	json,
 	jsonBody,
 	MatchmakeResponse,
+	MatchmakeRoomRequest,
 	PlayerDto,
 	RoomInstanceDto,
 	StatusVisibilityRequest,
@@ -149,6 +159,86 @@ const PRESENCE_REFRESH_THRESHOLD = 300
 const DEFAULT_GET_PLAYER = [{ ...playerPayload(1), isOnline: true }]
 
 /**
+ * The wire subset of a room instance a friend sees in a presence update — the
+ * reference's `RoomInstanceDto.Redact` projection. `photonRoomId` and `dataBlob` are
+ * BLANKED (empty string): they're safe only for the player themselves. A leaked
+ * `photonRoomId` would let anyone who can read your presence `JoinByName` the Photon
+ * room directly, bypassing the private-instance invite check — the friend list only
+ * needs `roomId`/`name`/`isPrivate` to render the row, and joins go back through
+ * matchmaking (`/goto/player/:id`), which enforces access. `photonRegion` is omitted
+ * (not on the presence DTO); `name` is already the `^`-prefixed wire name.
+ */
+function redactInstanceForPresence(instance: RoomInstance) {
+	return {
+		roomInstanceId: instance.roomInstanceId,
+		roomId: instance.roomId,
+		subRoomId: instance.subRoomId,
+		roomInstanceType: instance.roomInstanceType,
+		location: instance.location,
+		// Blanked — see above: never hand another player the join coordinates.
+		dataBlob: '',
+		eventId: instance.eventId,
+		clubId: instance.clubId,
+		roomCode: instance.roomCode,
+		photonRegionId: instance.photonRegionId,
+		photonRoomId: '',
+		name: instance.name,
+		maxCapacity: instance.maxCapacity,
+		isFull: instance.isFull,
+		isPrivate: instance.isPrivate,
+		isInProgress: instance.isInProgress,
+		EncryptVoiceChat: instance.EncryptVoiceChat,
+	}
+}
+
+/**
+ * The SubscriptionUpdatePresence message a friend receives when the player changes rooms:
+ * a presence snapshot of who, and the redacted instance they're now in (null when in no
+ * room → `isOnline` false). `statusVisibility` is forced to 0 (Everyone) so the player
+ * isn't hidden from friends. `appVersion` MUST be a string — the client's presence DTO
+ * reads it with a string reader, and a numeric value aborts the whole SignalR frame
+ * ("expected String Begin Token"), dropping the room/presence update.
+ */
+function presenceUpdateMessage(playerId: number, instance: RoomInstance | null) {
+	return {
+		playerId,
+		statusVisibility: 0,
+		deviceClass: 0,
+		vrMovementMode: 0,
+		roomInstance: instance ? redactInstanceForPresence(instance) : null,
+		isOnline: instance != null,
+		appVersion: GAME_VERSION,
+	}
+}
+
+/**
+ * Push a SubscriptionUpdatePresence to every online friend of `playerId` after their
+ * presence changes (they entered a room). Mirrors the reference's PlayerPresenceChanged:
+ * only currently-connected friends receive it (an offline friend gets nothing, not a
+ * queued stale frame), so it's an ephemeral batch send. The room instance the friends
+ * see is read from the player's stored presence — the authoritative record just written,
+ * the same one the heartbeat replays. Best-effort: a hub or lookup failure is logged and
+ * swallowed, so it never fails the matchmake that triggered it.
+ */
+async function notifyFriendsPresence(c: Context<App>, playerId: number): Promise<void> {
+	try {
+		const friendIds = await getFriendIds(c.env.DB, playerId)
+		if (friendIds.length === 0) return
+		const presence = await getPresence<RoomInstance>(c.env.DB, playerId)
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayersEphemeral(
+			friendIds,
+			NotificationType.SubscriptionUpdatePresence,
+			presenceUpdateMessage(playerId, presence?.roomInstance ?? null)
+		)
+	} catch (err) {
+		logger.error('failed to push SubscriptionUpdatePresence to friends', {
+			playerId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
  * Store the room instance the player just matchmade into, preserving status.
  *
  * With no live presence to carry forward (the player's first matchmake after login,
@@ -180,6 +270,11 @@ async function enterRoom(c: Context<App>, id: number, roomInstance: RoomInstance
 	if (leftId != null && leftId !== roomInstance.roomInstanceId) {
 		await refreshInstanceFullness(c.env.DB, leftId)
 	}
+
+	// The player's presence changed — tell their online friends where they went, reading
+	// the instance back from the presence we just stored. Best-effort; never blocks or
+	// fails the matchmake.
+	await notifyFriendsPresence(c, id)
 }
 
 /**
@@ -193,6 +288,60 @@ const DORM_PHOTON_ROOM_ID = '00000000-0000-4000-8000-000000000001'
 
 /** MatchmakingErrorCode.NoSuchRoom — returned when a room isn't in the DB. */
 const NO_SUCH_ROOM = 20
+
+/** The notifications hub is a single global DO instance (see the `notify` worker). */
+const HUB_INSTANCE = 'global'
+
+/**
+ * A fresh id for a *live* (non-persisted) message — the reference's
+ * `NextLiveMessageID`. A game invite is ephemeral (never stored), so there's no
+ * database sequence to draw from; epoch milliseconds give a monotonically increasing,
+ * effectively unique id the client can key the invite off. It only has to be distinct
+ * among a player's in-flight invites, not globally.
+ */
+function nextLiveMessageId(): number {
+	return Date.now()
+}
+
+/**
+ * Deliver a game invite from `fromId` to `toId` for a room instance — a `MessageReceived`
+ * frame carrying a game-invite `Message` the client renders the join prompt from. `data`
+ * is the raw roomInstanceId string the message carries; `roomId` (nullable) tells the
+ * client which room it points at. Best-effort: a hub failure is logged and swallowed.
+ *
+ * Shared by `POST /invite` (a single explicit invite) and the party fan-out on a room
+ * matchmake (one per `AdditionalPlayerIds` entry), so the two can't drift.
+ */
+async function sendGameInvite(
+	c: Context<App>,
+	fromId: number,
+	toId: number,
+	data: string,
+	roomId: number | null
+): Promise<void> {
+	const message = {
+		Id: nextLiveMessageId(),
+		FromPlayerId: fromId,
+		ToPlayerId: toId,
+		Type: MessageType.GameInvite,
+		Data: data,
+		SentTime: new Date().toISOString(),
+		RoomId: roomId,
+	}
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			toId,
+			NotificationType.MessageReceived,
+			message
+		)
+	} catch (err) {
+		logger.error('failed to push game-invite MessageReceived notification', {
+			fromPlayerId: fromId,
+			toPlayerId: toId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
 
 /**
  * The sentinel room-instance id the `auth` worker seeds a brand-new player's
@@ -305,6 +454,61 @@ function roomInstanceFromRoom(
 async function readJoinMode(c: Context<App>): Promise<number> {
 	const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 	return typeof body.JoinMode === 'string' ? Number.parseInt(body.JoinMode, 10) || 0 : 0
+}
+
+/**
+ * Read the room-matchmake form body once: `JoinMode` (2 = private) plus the party members
+ * to pull along (`AdditionalPlayerIds`). The 2023 client posts its party on a room
+ * matchmake so they can be invited into the instance the leader lands in;
+ * `AdditionalPlayerIds` may repeat and/or be comma-separated, and ids are parsed
+ * defensively, de-duplicated, and non-positive/garbage entries dropped. Parsed with
+ * `{ all: true }` in one pass so repeated fields survive.
+ */
+async function readMatchmakeBody(
+	c: Context<App>
+): Promise<{ joinMode: number; additionalPlayerIds: number[] }> {
+	const body = await c.req.parseBody({ all: true }).catch(() => ({}) as Record<string, unknown>)
+	const firstString = (v: unknown): string | undefined => {
+		const first = Array.isArray(v) ? v[0] : v
+		return typeof first === 'string' ? first : undefined
+	}
+	const joinModeRaw = firstString(body.JoinMode)
+	const joinMode = joinModeRaw === undefined ? 0 : Number.parseInt(joinModeRaw, 10) || 0
+
+	const key = Object.keys(body).find((k) => k.toLowerCase() === 'additionalplayerids')
+	const raw = key === undefined ? [] : body[key]
+	const values = Array.isArray(raw) ? raw : [raw]
+	const additionalPlayerIds = [
+		...new Set(
+			values
+				.filter((v): v is string => typeof v === 'string')
+				.flatMap((v) => v.split(','))
+				.map((s) => Number.parseInt(s.trim(), 10))
+				.filter((n) => !Number.isNaN(n) && n > 0)
+		),
+	]
+	return { joinMode, additionalPlayerIds }
+}
+
+/**
+ * Invite the caller's party members into the instance the caller just matchmade into —
+ * the `AdditionalPlayerIds` fan-out. Each member gets the same game invite `POST /invite`
+ * sends, pointing at this instance, so a party matchmake pulls the whole party along. The
+ * leader is skipped (already in). Best-effort per member (sendGameInvite swallows its own
+ * failures), and never blocks the matchmake beyond the sends themselves.
+ */
+async function inviteParty(
+	c: Context<App>,
+	leaderId: number,
+	playerIds: number[],
+	instance: RoomInstance
+): Promise<void> {
+	const data = String(instance.roomInstanceId)
+	await Promise.all(
+		playerIds
+			.filter((pid) => pid !== leaderId)
+			.map((pid) => sendGameInvite(c, leaderId, pid, data, instance.roomId))
+	)
 }
 
 /**
@@ -601,14 +805,33 @@ const app = new Hono<App>()
 
 			// The heartbeat echoes the same player payload `/player` serves; with no stored
 			// presence it falls back to what the client just posted.
-			return c.json({
+			const payload = {
 				...playerPayload(hb.playerId ? hb.playerId : id, presence),
 				statusVisibility: presence?.statusVisibility ?? hb.statusVisibility ?? 0,
 				deviceClass: presence?.deviceClass ?? hb.deviceClass ?? 0,
 				vrMovementMode: presence?.vrMovementMode ?? (hb.vrMovementMode ? hb.vrMovementMode : 1),
 				appVersion: presence?.appVersion || hb.appVersion || GAME_VERSION,
 				platform: presence?.platform ?? hb.platform ?? 0,
-			})
+			}
+
+			// Also push the presence over the websocket as a PresenceHeartbeatResponse,
+			// mirroring the reference's ReturnHeartbeat. Sent ephemerally (never queued) —
+			// a heartbeat fires on every beat, and a queued copy would pile up and arrive
+			// stale. Best-effort: the HTTP body carries the same payload regardless.
+			try {
+				await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayerEphemeral(
+					id,
+					NotificationType.PresenceHeartbeatResponse,
+					payload
+				)
+			} catch (err) {
+				logger.error('failed to push PresenceHeartbeatResponse notification', {
+					playerId: id,
+					error: err instanceof Error ? err.message : String(err),
+				})
+			}
+
+			return c.json(payload)
 		}
 	)
 
@@ -782,6 +1005,67 @@ const app = new Hono<App>()
 		}
 	)
 
+	// Follow a friend into the room they're in (`/matchmake/player/{playerId}`). Friends
+	// ONLY — the caller must be a mutual friend of the target, or it's refused; otherwise
+	// anyone could read a player's presence and warp to them. Reads the friend's current
+	// instance from their stored presence and places the caller into that same instance
+	// (the real, un-redacted Photon coordinates — the caller is authorized to join).
+	// Registered before the single-segment `/matchmake/:room` route so `player` isn't read
+	// as a room name. Returns errorCode 20 with a null instance when the target isn't a
+	// friend or isn't currently in a room.
+	.post(
+		'/matchmake/player/:playerId{[0-9]+}',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Follow a friend into their room',
+			description: [
+				'Places the caller into the room instance the target player is currently in, read',
+				'from the target’s stored presence. FRIENDS ONLY: the caller must be a mutual friend',
+				'of the target (otherwise anyone could read a player’s presence and warp to them).',
+				'Returns errorCode 20 with a null instance when the target isn’t a friend, is the',
+				'caller themselves, or isn’t currently in a room.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [
+				{
+					name: 'playerId',
+					in: 'path',
+					required: true,
+					description: 'The friend to follow (digits only)',
+					schema: { type: 'string', pattern: '^[0-9]+$' },
+				},
+			],
+			responses: {
+				200: json(
+					MatchmakeResponse,
+					'The friend’s instance (or errorCode 20 with null when it can’t be joined)'
+				),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+
+			const targetId = Number.parseInt(c.req.param('playerId'), 10)
+			// Friends only, and never yourself — otherwise refuse without leaking whether the
+			// target is even online (same opaque NoSuchRoom the club path uses).
+			if (targetId === id || !(await areFriends(c.env.DB, id, targetId))) {
+				return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+			}
+
+			// The instance the friend is currently in, straight off their presence row.
+			const targetPresence = await getPresence<RoomInstance>(c.env.DB, targetId)
+			const instance = targetPresence?.roomInstance ?? null
+			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
+
+			// Join that same instance (same id + Photon room) and store it as the caller's
+			// presence, so the heartbeat replays it and their own friend fan-out fires.
+			await enterRoom(c, id, instance)
+			return c.json({ errorCode: 0, roomInstance: instance })
+		}
+	)
+
 	// Matchmake into a specific subroom of a room (`/matchmake/room/{roomId}/{subRoomId}`
 	// — the client uses this to enter a room's other scenes). The subroom decides the
 	// scene the client loads and which instances are joinable, so it must be carried
@@ -796,7 +1080,7 @@ const app = new Hono<App>()
 				'and which instances are joinable; an unknown subroom falls back to the room’s first.',
 			].join(' '),
 			security: AUTHED,
-			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			requestBody: form(MatchmakeRoomRequest, 'Optional JoinMode and AdditionalPlayerIds'),
 			parameters: [
 				{ name: 'roomId', in: 'path', required: true, schema: { type: 'string' } },
 				{
@@ -815,7 +1099,7 @@ const app = new Hono<App>()
 		async (c) => {
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
-			const joinMode = await readJoinMode(c)
+			const { joinMode, additionalPlayerIds } = await readMatchmakeBody(c)
 			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
 			const instance = await resolveRoomInstance(
 				c,
@@ -826,6 +1110,8 @@ const app = new Hono<App>()
 			)
 			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 			await enterRoom(c, id, instance)
+			// Pull the caller's party (AdditionalPlayerIds) into the instance they landed in.
+			await inviteParty(c, id, additionalPlayerIds, instance)
 			return c.json({ errorCode: 0, roomInstance: instance })
 		}
 	)
@@ -842,7 +1128,7 @@ const app = new Hono<App>()
 				'carries its real scene, and stores it as presence.',
 			].join(' '),
 			security: AUTHED,
-			requestBody: form(JoinModeRequest, 'Optional JoinMode'),
+			requestBody: form(MatchmakeRoomRequest, 'Optional JoinMode and AdditionalPlayerIds'),
 			parameters: [{ name: 'roomId', in: 'path', required: true, schema: { type: 'string' } }],
 			responses: {
 				200: json(MatchmakeResponse, 'The instance (or errorCode 20 with null on unknown room)'),
@@ -852,10 +1138,12 @@ const app = new Hono<App>()
 		async (c) => {
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
-			const joinMode = await readJoinMode(c)
+			const { joinMode, additionalPlayerIds } = await readMatchmakeBody(c)
 			const instance = await resolveRoomInstance(c, c.req.param('roomId'), joinMode === 2, id)
 			if (!instance) return c.json({ errorCode: NO_SUCH_ROOM, roomInstance: null })
 			await enterRoom(c, id, instance)
+			// Pull the caller's party (AdditionalPlayerIds) into the instance they landed in.
+			await inviteParty(c, id, additionalPlayerIds, instance)
 			return c.json({ errorCode: 0, roomInstance: instance })
 		}
 	)
@@ -943,6 +1231,61 @@ const app = new Hono<App>()
 			responses: { 200: EMPTY_OK },
 		}),
 		(c) => c.body(null, 200)
+	)
+
+	// ---- Social --------------------------------------------------------------
+	// Invite a player to join the caller in their room instance. The caller is the
+	// inviter (from the Bearer token); the form carries the target `playerId` and the
+	// `roomInstanceId` they're being invited into. Delivers a game-invite Message to the
+	// target over the notify hub as a MessageReceived frame — the client renders the
+	// join prompt from it. When the room instance resolves, its RoomId rides along on the
+	// message so the client knows which room the invite points at. Always acks 200 (a bad
+	// playerId is a 400, a missing token a 401); hub delivery is best-effort, so a target
+	// who's offline simply has the frame queued (or dropped) without failing the invite.
+	.post(
+		'/invite',
+		describeRoute({
+			tags: ['Social'],
+			summary: 'Invite a player into the caller’s room instance',
+			description: [
+				'Sends a game invite from the caller (the Bearer token) to `playerId` for',
+				'`roomInstanceId`. Delivered to the target over the notify hub as a `MessageReceived`',
+				'notification carrying a game-invite `Message`; the resolved instance’s `RoomId` rides',
+				'on the message. Acks 200 (bad `playerId` → 400); hub delivery is best-effort.',
+			].join(' '),
+			security: AUTHED,
+			requestBody: form(InviteRequest, 'The target player and the room instance'),
+			responses: {
+				200: EMPTY_OK,
+				400: { description: 'Missing, non-numeric, or zero playerId (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+
+			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
+			const str = (v: unknown) => (typeof v === 'string' ? v : '')
+			const toPlayerId = Number.parseInt(str(body.playerId), 10)
+			// A missing or zero target is a bad request (mirrors the reference's guard).
+			if (Number.isNaN(toPlayerId) || toPlayerId === 0) return c.body(null, 400)
+
+			const roomInstanceIdStr = str(body.roomInstanceId)
+			const roomInstanceId = Number.parseInt(roomInstanceIdStr, 10)
+
+			// Resolve the instance to stamp the invite's RoomId — the client reads it to know
+			// which room the invite points at. A missing/unknown instance just leaves RoomId
+			// null (buildNotificationPayload drops it from the frame), as the reference does.
+			let roomId: number | null = null
+			if (!Number.isNaN(roomInstanceId) && roomInstanceId > 0) {
+				const instance = await getRoomInstance(c.env.DB, roomInstanceId)
+				if (instance) roomId = instance.roomId
+			}
+
+			await sendGameInvite(c, id, toPlayerId, roomInstanceIdStr, roomId)
+			return c.body(null, 200)
+		}
 	)
 
 	// ---- Room instance -------------------------------------------------------

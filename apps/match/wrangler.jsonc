@@ -33,6 +33,17 @@
 			"secret_name": "JWT_SECRET"
 		}
 	],
+	// The `notify` worker's NotificationsHub DO — used by POST /invite to push the
+	// game-invite message to the invitee's live socket.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
 	"upload_source_maps": true,
 	"observability": {
 		"logs": {

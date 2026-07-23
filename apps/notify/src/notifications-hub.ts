@@ -395,6 +395,43 @@ export class NotificationsHub extends DurableObject<Env> {
 	}
 
 	/**
+	 * Send a notification to a player's live sockets and, unlike {@link notifyPlayer},
+	 * NEVER queue it when they're offline — the ephemeral "SendWebsocket" send. For
+	 * high-frequency, transient frames whose value is gone by the next reconnect (the
+	 * presence heartbeat response, sent on every beat): queueing those would pile up
+	 * unbounded in `pending` and then deliver a burst of stale frames when the player
+	 * next connects. Returns how many live sockets received it (0 = nobody was
+	 * connected, and it was dropped rather than stored).
+	 */
+	async notifyPlayerEphemeral(
+		playerId: number,
+		notificationType: string | number,
+		data?: Record<string, unknown>
+	): Promise<{ delivered: number }> {
+		const payload = this.buildNotificationPayload(notificationType, data)
+		return { delivered: this.deliverToPlayer(playerId, payload) }
+	}
+
+	/**
+	 * Ephemeral send (see {@link notifyPlayerEphemeral}) to many players at once — the
+	 * batch the presence fan-out needs. When a player changes rooms, every online friend
+	 * gets one SubscriptionUpdatePresence and an offline friend gets nothing (a SignalR
+	 * group send reaches only connected clients), so the same identical payload is built
+	 * once and delivered to each in a single RPC round-trip rather than one call per
+	 * friend. Returns the total live sockets reached across all of them.
+	 */
+	async notifyPlayersEphemeral(
+		playerIds: number[],
+		notificationType: string | number,
+		data?: Record<string, unknown>
+	): Promise<{ delivered: number }> {
+		const payload = this.buildNotificationPayload(notificationType, data)
+		let delivered = 0
+		for (const playerId of playerIds) delivered += this.deliverToPlayer(playerId, payload)
+		return { delivered }
+	}
+
+	/**
 	 * Send a "coach" message to every connected client (mirrors the reference
 	 * `SendCoachMessageAll`, using the hub's live connections as the online set): each
 	 * handshaken socket gets a `MessageReceived` notification carrying a Message from

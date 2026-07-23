@@ -1,5 +1,8 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+// Type-only import (erased at build) of the DO class owned by the `notify` worker,
+// so this worker can push websocket notifications through its RPC surface.
+import type { NotificationsHub } from '../../notify/src/notifications-hub'
 
 export type Env = SharedHonoEnv & {
 	// Shared Secrets Store binding for the HS256 JWT signing key. Resolve the value
@@ -12,6 +15,11 @@ export type Env = SharedHonoEnv & {
 	// read by the heartbeat and the batch `/player` lookup). See @repo/domain's
 	// presence-db (table owned/migrated by the `rooms` worker).
 	DB: D1Database
+	/**
+	 * The `notify` worker's NotificationsHub DO — pushes websocket notifications to a
+	 * player. Used by `POST /invite` to deliver the game-invite message to the invitee.
+	 */
+	RECFLARE_NOTIFICATIONS_HUB: DurableObjectNamespace<NotificationsHub>
 }
 
 /** Variables can be extended */
