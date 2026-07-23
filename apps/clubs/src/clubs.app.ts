@@ -29,6 +29,7 @@ import {
 	searchClubs,
 	setClubAdditionalImage,
 	setHomeClub,
+	setMemberType,
 	updateClub,
 } from './clubs-db'
 import {
@@ -51,6 +52,7 @@ import {
 	form,
 	HomeClubRequest,
 	ImageNameRequest,
+	InviteMemberRequest,
 	json,
 	JsonArray,
 	MinLevelRequest,
@@ -101,6 +103,17 @@ const DEFAULT_MAX_CLUBS_PER_ACCOUNT = 10
 
 /** Longest a club name may be (the reference's MaxNameLength). */
 const MAX_CLUB_NAME_LENGTH = 16
+
+/**
+ * The tiers `members/invite` may grant — the real member roles only. Creator (100) is
+ * excluded so an invite can't mint a second owner, and the pending/none/banned states
+ * aren't something you "invite" someone to.
+ */
+const INVITABLE_TIERS: ReadonlySet<number> = new Set([
+	ClubMembershipType.Member,
+	ClubMembershipType.Moderator,
+	ClubMembershipType.Coowner,
+])
 
 /** The punctuation a club name may use, on top of letters and digits. */
 const ALLOWED_NAME_PUNCTUATION = new Set(` .,'!?-_&()#@:+`)
@@ -1283,6 +1296,87 @@ const app = new Hono<App>()
 				error: '',
 				success: true,
 				value: await getClubDetails(c.env.DB, outcome.club, id),
+			})
+		}
+	)
+
+	// Invite an account into the club at a given tier — the co-owner's "add member" /
+	// role-assignment write. `accountId` is who to add and `membershipType` the tier they
+	// get (10 Member, 20 Moderator, 30 Co-owner); the client sends both as form fields.
+	// Co-owner or above only. The membership is upserted, so this also promotes/demotes an
+	// existing member and overrides a ban — but it can't mint another Creator (100) and it
+	// can't touch the club's own Creator. Answers the details envelope, like the other
+	// membership writes.
+	.put(
+		'/club/:clubId{[0-9]+}/members/invite',
+		describeRoute({
+			tags: ['Membership'],
+			summary: 'Invite an account into the club',
+			description: [
+				'Adds `accountId` to the club at `membershipType` (10 Member, 20 Moderator, 30',
+				'Co-owner) — the co-owner’s “add member” / role-assignment write; both arrive as form',
+				'fields, and an absent `membershipType` defaults to Member. Co-owner or above only. The',
+				'membership is upserted, so this also promotes/demotes an existing member and overrides',
+				'a ban; it can’t mint another Creator (100) or change the club’s own Creator. Answers the',
+				'details envelope, like the other membership writes.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [CLUB_ID_PARAM],
+			requestBody: form(InviteMemberRequest, 'The account to add and the tier to grant'),
+			responses: {
+				200: json(ClubDetailsEnvelope, 'The club’s details after the invite'),
+				400: json(
+					ErrorEnvelope,
+					'Missing/invalid accountId, a tier outside Member/Moderator/Co-owner, or targeting the creator'
+				),
+				401: UNAUTHORIZED_RESPONSE,
+				403: json(ErrorEnvelope, 'Below co-owner'),
+				404: { description: 'No such club' },
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return c.body(null, 401)
+
+			const clubId = Number.parseInt(c.req.param('clubId'), 10)
+			const club = await getClub(c.env.DB, clubId)
+			if (club === null) return c.notFound()
+
+			const membership = await getMembership(c.env.DB, clubId, id)
+			if (membership < ClubMembershipType.Coowner) {
+				return c.json({ error: 'Insufficient permissions.', success: false, value: null }, 403)
+			}
+
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const field = (name: string): string | undefined => {
+				const key = Object.keys(body).find((k) => k.toLowerCase() === name.toLowerCase())
+				const v = key === undefined ? undefined : body[key]
+				return typeof v === 'string' ? v : undefined
+			}
+
+			const accountId = Number.parseInt(field('accountId') ?? '', 10)
+			if (Number.isNaN(accountId) || accountId <= 0) return clubError(c, 'Invalid accountId.')
+
+			// An absent tier means "add as a plain Member"; anything present must be one of the
+			// grantable roles (in particular not Creator), so an invite can't mint a second owner.
+			const rawType = field('membershipType')
+			const membershipType =
+				rawType === undefined || rawType.trim() === ''
+					? ClubMembershipType.Member
+					: Number.parseInt(rawType, 10)
+			if (!INVITABLE_TIERS.has(membershipType)) return clubError(c, 'Invalid membershipType.')
+
+			// The Creator is fixed — you can't demote them or promote someone over them.
+			if (accountId === club.CreatorAccountId) {
+				return clubError(c, 'You can’t change the club’s creator.')
+			}
+
+			const updated = await setMemberType(c.env.DB, clubId, accountId, membershipType)
+			if (updated === null) return c.notFound()
+			return c.json({
+				error: '',
+				success: true,
+				value: await getClubDetails(c.env.DB, updated, id),
 			})
 		}
 	)

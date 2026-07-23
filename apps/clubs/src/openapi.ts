@@ -329,6 +329,15 @@ export const ImageNameRequest = z.object({
 	imageName: z.string().describe('The image name the `storage` worker handed back'),
 })
 
+/** `PUT /club/:clubId/members/invite` form body. */
+export const InviteMemberRequest = z.object({
+	accountId: z.string().describe('The account to add to the club; a positive integer'),
+	membershipType: z
+		.string()
+		.optional()
+		.describe('The tier to grant — 10 Member, 20 Moderator, 30 Co-owner; defaults to Member'),
+})
+
 /** `POST /announcements/club/:clubId` form body. */
 export const AnnouncementRequest = z.object({
 	title: z.string().optional(),

@@ -1187,6 +1187,72 @@ describe('clubs endpoints', () => {
 		expect((await request(99999, '830')).status).toBe(404)
 	})
 
+	test('PUT /club/:id/members/invite adds and promotes members, co-owner only', async () => {
+		type Member = { AccountId: number; MembershipType: number }
+		type Details = {
+			error: string
+			success: boolean
+			value: { Club: { MemberCount: number } } | null
+		}
+		const create = await exports.default.fetch(`${ORIGIN}/club/create`, {
+			method: 'POST',
+			headers: { ...(await bearer('870')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'name=Invitational',
+		})
+		const clubId = ((await create.json()) as { value: { ClubId: number } }).value.ClubId
+
+		const invite = async (fields: Record<string, string>, sub = '870'): Promise<Response> =>
+			exports.default.fetch(`${ORIGIN}/club/${clubId}/members/invite`, {
+				method: 'PUT',
+				headers: { ...(await bearer(sub)), 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: new URLSearchParams(fields).toString(),
+			})
+		const tiers = async (): Promise<Map<number, number>> => {
+			const res = await exports.default.fetch(`${ORIGIN}/club/${clubId}/members`)
+			const body = (await res.json()) as { value: Member[] }
+			return new Map(body.value.map((m) => [m.AccountId, m.MembershipType]))
+		}
+
+		// The client's exact request: add account 872 as a Member (10).
+		const added = await invite({ accountId: '872', membershipType: '10' })
+		expect(added.status).toBe(200)
+		const addedBody = (await added.json()) as Details
+		expect(addedBody).toMatchObject({ error: '', success: true })
+		expect(addedBody.value?.Club.MemberCount).toBe(2) // creator + 872
+		expect((await tiers()).get(872)).toBe(10)
+
+		// Inviting an existing member at a higher tier promotes them in place.
+		expect((await invite({ accountId: '872', membershipType: '20' })).status).toBe(200)
+		expect((await tiers()).get(872)).toBe(20)
+
+		// membershipType defaults to Member when omitted.
+		await invite({ accountId: '873' })
+		expect((await tiers()).get(873)).toBe(10)
+
+		// Can't mint another creator, can't touch the creator, needs a valid accountId — and
+		// a rejected invite writes nothing.
+		expect((await invite({ accountId: '874', membershipType: '100' })).status).toBe(400)
+		expect((await invite({ accountId: '870', membershipType: '30' })).status).toBe(400)
+		expect((await invite({ accountId: 'abc' })).status).toBe(400)
+		expect((await tiers()).has(874)).toBe(false)
+
+		// A non-co-owner can't invite (872 is a moderator now, still below co-owner); signed
+		// out is a 401; an unknown club 404s.
+		expect((await invite({ accountId: '875' }, '872')).status).toBe(403)
+		const anon = await exports.default.fetch(`${ORIGIN}/club/${clubId}/members/invite`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'accountId=875',
+		})
+		expect(anon.status).toBe(401)
+		const missing = await exports.default.fetch(`${ORIGIN}/club/99999/members/invite`, {
+			method: 'PUT',
+			headers: { ...(await bearer('870')), 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'accountId=875',
+		})
+		expect(missing.status).toBe(404)
+	})
+
 	test('members/leave drops a membership and withdraws a pending request', async () => {
 		const create = async (sub: string, fields: Record<string, string>) =>
 			(
@@ -1363,6 +1429,7 @@ describe('clubs endpoints', () => {
 			'PUT /club/{clubId}/additionalimage/{index}',
 			'PUT /club/{clubId}/clubhouse',
 			'PUT /club/{clubId}/mainimage',
+			'PUT /club/{clubId}/members/invite',
 			'PUT /club/{clubId}/members/requesttojoin',
 			'PUT /club/{clubId}/minlevel',
 			'PUT /club/{clubId}/modify',

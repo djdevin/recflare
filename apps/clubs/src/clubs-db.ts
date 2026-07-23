@@ -942,3 +942,24 @@ export async function leaveClub(
 	const count = await syncMemberCount(db, clubId)
 	return { result: 'left', club: { ...club, MemberCount: count } }
 }
+
+/**
+ * Set an account's membership tier in a club — the invite / role-assignment write
+ * behind `PUT /club/:id/members/invite`. Upserts the `club_member` row to
+ * `membershipType` (adding the account when it wasn't a member, and overriding a prior
+ * tier or ban), then refreshes the club's MemberCount. Returns the club with its fresh
+ * count, or null when the club is gone. The caller is responsible for checking that the
+ * tier is one it may grant and that the target isn't the club's Creator.
+ */
+export async function setMemberType(
+	db: D1Database,
+	clubId: number,
+	accountId: number,
+	membershipType: ClubMembershipType
+): Promise<Club | null> {
+	const club = await getClub(db, clubId)
+	if (!club) return null
+	await setMembership(db, clubId, accountId, membershipType)
+	const count = await syncMemberCount(db, clubId)
+	return { ...club, MemberCount: count }
+}
