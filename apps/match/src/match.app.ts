@@ -673,6 +673,10 @@ const app = new Hono<App>()
 					// The instance they were in lost a player — recompute its fullness so a
 					// full room frees up. No-op for the synthetic dorm/orientation instances.
 					if (instanceId != null) await refreshInstanceFullness(c.env.DB, instanceId)
+					// Their presence changed — tell online friends they went offline. Presence
+					// is already cleared, so notifyFriendsPresence reads null and sends the
+					// offline snapshot (roomInstance null, isOnline false).
+					await notifyFriendsPresence(c, id)
 				}
 			}
 			return c.body(null, 200)

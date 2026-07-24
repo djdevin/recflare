@@ -1084,7 +1084,7 @@ describe('auth-gated endpoints', () => {
 		// fan-out is a single batch call carrying the friend ids.
 		type Batch = {
 			playerIds: number[]
-			notificationType: number
+			notificationType: number | string
 			data: {
 				playerId: number
 				statusVisibility: number
@@ -1110,7 +1110,7 @@ describe('auth-gated endpoints', () => {
 		// Delivered to the two friends (in both graph directions), not the pending-request
 		// player (9703).
 		expect(batch.playerIds.slice().sort((a, b) => a - b)).toEqual([9701, 9702])
-		expect(batch.notificationType).toBe(12) // NotificationType.SubscriptionUpdatePresence
+		expect(batch.notificationType).toBe('PresenceUpdate') // NotificationType.SubscriptionUpdatePresence
 		expect(batch.data).toMatchObject({
 			playerId: 9700,
 			statusVisibility: 0, // Everyone — not hidden from friends
@@ -1138,6 +1138,57 @@ describe('auth-gated endpoints', () => {
 			headers: await bearer('9999'),
 		})
 		expect(await (await hub().fetch('http://do/all')).json()).toEqual([])
+	})
+
+	test('logout fires SubscriptionUpdatePresence (offline) to friends', async () => {
+		type Batch = {
+			playerIds: number[]
+			notificationType: number | string
+			data: { playerId: number; isOnline: boolean; roomInstance: Record<string, unknown> | null }
+		}
+		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+		const sent = async (): Promise<Batch[]> =>
+			(await (await hub().fetch('http://do/all')).json()) as Batch[]
+
+		// 9900 is friends with 9901.
+		await env.DB.prepare(
+			'INSERT INTO relationship (requester_id, target_id, relationship_type) VALUES (?1, ?2, ?3)'
+		)
+			.bind(9900, 9901, 3)
+			.run()
+
+		// 9900 enters a room (presence created), then reset the hub so we isolate the
+		// logout push from the entry push.
+		await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+			method: 'POST',
+			headers: await bearer('9900'),
+		})
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+
+		const res = await exports.default.fetch(`${ORIGIN}/player/logout`, {
+			method: 'POST',
+			headers: await bearer('9900'),
+		})
+		expect(res.status).toBe(200)
+
+		// The friend gets an offline presence snapshot: no room, isOnline false.
+		const batch = await sent()
+		expect(batch).toHaveLength(1)
+		expect(batch[0].playerIds).toEqual([9901])
+		expect(batch[0].notificationType).toBe('PresenceUpdate') // SubscriptionUpdatePresence
+		expect(batch[0].data).toMatchObject({ playerId: 9900, isOnline: false, roomInstance: null })
+
+		// Presence is actually cleared — a second logout (no presence) fires nothing.
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+		await exports.default.fetch(`${ORIGIN}/player/logout`, {
+			method: 'POST',
+			headers: await bearer('9900'),
+		})
+		expect(await sent()).toEqual([])
+
+		// An unauthenticated logout is a no-op too.
+		await exports.default.fetch(`${ORIGIN}/player/logout`, { method: 'POST' })
+		expect(await sent()).toEqual([])
 	})
 
 	test('POST /matchmake/player/:id follows a friend into their room, friends only', async () => {
