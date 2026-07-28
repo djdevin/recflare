@@ -17,6 +17,13 @@ import {
 
 import type { App } from '../context'
 
+/**
+ * Client builds the version check answers as current. `GAME_VERSION` is the build the
+ * rest of the stack targets; `20230616` is a later client that talks the same protocol,
+ * so we let it through rather than telling it to update.
+ */
+const ACCEPTED_GAME_VERSIONS = new Set([GAME_VERSION, '20230616'])
+
 // ---- Config / version ------------------------------------------------------
 export const configRoutes = new Hono<App>({ strict: false })
 	.get(
@@ -100,13 +107,13 @@ export const configRoutes = new Hono<App>({ strict: false })
 			summary: 'Client version check',
 			description:
 				'Whether the client build is current. Compares the client’s `?v=` build against ' +
-				'our target `GAME_VERSION`: `VersionStatus` is 0 when they match, 1 when the ' +
-				'client is on a different build.',
+				'the builds we accept — our target `GAME_VERSION` plus `20230616`: ' +
+				'`VersionStatus` is 0 for either, 1 for any other build.',
 			responses: { 200: json(VersionCheck, 'Version status') },
 		}),
 		(c) =>
 			c.json({
-				VersionStatus: c.req.query('v') === GAME_VERSION ? 0 : 1,
+				VersionStatus: ACCEPTED_GAME_VERSIONS.has(c.req.query('v') ?? '') ? 0 : 1,
 				UpdateNotificationStage: 0,
 				IsVersionIslanded: false,
 				IsCrossPlayDisabled: false,

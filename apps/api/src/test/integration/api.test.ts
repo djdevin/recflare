@@ -144,6 +144,11 @@ describe('public endpoints', () => {
 		expect(await res.json()).toMatchObject({ VersionStatus: 0 })
 	})
 
+	test('GET /api/versioncheck/v4 reports current for the 20230616 build', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4?v=20230616`)
+		expect(await res.json()).toMatchObject({ VersionStatus: 0 })
+	})
+
 	test('GET /api/versioncheck/v4 flags a mismatched build', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/versioncheck/v4?v=19990101`)
 		expect(await res.json()).toMatchObject({ VersionStatus: 1 })
@@ -228,12 +233,15 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('GET /api/PlayerReporting/v1/moderationBlockDetails reports "not blocked"', async () => {
+	test('POST /api/PlayerReporting/v1/moderationBlockDetails reports "not blocked"', async () => {
+		// The client POSTs this with no body, despite it being a pure read.
 		const res = await exports.default.fetch(
-			`${ORIGIN}/api/PlayerReporting/v1/moderationBlockDetails`
+			`${ORIGIN}/api/PlayerReporting/v1/moderationBlockDetails`,
+			{ method: 'POST' }
 		)
 		expect(res.status).toBe(200)
-		// ReportCategory -1 = no category (0 is a real one), and Message is null.
+		// The reference server's stub verbatim: ReportCategory -1 = Unknown (0 is a real
+		// category) and an empty-string Message.
 		expect(await res.json()).toEqual({
 			ReportCategory: -1,
 			Duration: 0,
@@ -241,7 +249,7 @@ describe('public endpoints', () => {
 			IsBan: false,
 			IsHostKick: false,
 			IsVoiceModAutoban: false,
-			Message: null,
+			Message: '',
 			PlayerIdReporter: null,
 			TimeoutStartedAt: null,
 		})
@@ -1891,7 +1899,6 @@ describe('openapi', () => {
 		)
 		expect([...documented].sort()).toEqual([
 			'DELETE /api/images/v1/deletesaved',
-			'GET /api/PlayerReporting/v1/moderationBlockDetails',
 			'GET /api/PlayerReporting/v1/voteToKickReasons',
 			'GET /api/activities/charades/v1/words/{activity}',
 			'GET /api/announcement/v1/get',
@@ -1964,6 +1971,7 @@ describe('openapi', () => {
 			'POST /api/CampusCard/v1/UpdateAndGetSubscription',
 			'POST /api/PlayerReporting/v1/deviceId',
 			'POST /api/PlayerReporting/v1/hile',
+			'POST /api/PlayerReporting/v1/moderationBlockDetails',
 			'POST /api/avatar/v2/gifts/generate',
 			'POST /api/gamesight/event',
 			'POST /api/images/v1/cheer',

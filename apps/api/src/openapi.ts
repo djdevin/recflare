@@ -135,7 +135,7 @@ export const ApiConfigV2 = JsonObject.describe(
 	'The static client config, plus a ShareBaseUrl templated from the deploy domain'
 )
 
-/** `GET /api/versioncheck/v4` — whether the client's `?v=` build matches GAME_VERSION. */
+/** `GET /api/versioncheck/v4` — whether the client's `?v=` build is one we accept. */
 export const VersionCheck = z.object({
 	VersionStatus: z.int().describe('0 = current, 1 = client on a different build'),
 	UpdateNotificationStage: z.int(),
@@ -392,12 +392,14 @@ export const SubscriptionResponse = z.object({
 
 /**
  * `GET /api/PlayerReporting/v1/moderationBlockDetails` — always the "not blocked"
- * answer (no ban storage yet). `ReportCategory` is -1 (no category) rather than 0,
- * which is a real category; `Message` is null, not an empty string — the client
- * distinguishes "no message" from a blank one.
+ * answer (no ban storage yet), mirroring the reference server's stub
+ * `ReturnModerationBlockDetails()`. `ReportCategory` is `Unknown` (-1) rather than 0,
+ * which is a real category, and `Message` is the empty string the reference sends.
+ * `IsVoiceModAutoban`/`TimeoutStartedAt` are on the DTO but unset by that stub, so
+ * they carry their C# defaults (false / null).
  */
 export const ModerationBlockDetails = z.object({
-	ReportCategory: z.int().describe('-1 = no category (0 is a real one)'),
+	ReportCategory: z.int().describe('-1 = ReportCategory.Unknown (0 is a real category)'),
 	Duration: z.int(),
 	GameSessionId: z.int(),
 	IsBan: z.boolean(),
