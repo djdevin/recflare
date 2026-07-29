@@ -1,14 +1,15 @@
 /*
- * RecFlare — a live-service readout.
+ * RecFlare — a poster for a game that's up right now.
  *
- * The page's job is to show that this server is actually up and that real people are
- * on it, then get you into the Discord. So the surface is warm-dark (the room the
+ * The page's job is to show that real people are playing on this server, then get you
+ * into the game or the Discord. So the surface is warm-dark (the room the
  * screenshots are lit against), and the logo orange (#FE7101) is spent only on actions
  * and the brand mark — never as decoration, or it stops reading as "click this". Green
  * means one thing throughout, healthy: the server is up, or the change saved.
  *
- * Type: Archivo for the nameplate, IBM Plex Sans for prose, IBM Plex Mono for anything
- * the server itself would say (handles, room names, counts, endpoint paths).
+ * Type: Archivo for the nameplate, IBM Plex Sans for everything else. There is
+ * deliberately no monospace anywhere — this is a game, and mono type made the whole
+ * page read like a status dashboard.
  */
 :root {
 	color-scheme: dark light;
@@ -29,7 +30,6 @@
 
 	--display: Archivo, system-ui, sans-serif;
 	--body: 'IBM Plex Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-	--mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
 	--radius: 10px;
 }
@@ -109,9 +109,8 @@ body {
 	gap: 9px;
 	font-family: var(--display);
 	font-weight: 800;
-	font-size: 1.05rem;
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
+	font-size: 1.2rem;
+	letter-spacing: -0.015em;
 	color: var(--text);
 	text-decoration: none;
 }
@@ -132,9 +131,8 @@ body {
 
 .nav-links a,
 .linkish {
-	font-family: var(--mono);
-	font-size: 0.8rem;
-	letter-spacing: 0.02em;
+	font-family: var(--body);
+	font-size: 0.95rem;
 	color: var(--muted);
 	text-decoration: none;
 }
@@ -345,16 +343,15 @@ body {
 	opacity: 0.8;
 }
 
-/* Status of the actual server, not decoration — see About. */
+/* Status of the actual server, not decoration — see About. Set in plain sentence
+   case: uppercase mono made a friendly "we're up" read like a monitoring alert. */
 .status {
 	display: inline-flex;
 	align-items: center;
 	gap: 9px;
 	margin: 0;
-	font-family: var(--mono);
-	font-size: 0.75rem;
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
+	font-size: 0.95rem;
+	font-weight: 500;
 	color: var(--muted);
 }
 
@@ -443,8 +440,7 @@ body {
 	margin: 0 auto;
 	padding: 24px 20px 40px;
 	border-top: 1px solid var(--line);
-	font-family: var(--mono);
-	font-size: 0.75rem;
+	font-size: 0.875rem;
 	color: var(--muted);
 }
 
@@ -543,10 +539,8 @@ h2 {
 	margin-bottom: 0;
 }
 
-/* Identity strip on the account page: the account's own record, set in mono. */
 .identity .handle {
-	font-family: var(--mono);
-	font-size: 0.85rem;
+	font-size: 0.9rem;
 	color: var(--muted);
 }
 

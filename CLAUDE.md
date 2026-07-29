@@ -73,6 +73,40 @@ inconsistency here without checking the client first.
 - Endpoints the client re-renders from must return the updated entity, not
   `{ error, success, value: null }` — e.g. `clubs` `PUT /club/:id/clubhouse` left the old
   clubhouse on screen until it answered the full details envelope.
+- Every subroom mutation (`rooms`: create, delete, `/subrooms/:sid/clone`,
+  `/subrooms/:sid/accessibility`, `/subrooms/:sid/publish_save`) answers
+  `{ success, error, value }` with the whole updated ROOM — the client re-renders the room
+  from `value`. Notably `value` is the room even for `clone`, whose product is a new
+  SUBROOM; only the room-level `POST /rooms/:id/clone` returns the thing it created.
+- The room save (`rooms`: `POST /subrooms/:sid/data`) is the ONE exception to that shape:
+  `value` is `{ room, subRoomDataSave }`, and `error` is NULL rather than `""`. The
+  `subRoomDataSave` is camelCase with a different field set from the PascalCase
+  `CurrentSave` embedded in the room (no persistence/OM/UGC versions, no moderation state,
+  no asset arrays; but `unityAsset`/`unityAssetHash`). Don't unify the two projections.
+- A subroom's saved scene loads from `CurrentSave.DataBlob` (`rooms`: `GET /rooms/:id`),
+  NOT the flat `DataBlob` on the subroom — a subroom with no `CurrentSave` silently loads
+  nothing. The key must be present (null before the first publish); read it via
+  `subRoomDataBlob()` so `match`/`auth` instance payloads resolve it the same way.
+- A room save (`rooms`: `POST …/subrooms/:sid/data`) publishes only when the body says
+  `AutoPublish: true`; otherwise it STAGES onto `StagedSubRoomDataSaveId` and leaves
+  `CurrentSave` alone, so players keep loading the last published version until the owner
+  posts `…/subrooms/:sid/publish_save` with `subRoomDataSaveId=<id>`. DORMS always
+  publish: no publish step exists in the client for them. Saves live in the
+  `subroom_save` table with globally-unique ids (a bare id has to resolve —
+  `StagedSubRoomDataSaveId` carries no subroom context), and nothing is overwritten, so
+  `…/saves` is real history and `publish_save` doubles as restore-a-save. `…/saves` is
+  auth-gated and CREATOR-only (not co-owners) — it lists unpublished staged saves. There
+  is no `GET …/subrooms/:sid/data`; only the POST (the room save) exists on that path.
+- Matchmaking (`match`: `/matchmake/room/:roomId/:subRoomId`) always serves the PUBLISHED
+  `CurrentSave` blob, creator included. Joining a private instance, the client itself asks
+  the owner whether to load the latest or the published version and resolves it from the
+  `/subrooms/:sid/saves` list — the matchmake call is identical either way. Don't make
+  this server-side: it would put two people in one instance on different versions.
+- Accessibility is sent as the `RoomAccessibility` enum NAME on
+  `rooms` `PUT /rooms/:id/subrooms/:sid/accessibility` (`accessibility=Private`), not the
+  ordinal the room-level `/rooms/:id/accessibility` takes. The enum has five members
+  (Private, Public, Unlisted, Dev_only, Dev_Unlisted); parse via `parseAccessibility`,
+  which accepts either form.
 </client-contract-notes>
 
 <critical-notes>

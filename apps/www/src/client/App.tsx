@@ -1,18 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { DISCORD_INVITE, DOWNLOAD_URL, LICENSE_URL, SOURCE_REPO } from '../links'
+
 import type { ReactNode } from 'react'
-
-/** The community Discord — the join instructions and the build both live there. */
-const DISCORD_INVITE = 'https://discord.gg/HhmMAKhrz'
-
-/** Where the stage's "Download for PC" button goes: the client's release listing. */
-const DOWNLOAD_URL = 'https://github.com/djdevin/recflare-client/releases'
-
-/** The public source repo, linked from the homepage and footer. */
-const SOURCE_REPO = 'https://github.com/djdevin/recflare'
-
-/** The repo's licence, behind the footer's "MIT licensed". */
-const LICENSE_URL = `${SOURCE_REPO}/blob/main/LICENSE`
 
 /** The self-account shape returned by the www BFF (`/api/me`, `/api/login`, …). */
 interface SelfAccount {
@@ -132,9 +122,12 @@ function SiteFooter() {
 				<a href={LICENSE_URL} target="_blank" rel="noreferrer">
 					MIT licensed
 				</a>{' '}
-				· a fan project, not affiliated with Rec Room Inc.
+				— made by fans, not affiliated with Rec Room Inc.
 			</span>
 			<nav>
+				{/* A real navigation, not a client-side route: /privacy is rendered by the
+				    Worker (see src/privacy.ts) so it reads without JavaScript. */}
+				<a href="/privacy">Privacy</a>
 				<a href={DISCORD_INVITE} target="_blank" rel="noreferrer">
 					Discord
 				</a>
@@ -301,12 +294,11 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 	return (
 		<section className="about">
 			<div>
-				<h2 className="about-title">
-					An open source implementation of the 2023 RecNet servers, designed for the cloud
-				</h2>
+				<h2 className="about-title">An open source rebuild of the 2023 servers</h2>
 				<p className="about-lede">
-					A free, independent fan project, aiming to be <strong>feature-complete</strong> and
-					infinitely scalable. No gatekeeping, no basement server. Designed for Cloudflare Workers.
+					A free fan project, made by players who missed it. Aiming to be{' '}
+					<strong>feature-complete</strong> and infinitely scalable — no gatekeeping, no basement
+					server.
 				</p>
 			</div>
 			<div className="about-side">
@@ -319,10 +311,10 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 					<p className={`status ${state}`}>
 						<span className="dot" />
 						{state === 'online'
-							? 'Server online'
+							? 'Servers are up'
 							: state === 'down'
-								? 'Server unreachable'
-								: 'Checking the server'}
+								? "Can't reach the servers"
+								: 'Checking…'}
 					</p>
 					{/* Only when it's actually up: when it isn't, people want the status, not the joke. */}
 					{state === 'online' && <p className="status-quip">The cloud never goes down, right?</p>}

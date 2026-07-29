@@ -18,6 +18,7 @@ import {
 	setLoginContext,
 	setPasswordHash,
 	setPresence,
+	subRoomDataBlob,
 	verifyPassword,
 } from '@repo/domain'
 import { intVar, logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
@@ -119,7 +120,7 @@ async function placeNewPlayerInOrientation(
 		subRoomId: num(sub?.SubRoomId, 1),
 		roomInstanceType: RoomInstanceType.Public,
 		location: str(sub?.UnitySceneId),
-		dataBlob: str(sub?.DataBlob),
+		dataBlob: subRoomDataBlob(sub),
 		eventId: 0,
 		clubId: 0,
 		roomCode: '',

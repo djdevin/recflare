@@ -351,6 +351,59 @@ describe('public endpoints', () => {
 		expect(unknown).toMatchObject({ subRoomId: 34, location: RECCENTER_SCENE })
 	})
 
+	test('matchmaking serves the PUBLISHED save to everyone, creator included', async () => {
+		// The client offers the owner "latest or published" itself, from the
+		// `/subrooms/{id}/saves` list — matchmaking never picks. Serving a staged blob to
+		// the creator here would put them on a different version to everyone else in the
+		// same instance.
+		const room = {
+			RoomId: 78,
+			Name: 'StagedRoom',
+			IsDorm: false,
+			Accessibility: 1,
+			CreatorAccountId: 400,
+			Roles: [{ AccountId: 401, Role: 30, LastChangedByAccountId: null, InvitedRole: 0 }],
+			SubRooms: [
+				{
+					SubRoomId: 36,
+					UnitySceneId: RECCENTER_SCENE,
+					MaxPlayers: 10,
+					// Seeded as the published save (seedRoomWithSubRooms mirrors the backfill).
+					CurrentSave: { DataBlob: 'published.room' },
+				},
+			],
+		}
+		await seedRoomWithSubRooms(env.DB, room as unknown as Record<string, unknown>)
+		// Stage a newer save the creator hasn't published.
+		const staged = await env.DB.prepare(
+			'INSERT INTO subroom_save (sub_room_id, data) VALUES (?1, ?2) RETURNING sub_room_data_save_id'
+		)
+			.bind(36, JSON.stringify({ DataBlob: 'staged.room' }))
+			.first<{ sub_room_data_save_id: number }>()
+		await env.DB.prepare('UPDATE subroom SET staged_save_id = ?2 WHERE sub_room_id = ?1')
+			.bind(36, staged!.sub_room_data_save_id)
+			.run()
+
+		const matchmake = async (sub: string) => {
+			const res = await exports.default.fetch(`${ORIGIN}/matchmake/room/78/36`, {
+				method: 'POST',
+				headers: {
+					...(await bearer(sub)),
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body: 'JoinMode=0',
+			})
+			expect(res.status).toBe(200)
+			return ((await res.json()) as { roomInstance: { dataBlob: string } }).roomInstance
+		}
+
+		// Creator, co-owner and ordinary player all land on the same published version —
+		// having a newer staged save changes nothing here.
+		expect((await matchmake('400')).dataBlob).toBe('published.room')
+		expect((await matchmake('401')).dataBlob).toBe('published.room')
+		expect((await matchmake('402')).dataBlob).toBe('published.room')
+	})
+
 	test('POST /matchmake/club/:clubId places members into the clubhouse', async () => {
 		const matchmake = async (path: string, sub?: string) =>
 			exports.default.fetch(`${ORIGIN}${path}`, {

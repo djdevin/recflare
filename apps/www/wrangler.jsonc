@@ -17,12 +17,16 @@
 	// SPA `not_found_handling`, a top-level *navigation* to a non-asset path (browsers
 	// send `Sec-Fetch-Mode: navigate`) is served index.html WITHOUT invoking the Worker,
 	// so a browser hitting `/docs` got the homepage. Keep this in sync with the Worker's
-	// routes (all under `/api/*` and `/docs*`). `/docs/scalar.standalone.js` is
+	// routes (`/api/*`, `/docs*` and `/privacy`). `/docs/scalar.standalone.js` is
 	// deliberately excluded so it's served directly as the static asset it is.
+	//
+	// `/privacy` is here for the same reason `/docs` is, and it matters more: the Meta
+	// Horizon Store re-fetches the privacy policy URL to confirm it's live, and dropping
+	// it from this list would serve that fetch the SPA shell instead of the policy.
 	"assets": {
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/api/*", "/docs", "/docs/openapi/*"]
+		"run_worker_first": ["/api/*", "/docs", "/docs/openapi/*", "/privacy"]
 	},
 	"upload_source_maps": true,
 	"observability": {

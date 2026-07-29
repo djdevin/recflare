@@ -139,13 +139,67 @@ export const LoadScreenDto = z.object({
 })
 
 /**
+ * The save as the room-save RESPONSE renders it — camelCase, and a different field set
+ * from the PascalCase `CurrentSave` embedded in a room (no persistence/OM/UGC versions,
+ * no moderation state, no asset arrays; but `unityAsset`/`unityAssetHash`/`dataBlobHash`
+ * that `CurrentSave` doesn't show). The two are deliberately not unified.
+ */
+export const SubRoomDataSaveResponseDto = z.object({
+	subRoomDataSaveId: z.int(),
+	subRoomId: z.int(),
+	unityAssetId: z.string().nullable().describe('Null unless the save carried one'),
+	unityAsset: z.string().nullable().describe('Always null — we resolve no baked assets'),
+	unityAssetHash: z.string().nullable().describe('Always null — we resolve no baked assets'),
+	dataBlob: z.string(),
+	dataBlobHash: z.string().nullable().describe('Echoed from the request’s `SubRoomData.Hash`'),
+	savedByAccountId: z.int().nullable(),
+	savedOnPlatform: z
+		.int()
+		.describe(
+			'Steam=0 Oculus=1 PlayStation=2 Xbox=3 RecNet=4 IOS=5 GooglePlay=6 Standalone=7 Pico=8'
+		),
+	savedOnDeviceClass: z.int().describe('Unknown=0 VR=1 Screen=2 Mobile=3 VRLow=4 Quest2=5'),
+	description: z.string().nullable(),
+	createdAt: z.string(),
+})
+
+/**
+ * A subroom's most recent room save — the `SubRoomDataSave` the client reads to find the
+ * scene-data blob to download. This is the ONLY place the loader looks for it, so a
+ * subroom whose `CurrentSave` is missing loads no saved content at all.
+ *
+ * The array fields are always empty here: we neither resolve nor record referenced Unity
+ * assets. They are still emitted because the client's parser expects them present.
+ */
+export const SubRoomDataSaveDto = z.object({
+	UnitySubAssets: z.array(z.unknown()).describe('Always empty'),
+	ReferencedUnityAssets: z.array(z.unknown()).describe('Always empty'),
+	SubRoomDataSaveId: z.int().describe('Numbered from 1, incremented on every save'),
+	SubRoomId: z.int().describe('The owning subroom — re-pointed when a subroom is cloned'),
+	DataBlob: z.string().describe('The scene-data key the client downloads from the CDN'),
+	ReferencedUnityAssetIds: z.array(z.string()).describe('Always empty'),
+	PersistenceVersion: z.int(),
+	OMVersion: z.int(),
+	UgcSubVersion: z.int(),
+	SavedByAccountId: z.int().nullable(),
+	SavedOnPlatform: z.int().describe('0 — the save request carries no platform'),
+	SavedOnDeviceClass: z.int().describe('0 — the save request carries no device class'),
+	Description: z.string().describe('The save comment; empty string when none'),
+	Tags: z.array(z.unknown()).describe('Always empty'),
+	ModerationState: z.int(),
+	CreatedAt: z.string(),
+	UnityAssetId: z.string().optional().describe('Emitted only when the save carried one'),
+})
+
+/**
  * A subroom — a room's individual scene. Subrooms are their own table with a globally
  * unique, autoincrementing `SubRoomId` (the original game mints them from a single
  * sequence, not per-room); a room's `SubRooms` array is reconstructed on read.
  *
  * `CreatorAccountId` starts null on the seeded rooms and is filled in on the first save —
- * the client NREs on a null one. The `DataBlob`/`RoomDataBlob`/`DataSavedAt` fields only
- * appear once the subroom has been saved at least once.
+ * the client NREs on a null one. `CurrentSave` is null until the first save; the flat
+ * `DataBlob`/`RoomDataBlob`/`DataSavedAt` fields are legacy and are NOT what the client
+ * loads from.
  */
 export const SubRoomDto = z.object({
 	SubRoomId: z.int(),
@@ -156,10 +210,15 @@ export const SubRoomDto = z.object({
 	LastModeratedSaveModerationState: z.int(),
 	IsSandbox: z.boolean(),
 	MaxPlayers: z.int(),
-	Accessibility: z.int().describe('0 = Private, 1 = Public, 2 = Unlisted'),
+	Accessibility: z
+		.int()
+		.describe('0 Private, 1 Public, 2 Unlisted, 3 Dev_only, 4 Dev_Unlisted — set independently'),
 	ShouldAutoStageSaves: z.boolean(),
 	StagedSubRoomDataSaveId: z.int().nullable(),
-	DataBlob: z.string().optional().describe('Uploaded scene-data key; absent until first save'),
+	CurrentSave: SubRoomDataSaveDto.nullable().describe(
+		'The latest room save — where the client finds the scene blob. Null until first save'
+	),
+	DataBlob: z.string().optional().describe('Legacy flat key; the client reads `CurrentSave`'),
 	RoomDataBlob: z.string().optional().describe('Uploaded room-data key; absent until first save'),
 	DataSavedAt: z.string().optional().describe('ISO timestamp of the last save'),
 	PersistenceVersion: z.int().optional(),
@@ -318,17 +377,17 @@ export const RoomEnvelope = z.object({
 })
 
 /**
- * What a room save answers: the saved subroom on success (no envelope — the client
- * deserializes the body directly as the subroom), or the PascalCase result envelope when
- * the room or subroom doesn't exist. Both at HTTP 200.
+ * What `POST /rooms/{roomId}/subrooms/{subRoomId}/data` answers: `value` carries BOTH the
+ * updated room and the save that was just created. Note `error` is NULL here, not the
+ * empty string the other room envelopes use.
  */
-export const SubRoomSaveResult = z.union([SubRoomDto, RoomResultEnvelope])
-
-/** The same envelope carrying a subroom (`POST …/subrooms/{subRoomId}/clone`). */
-export const SubRoomEnvelope = z.object({
+export const RoomSaveEnvelope = z.object({
 	success: z.boolean(),
-	error: z.string().describe('Empty on success'),
-	value: SubRoomDto.nullable(),
+	error: z.string().nullable().describe('Null on success'),
+	value: z
+		.object({ room: RoomDto, subRoomDataSave: SubRoomDataSaveResponseDto })
+		.nullable()
+		.describe('Null on a rejection'),
 })
 
 /** The 401 the envelope-returning routes answer with — the only one that isn’t HTTP 200. */
@@ -406,6 +465,28 @@ export const AccessibilityRequest = z.object({
 	accessibility: z.string().describe('0 = Private, 1 = Public, 2 = Unlisted'),
 })
 
+/**
+ * `PUT /rooms/{roomId}/subrooms/{subRoomId}/accessibility`. Unlike the room-level route
+ * above, the client sends the enum NAME here (`accessibility=Private`), so both the name
+ * and the number are accepted.
+ */
+export const SubRoomAccessibilityRequest = z.object({
+	accessibility: z
+		.string()
+		.describe(
+			'A `RoomAccessibility` name — `Private`, `Public`, `Unlisted`, `Dev_only`, ' +
+				'`Dev_Unlisted` (case-insensitive) — or its ordinal 0–4'
+		),
+})
+
+/**
+ * `POST /rooms/{roomId}/subrooms/{subRoomId}/publish_save` — promotes one save to live.
+ * Any id from the subroom's history works, so this is both publish and restore.
+ */
+export const PublishSaveRequest = z.object({
+	subRoomDataSaveId: z.string().describe('The `SubRoomDataSaveId` to make live'),
+})
+
 /** `POST /rooms/{roomId}/subrooms`. */
 export const CreateSubRoomRequest = z.object({
 	name: z.string().describe('The new subroom’s name'),
@@ -414,7 +495,10 @@ export const CreateSubRoomRequest = z.object({
 /** `PUT /rooms/{roomId}/subrooms/{subRoomId}/modify`. */
 export const ModifySubRoomRequest = z.object({
 	name: z.string().describe('Required — an empty name is rejected'),
-	accessibility: z.string().optional().describe('0 = Private, 1 = Public, 2 = Unlisted'),
+	accessibility: z
+		.string()
+		.optional()
+		.describe('A `RoomAccessibility` name (case-insensitive) or its ordinal 0–4'),
 	maxPlayers: z.string().optional().describe('Ignored when not a positive integer'),
 })
 
@@ -428,14 +512,19 @@ export const SaveSubRoomDataRequest = z.object({
 	SubRoomData: z
 		.object({ Filename: z.string() })
 		.optional()
-		.describe('The uploaded scene-data blob — becomes the subroom’s `DataBlob`'),
+		.describe('The uploaded scene-data blob — becomes the subroom’s `CurrentSave.DataBlob`'),
 	RoomData: z
 		.object({ Filename: z.string() })
 		.optional()
 		.describe('The uploaded room-level data blob — becomes `RoomDataBlob`'),
-	Description: z.string().optional().describe('Written to the ROOM, not the subroom'),
+	Description: z.string().optional().describe('The save comment; also written to the ROOM'),
 	PersistenceVersion: z.int().optional(),
 	InventionUsage: z.string().optional().describe('Written to the room'),
+	UnityAssetId: z.string().nullable().optional().describe('Recorded on the save when set'),
+	AutoPublish: z
+		.boolean()
+		.optional()
+		.describe('True publishes the save immediately; otherwise it is staged'),
 })
 
 /**
@@ -443,8 +532,11 @@ export const SaveSubRoomDataRequest = z.object({
  * save history (a save overwrites the subroom's blob inline), so it's always empty.
  */
 export const SubRoomSavesPage = z.object({
-	Results: z.array(z.unknown()).describe('Always empty — no save history is kept'),
+	Results: z
+		.array(SubRoomDataSaveDto)
+		.describe('At most one — the current save; we keep no history'),
 	TotalResults: z.int(),
+	TotalCount: z.int().describe('Same value as `TotalResults` — the two references disagree'),
 })
 
 // ---- Session ---------------------------------------------------------------

@@ -6,6 +6,7 @@ import { withOnError } from '@repo/hono-helpers'
 
 import { NotificationType } from '../../notify/src/notification-types'
 import { docsPage, fetchSpec } from './docs'
+import { privacyPage } from './privacy'
 import { accountsBase, apiBase, authBase, imgBase, notifyBase, postForm } from './upstream'
 
 import type { Context } from 'hono'
@@ -281,6 +282,12 @@ const app = new Hono<App>()
 		const result = (await res.json()) as { sent?: number }
 		return c.json({ success: true, sent: result.sent ?? 0 })
 	})
+
+	// ---- Privacy policy -----------------------------------------------------
+	// Server-rendered rather than a SPA route so the page has real text without
+	// JavaScript: the Meta Horizon Store re-fetches this URL to check the policy is
+	// still live, and an empty SPA shell can read as a broken link (see privacy.ts).
+	.get('/privacy', (c) => c.html(privacyPage()))
 
 	// ---- Aggregated API docs ------------------------------------------------
 	// `/docs` serves the self-hosted Scalar UI; `/docs/openapi/:service.json` proxies

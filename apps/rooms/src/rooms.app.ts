@@ -3,6 +3,7 @@ import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	Accessibility,
 	canManageRoom,
 	cloneRoom,
 	cloneSubRoom,
@@ -24,8 +25,10 @@ import {
 	getRoomsByCreator,
 	getRoomsByIds,
 	getSimilarRooms,
+	getSubRoomSaves,
 	getVisitedRooms,
 	modifySubRoom,
+	publishSubRoomSave,
 	removeCheer,
 	removeFavorite,
 	saveSubRoomData,
@@ -64,6 +67,7 @@ import {
 	pageParams,
 	PhotonAccessTokenDto,
 	PlayerDataDto,
+	PublishSaveRequest,
 	RestrictionsRequest,
 	RoleRequest,
 	RoomDto,
@@ -71,13 +75,12 @@ import {
 	roomIdParam,
 	RoomLookup,
 	RoomResultEnvelope,
+	RoomSaveEnvelope,
 	SaveSubRoomDataRequest,
 	ServiceStatus,
 	stringQuery,
-	SubRoomDto,
-	SubRoomEnvelope,
+	SubRoomAccessibilityRequest,
 	subRoomIdParam,
-	SubRoomSaveResult,
 	SubRoomSavesPage,
 	TagRequest,
 	UNAUTHORIZED_EMPTY,
@@ -195,6 +198,22 @@ function unauthorized(c: Context<App>) {
 	return c.json({ error: 'Unauthorized' }, 401)
 }
 
+/**
+ * Parse an `accessibility` form field into a `RoomAccessibility` value. The client
+ * sends the enum NAME on the subroom route (`accessibility=Private`), not the number
+ * the room-level route takes, so both forms are accepted. Returns undefined when the
+ * field is missing or names nothing in the enum.
+ */
+function parseAccessibility(value: unknown): number | undefined {
+	if (typeof value !== 'string') return undefined
+	const raw = value.trim()
+	if (/^-?\d+$/.test(raw)) return Number.parseInt(raw, 10)
+	const named = Object.entries(Accessibility).find(
+		([name, ordinal]) => typeof ordinal === 'number' && name.toLowerCase() === raw.toLowerCase()
+	)
+	return named ? (named[1] as number) : undefined
+}
+
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
 const HUB_INSTANCE = 'global'
 
@@ -251,6 +270,33 @@ function roomResult(
 		ErrorId: fields.ErrorId ?? null,
 		Error: fields.Error ?? null,
 	})
+}
+
+/**
+ * The room save's `value.subRoomDataSave` — a camelCase projection with a DIFFERENT
+ * field set from the PascalCase `CurrentSave` embedded in a room (no persistence/OM/UGC
+ * versions, no moderation state, no asset arrays; but `unityAsset`/`unityAssetHash`
+ * that `CurrentSave` never shows). Don't unify the two without checking the client.
+ *
+ * `unityAsset`/`unityAssetHash` are always null: we resolve no baked Unity assets.
+ */
+function toSaveResponse(save: Record<string, unknown>) {
+	const str = (v: unknown) => (typeof v === 'string' ? v : null)
+	const num = (v: unknown) => (typeof v === 'number' ? v : null)
+	return {
+		subRoomDataSaveId: num(save.SubRoomDataSaveId),
+		subRoomId: num(save.SubRoomId),
+		unityAssetId: str(save.UnityAssetId),
+		unityAsset: null,
+		unityAssetHash: null,
+		dataBlob: str(save.DataBlob) ?? '',
+		dataBlobHash: str(save.DataBlobHash),
+		savedByAccountId: num(save.SavedByAccountId),
+		savedOnPlatform: num(save.SavedOnPlatform) ?? 0,
+		savedOnDeviceClass: num(save.SavedOnDeviceClass) ?? 0,
+		description: str(save.Description),
+		createdAt: str(save.CreatedAt) ?? '',
+	}
 }
 
 /** Client envelope for room mutations: `{ success, error, value }` (lowercase). */
@@ -1403,62 +1449,64 @@ const app = new Hono<App>()
 		}
 	)
 
-	// A subroom's data descriptor (the SubRoom object from the room's SubRooms
-	// array). Public — the client fetches it while loading the room. 404 when the
-	// room or subroom is unknown.
-	.get(
-		'/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/data',
-		describeRoute({
-			tags: ['Subrooms'],
-			summary: 'A subroom’s data descriptor',
-			description: [
-				'The `SubRoom` object from the room’s `SubRooms` array — the descriptor the client',
-				'fetches while loading the room, carrying the scene id and the saved-data blob keys.',
-				'Public; an unknown room or subroom is a 404.',
-			].join(' '),
-			parameters: [roomIdParam, subRoomIdParam],
-			responses: {
-				200: json(SubRoomDto, 'The subroom'),
-				404: { description: 'No such room or subroom' },
-			},
-		}),
-		async (c) => {
-			const roomId = Number.parseInt(c.req.param('roomId'), 10)
-			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
-			const room = await getRoomById(c.env.DB, roomId)
-			const sub = room ? findSubRoom(room, subRoomId) : undefined
-			return sub ? c.json(sub) : c.notFound()
-		}
-	)
-
-	// A subroom's saved-data versions — the room-history / "restore a save" list, paged as
-	// PagedResultsDTO<SubRoomDataSaveDTO> (`{ Results, TotalResults }`). We don't keep a save
-	// history yet: a save (POST …/data) overwrites the current blob inline on the subroom, so
-	// there are no distinct versions to list — this returns an empty page. The
-	// unityAssetTarget/unityAssetVersion/skip/take query params are accepted and ignored.
+	// A subroom's saved-data versions — the room-history / "restore a save" list. Every
+	// save is its own `subroom_save` row (nothing is overwritten), so this is real
+	// history, newest first, paged by skip/take. Auth-gated (401) and creator-only (403):
+	// the list exposes unpublished saves, which only the owner is entitled to see.
 	.get(
 		'/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/saves',
 		describeRoute({
 			tags: ['Subrooms'],
 			summary: 'A subroom’s saved-data versions',
 			description: [
-				'The room-history / “restore a save” list, paged as',
-				'`PagedResultsDTO<SubRoomDataSaveDTO>`. We keep no save history — a save (`POST',
-				'…/data`) overwrites the subroom’s current blob inline, so there are no distinct',
-				'versions to list — and this is always an empty page. The',
-				'`unityAssetTarget`/`unityAssetVersion`/`skip`/`take` params are accepted and ignored.',
+				'The room-history / “restore a save” list, newest first. Every room save appends a',
+				'row rather than overwriting, so this is the subroom’s full history; it is empty',
+				'only when the subroom has never been saved.',
+				'`unityAssetTarget`/`unityAssetVersion` are accepted and ignored.',
+				'',
+				'Owner-only (403 otherwise) — the list includes STAGED saves that were never',
+				'published, so it is not public. It is what the client reads to offer the owner',
+				'“load the latest or the published version?” when they enter a private instance.',
+				'',
+				'`TotalResults` and `TotalCount` carry the same number: the client’s paged DTO and',
+				'the reference disagree on the name, so both are emitted.',
 			].join(' '),
+			security: AUTHED,
 			parameters: [
 				roomIdParam,
 				subRoomIdParam,
 				stringQuery('unityAssetTarget', 'Accepted and ignored'),
 				stringQuery('unityAssetVersion', 'Accepted and ignored'),
-				stringQuery('skip', 'Accepted and ignored — the page is always empty'),
-				stringQuery('take', 'Accepted and ignored — the page is always empty'),
+				stringQuery('skip', 'How many saves to skip (default 0)'),
+				stringQuery('take', 'How many saves to return (default all)'),
 			],
-			responses: { 200: json(SubRoomSavesPage, 'Always an empty page') },
+			responses: {
+				200: json(SubRoomSavesPage, 'The subroom’s saves, newest first'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: FORBIDDEN_RESPONSE,
+			},
 		}),
-		(c) => c.json({ Results: [], TotalResults: 0 })
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) return unauthorized(c)
+
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+			// Scoped through the room so a subroom id from another room can't read its saves.
+			const room = await getRoomById(c.env.DB, roomId)
+			if (!room || !findSubRoom(room, subRoomId)) {
+				return c.json({ Results: [], TotalResults: 0, TotalCount: 0 })
+			}
+			if (room.CreatorAccountId !== accountId) return c.body(null, 403)
+			const saves = await getSubRoomSaves(c.env.DB, subRoomId)
+
+			const skip = Number.parseInt(c.req.query('skip') ?? '', 10)
+			const take = Number.parseInt(c.req.query('take') ?? '', 10)
+			const from = Number.isNaN(skip) || skip < 0 ? 0 : skip
+			const page = saves.slice(from, Number.isNaN(take) || take < 0 ? undefined : from + take)
+
+			return c.json({ Results: page, TotalResults: saves.length, TotalCount: saves.length })
+		}
 	)
 
 	// Save a subroom's data (room save). Auth-gated (401 with empty body). Editable
@@ -1472,14 +1520,22 @@ const app = new Hono<App>()
 			tags: ['Subrooms'],
 			summary: 'Save a subroom’s data (room save)',
 			description: [
-				'Points the subroom at the blobs the client has already uploaded through the `storage`',
-				'worker and stamps the save; the room-level fields the save carries (`Description`,',
+				'Records a save against the subroom from the blobs the client has already uploaded',
+				'through the `storage` worker; the room-level fields it carries (`Description`,',
 				'`PersistenceVersion`, `InventionUsage`) are written to the room. Editable by the',
 				'room’s creator or a co-owner (403 otherwise); a missing token is an EMPTY-body 401,',
 				'unlike the other room writes.',
 				'',
-				'The push notification carries the whole room, but the RESPONSE is the saved SUBROOM',
-				'itself with no envelope — the client deserializes the body directly as the subroom.',
+				'`AutoPublish: true` makes the save live immediately. Otherwise it is STAGED: it',
+				'lands on `StagedSubRoomDataSaveId` with the live `CurrentSave` untouched, so',
+				'players keep loading the last published version until the owner calls',
+				'`POST …/subrooms/{subRoomId}/publish_save`. DORMS always publish — they have no',
+				'publish step in the client, so staging one would hide the player’s own edits.',
+				'',
+				'`value` carries BOTH the updated `room` and the `subRoomDataSave` just created,',
+				'and `error` is NULL here rather than the empty string the other room envelopes',
+				'use. The save is projected in camelCase with a different field set from the',
+				'PascalCase `CurrentSave` embedded in the room — the two are not the same shape.',
 				'A subroom with no `CreatorAccountId` yet (the seeded rooms start null) gets the',
 				'saver’s id here, because the client NREs on a null one.',
 			].join('\n'),
@@ -1487,10 +1543,7 @@ const app = new Hono<App>()
 			parameters: [roomIdParam, subRoomIdParam],
 			requestBody: jsonBody(SaveSubRoomDataRequest, 'The uploaded blob keys and save fields'),
 			responses: {
-				200: json(
-					SubRoomSaveResult,
-					'The saved subroom, or the result envelope when the room/subroom is unknown'
-				),
+				200: json(RoomSaveEnvelope, 'The updated room + the new save, or a rejection'),
 				401: UNAUTHORIZED_EMPTY,
 				403: FORBIDDEN_RESPONSE,
 			},
@@ -1504,44 +1557,49 @@ const app = new Hono<App>()
 
 			const room = await getRoomById(c.env.DB, roomId)
 			if (!room) {
-				return roomResult(c, {
-					Success: false,
-					ErrorId: 'Rooms.DoesntExist',
-					Error: 'This room does not exist!',
-				})
+				return c.json({ success: false, error: 'This room does not exist!', value: null })
 			}
 			// A valid token but not the room's owner/co-owner → 403 (the auth gate above
 			// already returned 401 for a missing/invalid token).
 			if (!canManageRoom(room, accountId)) return c.body(null, 403)
 
+			// The client uploads BOTH blobs to `storage` first and sends their keys here:
+			// `SubRoomData` is the scene blob (what the loader downloads), `RoomData` the
+			// metadata blob. `OwnershipProof` is accepted and ignored.
 			const body = (await c.req.json().catch(() => ({}))) as {
 				RoomData?: { Filename?: string }
-				SubRoomData?: { Filename?: string }
+				SubRoomData?: { Filename?: string; Hash?: string | null }
+				UnityAssetId?: string | null
 				Description?: string
 				PersistenceVersion?: number
 				InventionUsage?: string
+				AutoPublish?: boolean
 			}
 
-			const updated = await saveSubRoomData(c.env.DB, roomId, subRoomId, accountId, {
+			const result = await saveSubRoomData(c.env.DB, roomId, subRoomId, accountId, {
 				subRoomDataFilename: body.SubRoomData?.Filename,
+				subRoomDataHash:
+					typeof body.SubRoomData?.Hash === 'string' ? body.SubRoomData.Hash : undefined,
 				roomDataFilename: body.RoomData?.Filename,
+				unityAssetId: typeof body.UnityAssetId === 'string' ? body.UnityAssetId : undefined,
+				autoPublish: body.AutoPublish === true,
 				description: typeof body.Description === 'string' ? body.Description : undefined,
 				persistenceVersion:
 					typeof body.PersistenceVersion === 'number' ? body.PersistenceVersion : undefined,
 				inventionUsage: typeof body.InventionUsage === 'string' ? body.InventionUsage : undefined,
 			})
-			if (!updated) {
-				return roomResult(c, {
-					Success: false,
-					ErrorId: 'Rooms.DoesntExist',
-					Error: 'This room does not exist!',
-				})
+			if (!result) {
+				return c.json({ success: false, error: 'This subroom does not exist!', value: null })
 			}
 
-			// RoomUpdate carries the full room, but the HTTP response is the saved SUBROOM
-			// itself — no envelope. The client deserializes the body directly as the subroom.
-			await pushRoomUpdate(c, accountId, updated)
-			return c.json(findSubRoom(updated, subRoomId) ?? {})
+			// `value` carries BOTH the updated room and the save just created — and `error`
+			// is null here, not the empty string the other room envelopes use.
+			await pushRoomUpdate(c, accountId, result.room)
+			return c.json({
+				success: true,
+				error: null,
+				value: { room: result.room, subRoomDataSave: toSaveResponse(result.save) },
+			})
 		}
 	)
 
@@ -1607,16 +1665,14 @@ const app = new Hono<App>()
 					Error: 'You must enter a name for your room!',
 				})
 			}
-			const accessibility =
-				typeof body.accessibility === 'string'
-					? Number.parseInt(body.accessibility, 10)
-					: Number.NaN
 			const maxPlayers =
 				typeof body.maxPlayers === 'string' ? Number.parseInt(body.maxPlayers, 10) : Number.NaN
 
 			const updated = await modifySubRoom(c.env.DB, roomId, subRoomId, {
 				name,
-				accessibility: Number.isNaN(accessibility) ? undefined : accessibility,
+				// Accepts the enum name as well as the ordinal — the dedicated
+				// `/accessibility` route below is sent names, so this may be too.
+				accessibility: parseAccessibility(body.accessibility),
 				maxPlayers: Number.isNaN(maxPlayers) || maxPlayers <= 0 ? undefined : maxPlayers,
 			})
 			if (!updated) {
@@ -1632,11 +1688,144 @@ const app = new Hono<App>()
 		}
 	)
 
+	// Publish a subroom's staged save — promote it to the live one players load. Every
+	// non-dorm room save only STAGES (see the save route), so this is the manual step that
+	// makes edits visible. Auth-gated (401) and creator-only: co-owners may save, but
+	// only the room's owner decides what goes live. Answers the updated ROOM in the
+	// `{ success, error, value }` envelope, like the other subroom mutations.
+	.post(
+		'/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/publish_save',
+		describeRoute({
+			tags: ['Subrooms'],
+			summary: 'Publish one of a subroom’s saves',
+			description: [
+				'Makes the save named by the `subRoomDataSaveId` form field the one players load —',
+				'it becomes the subroom’s `CurrentSave`. A room save only STAGES (dorms excepted),',
+				'so nothing a creator saves reaches players until this is called.',
+				'',
+				'The id may be any save in the subroom’s history, so this doubles as restore-a-save.',
+				'`StagedSubRoomDataSaveId` is cleared only when the published save IS the staged',
+				'one — restoring an older version keeps newer unpublished work staged.',
+				'',
+				'Owner-only: co-owners may save but not decide what goes live. A save id belonging',
+				'to another subroom is rejected.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [roomIdParam, subRoomIdParam],
+			requestBody: form(PublishSaveRequest, 'The save to publish'),
+			responses: {
+				200: json(RoomEnvelope, 'The updated room, or a rejection with `success: false`'),
+				401: UNAUTHORIZED_ENVELOPE,
+			},
+		}),
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) {
+				return c.json({ success: false, error: 'Unauthorized', value: null }, 401)
+			}
+
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+
+			const room = await getRoomById(c.env.DB, roomId)
+			if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+			if (room.CreatorAccountId !== accountId) {
+				return roomEnvelope(c, null, 'You are not the owner of this room!')
+			}
+
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const saveId =
+				typeof body.subRoomDataSaveId === 'string'
+					? Number.parseInt(body.subRoomDataSaveId, 10)
+					: Number.NaN
+			if (Number.isNaN(saveId)) {
+				return roomEnvelope(c, null, 'You must provide a valid save!')
+			}
+
+			const result = await publishSubRoomSave(c.env.DB, roomId, subRoomId, saveId)
+			if (!result.ok) {
+				return roomEnvelope(
+					c,
+					null,
+					result.reason === 'unknown_save'
+						? 'That save does not exist!'
+						: 'This subroom does not exist!'
+				)
+			}
+
+			await pushRoomUpdate(c, accountId, result.room)
+			return roomEnvelope(c, result.room)
+		}
+	)
+
+	// Set a single subroom's `Accessibility`. Same effect as the `accessibility` field of
+	// the subroom `modify` call, but this is what the client actually calls when the
+	// player flips one subroom's visibility, and the body carries the enum NAME
+	// (`accessibility=Private`), not the number the room-level `/accessibility` takes.
+	// Auth-gated (401) and owner-only, like the other subroom mutations. Answers the
+	// updated ROOM in the `{ success, error, value }` envelope — the client re-renders
+	// the room's subroom list from `value`, the same as subroom create/delete.
+	.put(
+		'/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/accessibility',
+		describeRoute({
+			tags: ['Subrooms'],
+			summary: 'Set a subroom’s accessibility',
+			description: [
+				'A subroom’s own visibility, independent of the room’s top-level `Accessibility`.',
+				'The client sends the `RoomAccessibility` NAME here (`accessibility=Private`) rather',
+				'than the ordinal the room-level route takes, so both forms are accepted; an',
+				'unrecognised value is rejected. Owner-only — only the room’s creator may change',
+				'its subrooms, not co-owners.',
+				'',
+				'Answers the updated ROOM, not the bare subroom, so the client can re-render the',
+				'room’s subroom list from `value`.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [roomIdParam, subRoomIdParam],
+			requestBody: form(SubRoomAccessibilityRequest, 'The new accessibility'),
+			responses: {
+				200: json(RoomEnvelope, 'The updated room, or a rejection with `success: false`'),
+				401: UNAUTHORIZED_ENVELOPE,
+			},
+		}),
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) {
+				return c.json({ success: false, error: 'Unauthorized', value: null }, 401)
+			}
+
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+
+			const room = await getRoomById(c.env.DB, roomId)
+			if (!room) return roomEnvelope(c, null, 'This room does not exist!')
+			if (room.CreatorAccountId !== accountId) {
+				return roomEnvelope(c, null, 'You are not the owner of this room!')
+			}
+			if (!findSubRoom(room, subRoomId)) {
+				return roomEnvelope(c, null, 'This subroom does not exist!')
+			}
+
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const accessibility = parseAccessibility(body.accessibility)
+			if (accessibility === undefined) {
+				return roomEnvelope(c, null, 'You must provide a valid accessibility!')
+			}
+
+			const updated = await modifySubRoom(c.env.DB, roomId, subRoomId, { accessibility })
+			if (!updated) return roomEnvelope(c, null, 'This subroom does not exist!')
+
+			await pushRoomUpdate(c, accountId, updated)
+			return roomEnvelope(c, updated)
+		}
+	)
+
 	// Clone a subroom into a new subroom of the same room (fresh SubRoomId, same
 	// scene/settings/data). Auth-gated (401) and owner-only. Notifies the owner and
-	// returns the `{ success, error, value }` envelope with the new subroom as `value`,
-	// mirroring the room-level `/clone`. Response shape is a best guess (the real
-	// client's expected body is unknown).
+	// returns the updated ROOM in the `{ success, error, value }` envelope — NOT the new
+	// subroom, even though the new subroom is what the call produces. The client
+	// re-renders the room's subroom list from `value`, the same as subroom
+	// create/delete/accessibility.
 	.post(
 		'/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/clone',
 		describeRoute({
@@ -1647,13 +1836,14 @@ const app = new Hono<App>()
 				'data blobs, so it loads identical content — with a fresh globally-unique `SubRoomId`.',
 				'Owner-only.',
 				'',
-				'The response shape is a best guess: it mirrors the room-level `/clone` envelope, but',
-				'the real client’s expected body for this call is unknown.',
+				'Answers the updated ROOM, not the new subroom — the client re-renders the room’s',
+				'subroom list from `value`. Unlike the room-level `/clone`, whose `value` IS the new',
+				'room, the thing this call creates is not what comes back.',
 			].join('\n'),
 			security: AUTHED,
 			parameters: [roomIdParam, subRoomIdParam],
 			responses: {
-				200: json(SubRoomEnvelope, 'The new subroom, or a rejection with `success: false`'),
+				200: json(RoomEnvelope, 'The updated room, or a rejection with `success: false`'),
 				401: UNAUTHORIZED_ENVELOPE,
 			},
 		}),
@@ -1676,7 +1866,7 @@ const app = new Hono<App>()
 			if (!result) return roomEnvelope(c, null, 'This subroom does not exist!')
 
 			await pushRoomUpdate(c, accountId, result.room)
-			return roomEnvelope(c, result.subRoom)
+			return roomEnvelope(c, result.room)
 		}
 	)
 

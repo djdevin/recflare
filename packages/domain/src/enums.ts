@@ -64,11 +64,17 @@ export enum MessageType {
 	VirtualRoomNotification = 100008,
 }
 
-/** A room's (or image's) visibility, matching the client's `RoomAccessibility`. */
+/**
+ * A room's (or image's) visibility, matching the client's `RoomAccessibility`. The
+ * client declares the enum without explicit values, so these are its ordinals — and
+ * it sends the NAME, not the number, on the subroom accessibility route.
+ */
 export enum Accessibility {
 	Private = 0,
 	Public = 1,
 	Unlisted = 2,
+	Dev_only = 3,
+	Dev_Unlisted = 4,
 }
 
 /**
