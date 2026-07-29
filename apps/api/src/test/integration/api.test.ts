@@ -233,27 +233,31 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	test('POST /api/PlayerReporting/v1/moderationBlockDetails reports "not blocked"', async () => {
-		// The client POSTs this with no body, despite it being a pure read.
-		const res = await exports.default.fetch(
-			`${ORIGIN}/api/PlayerReporting/v1/moderationBlockDetails`,
-			{ method: 'POST' }
-		)
-		expect(res.status).toBe(200)
-		// The reference server's stub verbatim: ReportCategory -1 = Unknown (0 is a real
-		// category) and an empty-string Message.
-		expect(await res.json()).toEqual({
-			ReportCategory: -1,
-			Duration: 0,
-			GameSessionId: 0,
-			IsBan: false,
-			IsHostKick: false,
-			IsVoiceModAutoban: false,
-			Message: '',
-			PlayerIdReporter: null,
-			TimeoutStartedAt: null,
-		})
-	})
+	// The client POSTs this with no body, despite it being a pure read; the route answers
+	// GET as well, and both methods serve the same body.
+	test.each(['GET', 'POST'])(
+		'%s /api/PlayerReporting/v1/moderationBlockDetails reports "not blocked"',
+		async (method) => {
+			const res = await exports.default.fetch(
+				`${ORIGIN}/api/PlayerReporting/v1/moderationBlockDetails`,
+				{ method }
+			)
+			expect(res.status).toBe(200)
+			// ReportCategory -1 = Unknown (0 is a real category). Message is null, not the
+			// reference stub's empty string — the client tells "no message" from a blank one.
+			expect(await res.json()).toEqual({
+				ReportCategory: -1,
+				Duration: 0,
+				GameSessionId: 0,
+				IsBan: false,
+				IsHostKick: false,
+				IsVoiceModAutoban: false,
+				Message: null,
+				PlayerIdReporter: null,
+				TimeoutStartedAt: null,
+			})
+		}
+	)
 
 	// Unauthenticated by design — the client posts this before it has an account, so
 	// there's no bearer token to check and nothing to attribute the id to.
@@ -1899,6 +1903,7 @@ describe('openapi', () => {
 		)
 		expect([...documented].sort()).toEqual([
 			'DELETE /api/images/v1/deletesaved',
+			'GET /api/PlayerReporting/v1/moderationBlockDetails',
 			'GET /api/PlayerReporting/v1/voteToKickReasons',
 			'GET /api/activities/charades/v1/words/{activity}',
 			'GET /api/announcement/v1/get',

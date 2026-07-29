@@ -16,22 +16,27 @@ import type { App } from '../context'
 export const moderationRoutes = new Hono<App>({ strict: false })
 	// Whether the caller is currently blocked (banned / timed out / host-kicked). No ban
 	// storage yet, so this is always the "not blocked" answer — the reference server's
-	// stub `ReturnModerationBlockDetails()` verbatim. `ReportCategory` is `Unknown` (-1),
-	// not 0, which is a real category, and `Message` is the empty string that stub sends.
+	// stub `ReturnModerationBlockDetails()`. `ReportCategory` is `Unknown` (-1), not 0,
+	// which is a real category. `Message` is null rather than the empty string that stub
+	// sends: the client distinguishes "no message" from a blank one.
 	// `IsVoiceModAutoban`/`TimeoutStartedAt` are on the DTO but left unset there, so they
 	// go out with their C# defaults.
-	// POST with no body — the client's actual call, despite this being a pure read.
-	.post(
+	// POST with no body is the client's actual call, despite this being a pure read; it
+	// answers GET too, so the path is reachable either way.
+	.on(
+		['GET', 'POST'],
 		'/api/PlayerReporting/v1/moderationBlockDetails',
 		describeRoute({
 			tags: ['Moderation'],
 			summary: 'Whether the caller is blocked',
 			description:
 				'Ban / timeout / host-kick state for the caller. There is no ban storage yet, so ' +
-				'this is always the “not blocked” answer, matching the reference server’s stub: ' +
-				'`ReportCategory` is `Unknown` (-1) rather than 0, which is a real category, and ' +
-				'`Message` is an empty string. `IsVoiceModAutoban` and `TimeoutStartedAt` are on ' +
-				'the DTO but unset by that stub, so they carry their defaults.',
+				'this is always the “not blocked” answer, following the reference server’s stub: ' +
+				'`ReportCategory` is `Unknown` (-1) rather than 0, which is a real category. ' +
+				'`Message` is null rather than the empty string that stub sends — the client ' +
+				'distinguishes “no message” from a blank one. `IsVoiceModAutoban` and ' +
+				'`TimeoutStartedAt` are on the DTO but unset by that stub, so they carry their ' +
+				'defaults.',
 			responses: { 200: json(ModerationBlockDetails, 'Always “not blocked”') },
 		}),
 		(c) =>
@@ -42,7 +47,7 @@ export const moderationRoutes = new Hono<App>({ strict: false })
 				IsBan: false,
 				IsHostKick: false,
 				IsVoiceModAutoban: false,
-				Message: '',
+				Message: null,
 				PlayerIdReporter: null,
 				TimeoutStartedAt: null,
 			})

@@ -391,10 +391,11 @@ export const SubscriptionResponse = z.object({
 // ---- Moderation ------------------------------------------------------------
 
 /**
- * `GET /api/PlayerReporting/v1/moderationBlockDetails` — always the "not blocked"
+ * `GET|POST /api/PlayerReporting/v1/moderationBlockDetails` — always the "not blocked"
  * answer (no ban storage yet), mirroring the reference server's stub
  * `ReturnModerationBlockDetails()`. `ReportCategory` is `Unknown` (-1) rather than 0,
- * which is a real category, and `Message` is the empty string the reference sends.
+ * which is a real category, and `Message` is null — the client distinguishes "no
+ * message" from a blank one, so we send null where the reference sends an empty string.
  * `IsVoiceModAutoban`/`TimeoutStartedAt` are on the DTO but unset by that stub, so
  * they carry their C# defaults (false / null).
  */
