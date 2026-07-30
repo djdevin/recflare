@@ -544,6 +544,40 @@ h2 {
 	color: var(--muted);
 }
 
+/* Sign in / create account, at the top of the auth card. Two of a kind, so they read as
+   one control rather than as two buttons competing with the orange submit below. */
+.tabs {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 20px;
+	padding: 4px;
+	background: var(--bg);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+
+.tabs button {
+	flex: 1;
+	background: transparent;
+	border: none;
+	color: var(--muted);
+	padding: 8px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-family: var(--body);
+	font-size: 0.9rem;
+}
+
+.tabs button:hover {
+	color: var(--text);
+}
+
+.tabs button.active {
+	background: var(--surface-hi);
+	color: var(--text);
+	font-weight: 600;
+}
+
 /* ---- Forms -------------------------------------------------------------- */
 
 label {
@@ -577,6 +611,14 @@ textarea:focus {
 	outline: 2px solid var(--accent);
 	outline-offset: 0;
 	border-color: transparent;
+}
+
+/* Where the Turnstile iframe mounts. It brings its own chrome, so this only reserves the
+   space (the widget is 300×65 at normal size) — otherwise the submit button jumps down
+   the moment the check finishes loading. */
+.turnstile {
+	min-height: 65px;
+	margin-bottom: 14px;
 }
 
 button[type='submit'] {

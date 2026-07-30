@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { DISCORD_INVITE, DOWNLOAD_URL, LICENSE_URL, SOURCE_REPO } from '../links'
 
@@ -12,6 +12,16 @@ interface SelfAccount {
 	email: string | null
 	/** Whether this session may use admin controls (from the token's role claim). */
 	isAdmin?: boolean
+}
+
+/**
+ * Site config from the BFF (`/api/config`). `signupEnabled` is false when the operator
+ * has no Turnstile keypair configured — web signup runs behind that bot check, so
+ * without it the endpoint is closed and the UI must not offer the form.
+ */
+interface SiteConfig {
+	signupEnabled: boolean
+	turnstileSiteKey: string | null
 }
 
 /**
@@ -85,12 +95,18 @@ function Link({
 export function App() {
 	// undefined = still checking the session; null = signed out.
 	const [account, setAccount] = useState<SelfAccount | null | undefined>(undefined)
+	// undefined until the config lands. Signup is treated as closed until told otherwise,
+	// so a slow (or failed) config fetch can't flash a form the server would refuse.
+	const [config, setConfig] = useState<SiteConfig | undefined>(undefined)
 	const { path, navigate } = useRouter()
 
 	useEffect(() => {
 		api<SelfAccount>('/api/me')
 			.then((me) => setAccount(me))
 			.catch(() => setAccount(null))
+		api<SiteConfig>('/api/config')
+			.then((c) => setConfig(c))
+			.catch(() => setConfig({ signupEnabled: false, turnstileSiteKey: null }))
 	}, [])
 
 	const logout = useCallback(async () => {
@@ -103,7 +119,7 @@ export function App() {
 		<>
 			<NavBar account={account} path={path} navigate={navigate} onLogout={logout} />
 			{path === '/login' ? (
-				<LoginPage account={account} navigate={navigate} onAuthed={setAccount} />
+				<LoginPage account={account} config={config} navigate={navigate} onAuthed={setAccount} />
 			) : path === '/account' ? (
 				<AccountPage account={account} navigate={navigate} onChange={setAccount} />
 			) : (
@@ -324,34 +340,67 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 	)
 }
 
-/** The sign-in page. Redirects to the account page once a session exists. */
+/**
+ * The sign-in page — sign in, plus create-account when the server says signup is open
+ * (it needs a Turnstile keypair; see SiteConfig). Redirects to the account page once a
+ * session exists, however it was obtained.
+ */
 function LoginPage({
 	account,
+	config,
 	navigate,
 	onAuthed,
 }: {
 	account: SelfAccount | null | undefined
+	config: SiteConfig | undefined
 	navigate: Navigate
 	onAuthed: (a: SelfAccount) => void
 }) {
+	const [tab, setTab] = useState<'signup' | 'login'>('login')
+
 	useEffect(() => {
 		if (account) navigate('/account')
 	}, [account, navigate])
 
+	const authed = (a: SelfAccount) => {
+		onAuthed(a)
+		navigate('/account')
+	}
+
+	const siteKey = config?.signupEnabled ? config.turnstileSiteKey : null
+
 	return (
 		<main className="shell">
 			<section className="card">
-				<h2>Sign in</h2>
-				<p className="muted">
-					Launch the game first — that creates an account linked to your Steam ID. Once you set a
-					password, use your username and that password to sign in here.
-				</p>
-				<LoginForm
-					onAuthed={(a) => {
-						onAuthed(a)
-						navigate('/account')
-					}}
-				/>
+				{siteKey && (
+					<div className="tabs">
+						<button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
+							Sign in
+						</button>
+						<button className={tab === 'signup' ? 'active' : ''} onClick={() => setTab('signup')}>
+							Create account
+						</button>
+					</div>
+				)}
+				{siteKey && tab === 'signup' ? (
+					<>
+						<h2>Create account</h2>
+						<p className="muted">
+							A username is assigned for you — you&apos;ll see it on your account page. Choose a
+							password, and the two together sign you in here and in the game.
+						</p>
+						<SignupForm siteKey={siteKey} onAuthed={authed} />
+					</>
+				) : (
+					<>
+						<h2>Sign in</h2>
+						<p className="muted">
+							Use your username and password. Launching the game also creates an account, linked to
+							your Steam ID — set a password on it and it signs in here too.
+						</p>
+						<LoginForm onAuthed={authed} />
+					</>
+				)}
 			</section>
 		</main>
 	)
@@ -409,9 +458,161 @@ function useAction() {
 	return { pending, error, done, run }
 }
 
-// Manual web signups are disabled for now, so only sign-in is exposed (accounts are
-// created via the game/platform, not the website). To bring signups back, restore a
-// SignupForm calling POST /api/signup and re-enable that endpoint in www.app.ts.
+/**
+ * Turnstile's browser API, as much of it as the signup widget uses. Loaded from
+ * Cloudflare at runtime (see loadTurnstile) rather than bundled, so it isn't in
+ * node_modules and has no types of its own.
+ */
+interface TurnstileApi {
+	render: (
+		el: HTMLElement,
+		opts: {
+			sitekey: string
+			action?: string
+			callback?: (token: string) => void
+			'expired-callback'?: () => void
+		}
+	) => string | undefined
+	reset: (widgetId?: string) => void
+	remove: (widgetId?: string) => void
+}
+
+declare global {
+	interface Window {
+		turnstile?: TurnstileApi
+	}
+}
+
+/**
+ * Load Turnstile's script, once per page, resolving when `window.turnstile` is ready.
+ * `render=explicit` stops it scanning the document for widgets: this is a SPA, so the
+ * container mounts and unmounts with the form and we render into it ourselves.
+ *
+ * The promise is cached at module scope, so switching tabs back and forth reuses the
+ * loaded script instead of appending another tag. A rejection is cached too — the retry
+ * is a page reload, which is what the error message asks for.
+ */
+let turnstileScript: Promise<void> | null = null
+function loadTurnstile(): Promise<void> {
+	turnstileScript ??= new Promise<void>((resolve, reject) => {
+		const el = document.createElement('script')
+		el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+		el.async = true
+		el.defer = true
+		el.onload = () => resolve()
+		el.onerror = () => reject(new Error('load failed'))
+		document.head.appendChild(el)
+	})
+	return turnstileScript
+}
+
+/**
+ * Mount a Turnstile widget and hand back the token it produces. No token means no
+ * submit: the BFF refuses a signup without one, so the form gates its button on it
+ * rather than letting the request fail.
+ *
+ * `reset` re-arms the widget for another attempt — a token is single-use, so a rejected
+ * signup can't be retried with the same one.
+ */
+function useTurnstile(siteKey: string) {
+	const container = useRef<HTMLDivElement | null>(null)
+	const widgetId = useRef<string | undefined>(undefined)
+	const [token, setToken] = useState('')
+	const [error, setError] = useState('')
+
+	useEffect(() => {
+		let live = true
+		loadTurnstile()
+			.then(() => {
+				// StrictMode mounts twice, and the cleanup below removes the first widget; bail
+				// if this effect is the stale one so we don't render into a detached container.
+				if (!live || !container.current || !window.turnstile) return
+				widgetId.current = window.turnstile.render(container.current, {
+					sitekey: siteKey,
+					// Marker Cloudflare uses to segment Turnstile integrations; carries no user data.
+					action: 'turnstile-spin-v1',
+					callback: (t) => setToken(t),
+					// Tokens expire after a few minutes; drop ours so the button locks again and
+					// Turnstile can hand us a fresh one.
+					'expired-callback': () => setToken(''),
+				})
+			})
+			.catch(() => {
+				if (live) setError("Couldn't load the bot check — reload the page to try again.")
+			})
+
+		return () => {
+			live = false
+			if (widgetId.current) window.turnstile?.remove(widgetId.current)
+			widgetId.current = undefined
+		}
+	}, [siteKey])
+
+	const reset = useCallback(() => {
+		setToken('')
+		if (widgetId.current) window.turnstile?.reset(widgetId.current)
+	}, [])
+
+	return { container, token, error, reset }
+}
+
+/**
+ * Create an account from the website: a password, plus a Turnstile token proving a human
+ * filled the form. The username comes back auto-assigned from `auth` (players don't pick
+ * one), and the session is live on success — so this lands on the account page, where the
+ * username is shown.
+ */
+function SignupForm({
+	siteKey,
+	onAuthed,
+}: {
+	siteKey: string
+	onAuthed: (a: SelfAccount) => void
+}) {
+	const [password, setPassword] = useState('')
+	const { container, token, error: widgetError, reset } = useTurnstile(siteKey)
+	const { pending, error, run } = useAction()
+
+	return (
+		<form
+			onSubmit={(e) => {
+				e.preventDefault()
+				void run(async () => {
+					try {
+						const { account } = await api<{ account: SelfAccount }>('/api/signup', {
+							password,
+							turnstileToken: token,
+						})
+						onAuthed(account)
+						return ''
+					} catch (err) {
+						// The token is spent either way, so re-arm the widget before they retry.
+						reset()
+						throw err
+					}
+				})
+			}}
+		>
+			<label>
+				Password
+				<input
+					type="password"
+					value={password}
+					autoComplete="new-password"
+					onChange={(e) => setPassword(e.target.value)}
+					required
+				/>
+			</label>
+			<div className="turnstile" ref={container} />
+			{widgetError && <p className="error">{widgetError}</p>}
+			{error && <p className="error">{error}</p>}
+			<button type="submit" disabled={pending || token === ''}>
+				{pending ? 'Creating…' : 'Create account'}
+			</button>
+		</form>
+	)
+}
+
 function LoginForm({ onAuthed }: { onAuthed: (a: SelfAccount) => void }) {
 	const [username, setUsername] = useState('')
 	const [password, setPassword] = useState('')

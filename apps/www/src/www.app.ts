@@ -7,6 +7,7 @@ import { withOnError } from '@repo/hono-helpers'
 import { NotificationType } from '../../notify/src/notification-types'
 import { docsPage, fetchSpec } from './docs'
 import { privacyPage } from './privacy'
+import { turnstileKeys, verifyTurnstile } from './turnstile'
 import { accountsBase, apiBase, authBase, imgBase, notifyBase, postForm } from './upstream'
 
 import type { Context } from 'hono'
@@ -126,12 +127,51 @@ const app = new Hono<App>()
 
 	// ---- BFF API ------------------------------------------------------------
 
-	// Manual web signups are disabled for now — accounts are created via the game /
-	// platform, not the website. Kept as an explicit closed endpoint (rather than
-	// removed) so a direct POST is refused too, not just hidden in the UI. To reopen,
-	// forward a platform-less `grant_type=create_account` to auth and start a session
-	// (see git history), and restore the SignupForm in the client.
-	.post('/api/signup', (c) => c.json({ error: 'Account creation is currently disabled.' }, 403))
+	// What the SPA has to know before it can render the sign-in page: whether web signup
+	// is open, and the Turnstile site key to mount its widget with. The site key is public
+	// (it ships in the widget markup either way); the secret never leaves the worker.
+	// Served rather than baked into the client build so one build works for any operator.
+	.get('/api/config', (c) => {
+		const keys = turnstileKeys(c.env)
+		return c.json({ signupEnabled: keys !== null, turnstileSiteKey: keys?.siteKey ?? null })
+	})
+
+	// Create an account from the website, behind a Turnstile bot check. The check is what
+	// makes this safe to leave open: `auth` binds no platform identity to a web account, so
+	// its per-IP cap is the only other thing in front of this path.
+	//
+	// Deliberately passes NO `platform`: create_account treats an asserted platform as one
+	// to verify against Steam and would reject RecNet (see WEB_PLATFORM), so this is the
+	// platform-less password-account path. The username is auto-assigned by auth — players
+	// don't pick one — and the new session is established from the token response.
+	.post('/api/signup', async (c) => {
+		// No usable keypair means signup is closed rather than unprotected (see turnstile.ts).
+		const keys = turnstileKeys(c.env)
+		if (!keys) return c.json({ error: 'Account creation is currently disabled.' }, 403)
+
+		const { password, turnstileToken } = await c.req
+			.json<{ password?: string; turnstileToken?: string }>()
+			.catch(() => ({}) as { password?: string; turnstileToken?: string })
+		if (!password) return c.json({ error: 'A password is required.' }, 400)
+		if (!turnstileToken) return c.json({ error: 'Please complete the bot check.' }, 400)
+
+		// The IP Turnstile cross-checks the token against — set by the edge, so the client
+		// can't spoof it (unlike X-Forwarded-For). `auth` records the same header as the
+		// account's signup IP.
+		const verified = await verifyTurnstile(
+			keys.secretKey,
+			turnstileToken,
+			c.req.header('cf-connecting-ip')
+		)
+		// A token is single-use, so the client resets its widget before letting them retry.
+		if (!verified) return c.json({ error: 'Bot check failed. Please try again.' }, 403)
+
+		const res = await postForm(`${authBase(c.env)}/connect/token`, {
+			grant_type: 'create_account',
+			password,
+		})
+		return establishSession(c, res)
+	})
 
 	// Log in with a username + password, then start a session. The auth password grant
 	// resolves the account by `username` (case-insensitive) — web players sign in with

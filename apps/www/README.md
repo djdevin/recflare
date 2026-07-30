@@ -25,8 +25,9 @@ Upstream hosts are derived from the shared base domain (`auth.<DOMAIN>`,
 
 | Method | Path            | Upstream                                                 |
 | ------ | --------------- | -------------------------------------------------------- |
+| GET    | `/api/config`   | none — whether signup is open, plus the Turnstile key    |
 | POST   | `/api/signup`   | auth `POST /connect/token` (`grant_type=create_account`) |
-| POST   | `/api/login`    | auth `POST /connect/token` (account id + password)       |
+| POST   | `/api/login`    | auth `POST /connect/token` (username + password)         |
 | POST   | `/api/logout`   | clears the session cookie                                |
 | GET    | `/api/me`       | accounts `GET /account/me`                               |
 | POST   | `/api/email`    | accounts `POST /account/me/email`                        |
@@ -34,6 +35,24 @@ Upstream hosts are derived from the shared base domain (`auth.<DOMAIN>`,
 
 On signup/login the access token returned by `auth` is stored in an httpOnly
 `rf_token` cookie; the other routes read it and forward it as a Bearer token.
+
+### Signup and Turnstile
+
+`POST /api/signup` creates an account with no platform identity (a password
+account), so it's the one BFF route a bot could farm — `auth` binds no Steam id to
+it and only its coarse per-IP cap applies. It therefore runs behind a
+[Turnstile](https://developers.cloudflare.com/turnstile/) check: the browser posts
+the widget's token, and the worker verifies it against Turnstile's `siteverify`
+server-side before calling `auth`. The secret key never leaves the worker, and the
+browser never talks to `siteverify` itself.
+
+Two keys configure it — the public `TURNSTILE_SITE_KEY` var and the
+`TURNSTILE_SECRET_KEY` worker secret (see `wrangler.jsonc` and `src/turnstile.ts`).
+Signup **fails closed**: with no usable keypair, `/api/config` reports
+`signupEnabled: false` (so the SPA shows sign-in only) and `/api/signup` returns
+403, rather than serving an unprotected endpoint. Locally (`just dev`, tests) an
+unconfigured worker falls back to Turnstile's documented always-passes test
+keypair, so the form works in a fresh checkout.
 
 ## Development
 

@@ -10,14 +10,38 @@ it('rejects unauthenticated account reads', async () => {
 	expect(await res.json()).toEqual({ error: 'not signed in' })
 })
 
-it('refuses manual signups (disabled)', async () => {
+// Web signup is open, but only behind the Turnstile check. These pin the closed door:
+// the pass path can't be tested here (it would call Cloudflare's siteverify for real).
+it('advertises signup with the Turnstile site key the widget needs', async () => {
+	const res = await SELF.fetch('https://example.com/api/config')
+	expect(res.status).toBe(200)
+	// No keypair is configured under vitest, so this is the always-passes test site key
+	// (see src/turnstile.ts) — a deployed worker with no keys reports signupEnabled: false.
+	expect(await res.json()).toEqual({
+		signupEnabled: true,
+		turnstileSiteKey: '1x00000000000000000000AA',
+	})
+})
+
+it('refuses a signup with no Turnstile token', async () => {
 	const res = await SELF.fetch('https://example.com/api/signup', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ password: 'whatever' }),
 	})
-	expect(res.status).toBe(403)
-	expect(await res.json()).toEqual({ error: 'Account creation is currently disabled.' })
+	// Rejected before any upstream call, so a bot can't reach create_account by omitting it.
+	expect(res.status).toBe(400)
+	expect(await res.json()).toEqual({ error: 'Please complete the bot check.' })
+})
+
+it('refuses a signup with no password', async () => {
+	const res = await SELF.fetch('https://example.com/api/signup', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ turnstileToken: 'dummy' }),
+	})
+	expect(res.status).toBe(400)
+	expect(await res.json()).toEqual({ error: 'A password is required.' })
 })
 
 it('requires credentials to log in', async () => {
