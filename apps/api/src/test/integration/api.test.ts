@@ -350,6 +350,42 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual({ Results: [], TotalResults: 0 })
 	})
 
+	test('POST /api/customAvatarItems/GetCustomAvatarItemCurrentSavesForLegacyAvatarItems returns an empty map', async () => {
+		const res = await exports.default.fetch(
+			`${ORIGIN}/api/customAvatarItems/GetCustomAvatarItemCurrentSavesForLegacyAvatarItems`,
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ AvatarItemIds: [1, 2, 3] }),
+			}
+		)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ customAvatarItemSavesByAvatarItemDesc: {} })
+	})
+
+	test('GET /outfits/me 401s without a token, serves the empty envelope with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/outfits/me`)
+		expect(anon.status).toBe(401)
+		const res = await exports.default.fetch(`${ORIGIN}/outfits/me`, { headers: await bearer() })
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			LegacyData: {
+				SelectionsV1: null,
+				SelectionsV2: null,
+				FaceFeatures: null,
+				SkinColor: null,
+				HairColor: null,
+			},
+			Selections: [],
+			DataVersion: 9,
+			CustomizationSettings: null,
+			ThumbnailFileName: null,
+			Name: null,
+			Accessibility: 0,
+			Slot: 0,
+		})
+	})
+
 	test('GET /api/rooms/v1/filters returns an object with filter arrays', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/api/rooms/v1/filters`)
 		expect(res.status).toBe(200)
@@ -1972,12 +2008,14 @@ describe('openapi', () => {
 			'GET /api/roomkeys/v1/room',
 			'GET /api/rooms/v1/filters',
 			'GET /api/versioncheck/v4',
+			'GET /outfits/me',
 			'GET /voice/config',
 			'POST /api/CampusCard/v1/UpdateAndGetSubscription',
 			'POST /api/PlayerReporting/v1/deviceId',
 			'POST /api/PlayerReporting/v1/hile',
 			'POST /api/PlayerReporting/v1/moderationBlockDetails',
 			'POST /api/avatar/v2/gifts/generate',
+			'POST /api/customAvatarItems/GetCustomAvatarItemCurrentSavesForLegacyAvatarItems',
 			'POST /api/gamesight/event',
 			'POST /api/images/v1/cheer',
 			'POST /api/images/v4/uploadsaved',

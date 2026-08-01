@@ -98,6 +98,34 @@ export const CustomAvatarItemsResponse = z.object({
 	TotalResults: z.int(),
 })
 
+/**
+ * One item as `GET /api/avatar/v4/items` serves it — camelCase, unlike the PascalCase
+ * records the sibling item endpoints hand back. `avatarItemId` is 0 and `tagList` empty
+ * for every item we have: neither the default catalog nor a storefront gift-drop carries
+ * them.
+ */
+export const AvatarItemV4Dto = z.object({
+	avatarItemId: z.int(),
+	avatarItemDesc: z.string().describe('The comma-delimited item descriptor, commas and all'),
+	friendlyName: z.string(),
+	tooltip: z.string(),
+	tagList: z.string(),
+	avatarItemType: z.int(),
+	rarity: z.int(),
+	isBaseAvatarItem: z.boolean(),
+})
+
+/**
+ * One row of the new-user checklist (`GET /api/checklist/v1|v2/current`). `Objective` is
+ * an `ObjectiveType` ordinal the client matches its own progress events against.
+ */
+export const ChecklistEntry = z.object({
+	Order: z.int().describe('Position in the list, from 0'),
+	Objective: z.int().describe('ObjectiveType ordinal, e.g. 38 = SaveOutfitSlot'),
+	Count: z.int().describe('How many times the objective must happen'),
+	CreditAmount: z.int().describe('Tokens awarded on completion'),
+})
+
 /** `POST /api/CampusCard/v1/UpdateAndGetSubscription` — both fields null (no subs yet). */
 export const SubscriptionResponse = z.object({
 	subscription: z.null(),

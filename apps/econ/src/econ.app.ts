@@ -12,6 +12,7 @@ import { NotificationType } from '../../notify/src/notification-types'
 import adCarouselItems from '../static/ad-carousel-items.json'
 import defaultAvatarItems from '../static/default-avatar-items.json'
 import defaultAvatar from '../static/default-avatar.json'
+import defaultBaseAvatarItems from '../static/default-base-avatar-items.json'
 import myProgress from '../static/my-progress.json'
 import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
@@ -29,15 +30,17 @@ import {
 	grantConsumable,
 } from './consumables-db'
 import { getEquipment, grantEquipment, setEquipmentFavorited } from './equipment-db'
-import { getInventory, grantItem } from './inventory-db'
+import { getInventory, grantItem, toAvatarItemV4 } from './inventory-db'
 import {
 	AUTHED,
+	AvatarItemV4Dto,
 	AvatarV2Dto,
 	BalanceEntry,
 	BuyItemRequest,
 	BuyItemResponse,
 	ChallengeProgressRequest,
 	ChallengeProgressResponse,
+	ChecklistEntry,
 	ConsumeConsumableRequest,
 	ConsumeEnvelope,
 	ConsumeGiftRequest,
@@ -348,6 +351,19 @@ function toGiftContent(
 }
 
 /**
+ * The default NUX checklist for a brand-new account. `Objective` is an `ObjectiveType`
+ * ordinal (from the client's `ProgressionManager`) that the client matches its own
+ * progress events against — the names below are what those ordinals mean.
+ */
+const DEFAULT_CHECKLIST = [
+	{ Order: 0, Objective: 38, Count: 1, CreditAmount: 25 }, // SaveOutfitSlot
+	{ Order: 1, Objective: 32, Count: 1, CreditAmount: 25 }, // VisitACustomRoom
+	{ Order: 2, Objective: 2, Count: 1, CreditAmount: 25 }, // AddAFriend
+	{ Order: 3, Objective: 30, Count: 1, CreditAmount: 25 }, // GoToRecCenter
+	{ Order: 4, Objective: 6, Count: 1, CreditAmount: 25 }, // CheerAPlayer
+]
+
+/**
  * A concise `describeRoute` spec for a route that serves an opaque JSON array — either
  * a static catalog served verbatim or an empty-list stub. `auth` adds the bearer
  * requirement + a 401 response.
@@ -388,11 +404,12 @@ const app = new Hono<App>({ strict: false })
 		(c) => c.json(defaultAvatarItems)
 	)
 
-	// Default base avatar items — empty stub for now. No auth.
+	// The base items UGC clothing is built on top of — served from bundled static JSON,
+	// separate from the `defaultunlocked` catalog. No auth.
 	.get(
 		'/api/avatar/v1/defaultbaseavataritems',
-		listRoute('Default base avatar items', 'Empty stub for now'),
-		(c) => c.json([])
+		listRoute('Default base avatar items', 'The bundled base items UGC clothing builds on'),
+		(c) => c.json(defaultBaseAvatarItems)
 	)
 
 	// The player's avatar items — the items they've bought (from `buyItem`, stored in
@@ -406,10 +423,12 @@ const app = new Hono<App>({ strict: false })
 			description: [
 				'The items the player has bought (from buyItem, in the inventory table) prepended',
 				'to the default catalog. A player who has bought nothing gets just the catalog.',
+				'Both sources are projected into the camelCase v4 DTO — the sibling item endpoints',
+				'(`defaultunlocked`, `defaultbaseavataritems`) serve their records raw instead.',
 			].join(' '),
 			security: AUTHED,
 			responses: {
-				200: json(JsonArray, 'Owned items followed by the default catalog'),
+				200: json(AvatarItemV4Dto.array(), 'Owned items followed by the default catalog'),
 				401: UNAUTHORIZED_RESPONSE,
 			},
 		}),
@@ -417,7 +436,7 @@ const app = new Hono<App>({ strict: false })
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
 			const owned = await getInventory(c.env.DB, id)
-			return c.json([...owned, ...defaultAvatarItems])
+			return c.json([...owned, ...defaultAvatarItems].map(toAvatarItemV4))
 		}
 	)
 
@@ -532,15 +551,31 @@ const app = new Hono<App>({ strict: false })
 		}
 	)
 
-	// NUX checklist — the client fetches this on the econ host during load. []
-	// with no DB. A 404 here can abort the load orchestration before matchmake.
-	.get(
-		'/api/checklist/v1/current',
-		listRoute('NUX checklist', 'The new-user checklist; [] for now. A 404 can abort load.', true),
+	// NUX checklist — the client fetches this on the econ host during load, on either
+	// version path. A 404 here can abort the load orchestration before matchmake. We
+	// serve the default brand-new-account list to everyone: nothing records per-player
+	// checklist progress yet, so it never shrinks as steps are done.
+	.on(
+		'GET',
+		['/api/checklist/v1/current', '/api/checklist/v2/current'],
+		describeRoute({
+			tags: ['Econ'],
+			summary: 'NUX checklist',
+			description:
+				'The new-user checklist, as the default brand-new-account list — nothing records ' +
+				'per-player progress yet, so the same rows come back however much the player has ' +
+				'done. `Objective` is an `ObjectiveType` ordinal the client matches its own ' +
+				'progress events against. v1 and v2 serve the same list.',
+			security: AUTHED,
+			responses: {
+				200: json(ChecklistEntry.array(), 'The checklist rows, in `Order`'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
 		async (c) => {
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
-			return c.json([])
+			return c.json(DEFAULT_CHECKLIST)
 		}
 	)
 

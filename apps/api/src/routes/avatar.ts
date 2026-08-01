@@ -39,6 +39,8 @@ import {
 	json,
 	JsonArray,
 	jsonBody,
+	LegacyAvatarItemSaves,
+	OutfitsMeResponse,
 	pageParams,
 	SaveInventionRequest,
 	SetTagsRequest,
@@ -211,6 +213,67 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			responses: { 200: json(CustomAvatarItemsPage, 'An empty page') },
 		}),
 		(c) => c.json({ Results: [], TotalResults: 0 })
+	)
+
+	// The client asks which legacy avatar items have been rebuilt as custom items, so it
+	// can render the custom version instead. Nothing stores custom items yet, so nothing
+	// has a save — an empty list means "use the legacy items as-is".
+	.post(
+		'/api/customAvatarItems/GetCustomAvatarItemCurrentSavesForLegacyAvatarItems',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'Custom-item saves for legacy avatar items',
+			description:
+				'Given a set of legacy avatar items, the custom-item saves that replace them, keyed ' +
+				'by the legacy item’s `AvatarItemDesc`. Nothing stores custom items yet, so the map ' +
+				'is always empty — which the client reads as “render the legacy items as-is”. The ' +
+				'request body is ignored.\n\n' +
+				'The value shape is the official one, recorded here for documentation; we never ' +
+				'emit one until custom items are stored.',
+			responses: { 200: json(LegacyAvatarItemSaves, 'An empty map') },
+		}),
+		(c) => c.json({ customAvatarItemSavesByAvatarItemDesc: {} })
+	)
+
+	// The newer outfit read, on a bare (un-prefixed) path. Auth-gated. Stubbed: every
+	// caller gets the brand-new-account envelope — all-null LegacyData, no selections —
+	// rather than their saved outfit, which lives on the `econ` worker.
+	.get(
+		'/outfits/me',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'The caller’s outfit (stub)',
+			description:
+				'The newer outfit read, on a bare un-prefixed path. Stubbed for now: every caller ' +
+				'gets the brand-new-account envelope — all-null `LegacyData`, no `Selections` — ' +
+				'regardless of what they have saved (saved outfits live on the `econ` worker). ' +
+				'`DataVersion` 9 is the version the client expects to parse.',
+			security: AUTHED,
+			responses: {
+				200: json(OutfitsMeResponse, 'The empty-outfit envelope'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			return c.json({
+				LegacyData: {
+					SelectionsV1: null,
+					SelectionsV2: null,
+					FaceFeatures: null,
+					SkinColor: null,
+					HairColor: null,
+				},
+				Selections: [],
+				DataVersion: 9,
+				CustomizationSettings: null,
+				ThumbnailFileName: null,
+				Name: null,
+				Accessibility: 0,
+				Slot: 0,
+			})
+		}
 	)
 
 	// A single invention by id (`?inventionId=…`). Returns the stored RRInvention,

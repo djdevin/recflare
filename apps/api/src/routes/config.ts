@@ -19,10 +19,10 @@ import type { App } from '../context'
 
 /**
  * Client builds the version check answers as current. `GAME_VERSION` is the build the
- * rest of the stack targets; `20230616` is a later client that talks the same protocol,
- * so we let it through rather than telling it to update.
+ * rest of the stack targets; `20230616` and `20231207` are later clients that talk the
+ * same protocol, so we let them through rather than telling them to update.
  */
-const ACCEPTED_GAME_VERSIONS = new Set([GAME_VERSION, '20230616'])
+const ACCEPTED_GAME_VERSIONS = new Set([GAME_VERSION, '20230616', '20231207'])
 
 // ---- Config / version ------------------------------------------------------
 export const configRoutes = new Hono<App>({ strict: false })

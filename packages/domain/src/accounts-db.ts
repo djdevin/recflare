@@ -31,6 +31,10 @@ export interface Account {
 	username: string
 	displayName: string
 	profileImage: string
+	/** Profile banner image key. No route sets it yet, so it's `""` on every account. */
+	bannerImage: string
+	/** The emoji shown beside the display name. No route sets it yet — always `""`. */
+	displayEmoji: string
 	isJunior: boolean
 	platforms: number
 	personalPronouns: number
@@ -160,6 +164,8 @@ export function defaultAccount(id: number, overrides: Partial<Account> = {}): Ac
 		username: `Player${id}`,
 		displayName: `Player${id}`,
 		profileImage: 'DefaultProfileImage.jpg',
+		bannerImage: '',
+		displayEmoji: '',
 		isJunior: false,
 		platforms: 0,
 		personalPronouns: 0,

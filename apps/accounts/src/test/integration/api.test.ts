@@ -161,6 +161,10 @@ describe('auth-gated endpoints', () => {
 			personalPronouns: 0,
 			identityFlags: 0,
 			availableUsernameChanges: 1,
+			// Nothing sets these yet, but the key has to be present — the client reads
+			// both off the account DTO.
+			bannerImage: '',
+			displayEmoji: '',
 		})
 		// juniorState + parentAccountId must be omitted when null, not emitted as
 		// null, or the client's enum parser throws on `juniorState`. `phone` isn't

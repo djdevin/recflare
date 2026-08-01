@@ -352,6 +352,52 @@ export const CustomAvatarItemsPage = z.object({
 	TotalResults: z.int(),
 })
 
+/**
+ * One custom-item save — the rebuilt version of a legacy avatar item. This is the
+ * official shape, recorded for documentation: nothing stores custom items yet, so we
+ * never actually emit one of these.
+ */
+export const CustomAvatarItemSave = z.object({
+	customAvatarItemSaveId: z.int().describe('The save’s id'),
+	customAvatarItemId: z.string().describe('Guid of the custom item this save belongs to'),
+	unityAssetId: z.string().describe('Guid of the built Unity asset'),
+	createdAt: z.string().describe('ISO 8601 timestamp'),
+	thumbnailFileName: z.string(),
+	additionalConfiguration: z.string(),
+	unityAsset: z.string(),
+	unityAssetHash: z.string(),
+})
+
+/**
+ * The custom-item saves that replace a set of legacy avatar items, keyed by the legacy
+ * item's `AvatarItemDesc`. Nothing stores custom items yet, so the map is always empty —
+ * the value shape is documented rather than served.
+ */
+export const LegacyAvatarItemSaves = z.object({
+	customAvatarItemSavesByAvatarItemDesc: z.record(z.string(), CustomAvatarItemSave),
+})
+
+/**
+ * `GET /outfits/me` — the empty-outfit envelope. Stubbed, so every field that would
+ * carry a stored outfit is null/empty; `DataVersion` 9 is what the client parses against.
+ */
+export const OutfitsMeResponse = z.object({
+	LegacyData: z.object({
+		SelectionsV1: z.null(),
+		SelectionsV2: z.null(),
+		FaceFeatures: z.null(),
+		SkinColor: z.null(),
+		HairColor: z.null(),
+	}),
+	Selections: JsonArray,
+	DataVersion: z.int(),
+	CustomizationSettings: z.null(),
+	ThumbnailFileName: z.null(),
+	Name: z.null(),
+	Accessibility: z.int(),
+	Slot: z.int(),
+})
+
 /** The `{ success, value }` envelope `isCreationAllowedForAccount` wraps its answer in. */
 export const SuccessValueEnvelope = z.object({ success: z.boolean(), value: z.null() })
 
