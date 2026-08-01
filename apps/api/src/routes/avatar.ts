@@ -327,6 +327,32 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 		}
 	)
 
+	// The caller's outfit wardrobe. An empty list for now — the outfits saved through
+	// `PUT /outfits/me` are in the shared `outfit` table already, but which of them
+	// belong in this list (and in what shape) has not been pinned down, so it answers []
+	// rather than guessing.
+	.get(
+		'/outfits/me/saved',
+		describeRoute({
+			tags: ['Avatar'],
+			summary: 'The caller’s saved outfits',
+			description:
+				'The wardrobe behind the newer outfit screen. Empty for now: the outfits saved ' +
+				'through `PUT /outfits/me` are in the shared `outfit` table, but which of them this ' +
+				'list should carry, and in what shape, is not pinned down yet.',
+			security: AUTHED,
+			responses: {
+				200: json(JsonArray, 'An empty list'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			return c.json([])
+		}
+	)
+
 	// A single invention by id (`?inventionId=…`). Returns the stored RRInvention,
 	// or 404 when there's no such invention.
 	.get(

@@ -1099,6 +1099,41 @@ const app = new Hono<App>()
 			return c.json({ errorCode: 0, roomInstance: instance })
 		}
 	)
+	// Matchmake with no target. The client posts this when it needs an instance but isn't
+	// going anywhere in particular — at startup, and while sitting in Orientation. It
+	// answers the instance the player is ALREADY in, so it never warps anyone out of the
+	// room they're standing in; only a player with no live presence falls back to their
+	// dorm. Either way presence is re-committed, which refreshes its TTL.
+	.post(
+		'/matchmake/none',
+		describeRoute({
+			tags: ['Navigation'],
+			summary: 'Matchmake with no target',
+			description: [
+				'Answers the instance the caller is already in, rather than sending them anywhere —',
+				'this is what the client posts at startup and while in Orientation, so forcing a',
+				'destination here would warp the player out of the room they are standing in. A',
+				'caller with no live presence (their TTL lapsed, or they have never entered a room)',
+				'falls back to their personal dorm. Re-commits presence either way, refreshing its',
+				'TTL.',
+			].join(' '),
+			security: AUTHED,
+			responses: {
+				200: json(MatchmakeResponse, 'The caller’s current instance, or their dorm'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+
+			const presence = await getPresence<RoomInstance>(c.env.DB, id)
+			const current = presence?.roomInstance ?? (await playerDormInstance(c, id))
+			await enterRoom(c, id, current)
+			return c.json({ errorCode: 0, roomInstance: current })
+		}
+	)
+
 	.post(
 		'/matchmake/dorm',
 		describeRoute({

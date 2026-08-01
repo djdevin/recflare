@@ -676,6 +676,45 @@ describe('auth-gated endpoints', () => {
 		})
 	})
 
+	test('POST /matchmake/none 401s without a token', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/matchmake/none`, { method: 'POST' })
+		expect(res.status).toBe(401)
+	})
+
+	test('POST /matchmake/none keeps the caller where they are, else falls back to the dorm', async () => {
+		const none = async (sub: string) =>
+			(await (
+				await exports.default.fetch(`${ORIGIN}/matchmake/none`, {
+					method: 'POST',
+					headers: await bearer(sub),
+				})
+			).json()) as { errorCode: number; roomInstance: { roomId: number; roomInstanceId: number } }
+
+		// Account 44 has never entered a room → their personal dorm, and a second call is
+		// idempotent now that presence holds it.
+		const fresh = await none('44')
+		expect(fresh.errorCode).toBe(0)
+		expect(fresh.roomInstance.roomId).toBeGreaterThan(2)
+		expect((await none('44')).roomInstance).toMatchObject({
+			roomId: fresh.roomInstance.roomId,
+			roomInstanceId: fresh.roomInstance.roomInstanceId,
+		})
+
+		// Once in a real room, `none` must NOT warp them out of it — that is the whole
+		// point of the endpoint, since the client posts it while sitting in Orientation.
+		const entered = (await (
+			await exports.default.fetch(`${ORIGIN}/matchmake/room/2`, {
+				method: 'POST',
+				headers: await bearer('44'),
+			})
+		).json()) as { roomInstance: { roomId: number; roomInstanceId: number } }
+		expect(entered.roomInstance.roomId).toBe(2)
+		expect((await none('44')).roomInstance).toMatchObject({
+			roomId: 2,
+			roomInstanceId: entered.roomInstance.roomInstanceId,
+		})
+	})
+
 	test('each player’s dorm gets a distinct global subroom id', async () => {
 		// Dorms used to copy the template subroom verbatim, so every dorm carried SubRoomId 1.
 		// With subrooms minted from the global sequence, each dorm gets its own unique id.
@@ -1453,6 +1492,7 @@ describe('auth-gated endpoints', () => {
 			'POST /invite',
 			'POST /matchmake/club/{clubId}',
 			'POST /matchmake/dorm',
+			'POST /matchmake/none',
 			'POST /matchmake/player/{playerId}',
 			'POST /matchmake/room/{roomId}',
 			'POST /matchmake/room/{roomId}/{subRoomId}',

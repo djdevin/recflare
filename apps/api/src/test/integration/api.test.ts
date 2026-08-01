@@ -460,6 +460,17 @@ describe('public endpoints', () => {
 		expect(((await worn.json()) as { Name: string | null }).Name).toBe(null)
 	})
 
+	test('GET /outfits/me/saved 401s without a token, returns [] with one', async () => {
+		const anon = await exports.default.fetch(`${ORIGIN}/outfits/me/saved`)
+		expect(anon.status).toBe(401)
+		// Empty even for account 42, which saved an outfit through PUT /outfits/me above.
+		const res = await exports.default.fetch(`${ORIGIN}/outfits/me/saved`, {
+			headers: await bearer(),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
 	test('PUT /outfits/me 400s on an unparseable body', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/outfits/me`, {
 			method: 'PUT',
@@ -2092,6 +2103,7 @@ describe('openapi', () => {
 			'GET /api/rooms/v1/filters',
 			'GET /api/versioncheck/v4',
 			'GET /outfits/me',
+			'GET /outfits/me/saved',
 			'GET /voice/config',
 			'POST /api/CampusCard/v1/UpdateAndGetSubscription',
 			'POST /api/PlayerReporting/v1/deviceId',
