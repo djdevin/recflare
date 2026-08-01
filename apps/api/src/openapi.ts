@@ -378,24 +378,58 @@ export const LegacyAvatarItemSaves = z.object({
 })
 
 /**
- * `GET /outfits/me` — the empty-outfit envelope. Stubbed, so every field that would
- * carry a stored outfit is null/empty; `DataVersion` 9 is what the client parses against.
+ * `GET /outfits/me` — the outfit envelope. Either the outfit stored in slot 0, served
+ * back exactly as it was saved, or (for a player who has never saved) the brand-new-
+ * account form, where every field that would carry an outfit is null/empty and
+ * `DataVersion` is 9.
  */
 export const OutfitsMeResponse = z.object({
 	LegacyData: z.object({
-		SelectionsV1: z.null(),
-		SelectionsV2: z.null(),
-		FaceFeatures: z.null(),
-		SkinColor: z.null(),
-		HairColor: z.null(),
+		SelectionsV1: z.string().nullable().describe('Semicolon-delimited legacy descriptors'),
+		SelectionsV2: z.string().nullable().describe('JSON-in-a-string: `{ selections: [...] }`'),
+		FaceFeatures: z.string().nullable().describe('JSON-in-a-string'),
+		SkinColor: z.string().nullable(),
+		HairColor: z.string().nullable(),
 	}),
 	Selections: JsonArray,
-	DataVersion: z.int(),
-	CustomizationSettings: z.null(),
-	ThumbnailFileName: z.null(),
-	Name: z.null(),
+	DataVersion: z.int().describe('9 in the new-account envelope; whatever was saved otherwise'),
+	CustomizationSettings: z
+		.string()
+		.nullable()
+		.describe('JSON-in-a-string: the same outfit in the newer structured form'),
+	ThumbnailFileName: z.string().nullable(),
+	Name: z.string().nullable(),
 	Accessibility: z.int(),
+	Slot: z.int().describe('0 — the outfit being worn'),
+})
+
+/**
+ * `PUT /outfits/me` JSON body — the outfit the client is saving, in the newer envelope.
+ * The heavy fields are JSON-in-a-string, exactly as the client serialises them:
+ * `SelectionsV2` and `CustomizationSettings` are whole documents encoded as strings, and
+ * `FaceFeatures` likewise. Note the two formats overlap: `LegacyData` carries the old
+ * flat descriptors while `CustomizationSettings` carries the same outfit in the new
+ * structured form, and the client sends both. `Selections` arrives empty — the actual
+ * selections are inside those strings.
+ */
+export const OutfitsMeRequest = z.object({
+	DataVersion: z.int().describe('The client’s outfit format version (2 in observed saves)'),
+	LegacyData: z.object({
+		SelectionsV1: z.string().nullable().describe('Semicolon-delimited legacy descriptors'),
+		SelectionsV2: z.string().nullable().describe('JSON-in-a-string: `{ selections: [...] }`'),
+		FaceFeatures: z.string().nullable().describe('JSON-in-a-string'),
+		SkinColor: z.string().nullable(),
+		HairColor: z.string().nullable(),
+	}),
+	CustomizationSettings: z
+		.string()
+		.nullable()
+		.describe('JSON-in-a-string: the same outfit in the newer structured form'),
+	Selections: JsonArray.describe('Empty in observed saves'),
 	Slot: z.int(),
+	Name: z.string().nullable(),
+	Accessibility: z.int(),
+	ThumbnailFileName: z.string().nullable(),
 })
 
 /** The `{ success, value }` envelope `isCreationAllowedForAccount` wraps its answer in. */

@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import '../../econ.app'
 
-import { RECEIVED_GIFT_SCHEMA_DDL } from '@repo/domain'
+import { OUTFIT_SCHEMA_DDL, RECEIVED_GIFT_SCHEMA_DDL } from '@repo/domain'
 
 import { SCHEMA_DDL } from '../../avatar-db'
 import {
@@ -17,7 +17,6 @@ import {
 import { CONSUMABLE_SCHEMA_DDL, grantConsumable } from '../../consumables-db'
 import { EQUIPMENT_SCHEMA_DDL } from '../../equipment-db'
 import { INVENTORY_SCHEMA_DDL } from '../../inventory-db'
-import { OUTFIT_SCHEMA_DDL } from '../../outfit-db'
 
 import type { Env } from '../../context'
 

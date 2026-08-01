@@ -2,7 +2,14 @@ import { Hono } from 'hono'
 import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { consumeGift, createGift, getGift, getPendingGifts } from '@repo/domain'
+import {
+	consumeGift,
+	createGift,
+	getGift,
+	getOutfits,
+	getPendingGifts,
+	setOutfit,
+} from '@repo/domain'
 import { intVar, logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
@@ -61,16 +68,14 @@ import {
 	SubscriptionResponse,
 	UNAUTHORIZED_RESPONSE,
 } from './openapi'
-import { getOutfits, setOutfit } from './outfit-db'
 
 import type { Context } from 'hono'
-import type { GiftContent, StoredGift } from '@repo/domain'
+import type { GiftContent, Outfit, StoredGift } from '@repo/domain'
 import type { Avatar } from './avatar-db'
 import type { ConsumeResult } from './consumables-db'
 import type { App } from './context'
 import type { Equipment } from './equipment-db'
 import type { AvatarItem } from './inventory-db'
-import type { Outfit } from './outfit-db'
 
 /**
  * Economy Worker. Hosts the avatar/economy endpoints the game client calls on

@@ -2,7 +2,12 @@ import { adminSecretsStore, env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import { GAME_VERSION, seedRoomWithSubRooms, SUBROOM_SCHEMA_DDL } from '@repo/domain'
+import {
+	GAME_VERSION,
+	OUTFIT_SCHEMA_DDL,
+	seedRoomWithSubRooms,
+	SUBROOM_SCHEMA_DDL,
+} from '@repo/domain'
 
 import '../../api.app'
 
@@ -78,6 +83,9 @@ beforeAll(async () => {
 
 	// Relationships table (owned by the api worker) — friendship endpoints use it.
 	for (const stmt of RELATIONSHIPS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+
+	// Outfit table (owned by the econ worker) — /outfits/me reads and writes slot 0.
+	for (const stmt of OUTFIT_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 
 	// Inventions table (owned by the api worker) — invention save/mine use it.
 	for (const stmt of INVENTIONS_SCHEMA_DDL) await env.DB.prepare(stmt).run()
@@ -363,10 +371,11 @@ describe('public endpoints', () => {
 		expect(await res.json()).toEqual({ customAvatarItemSavesByAvatarItemDesc: {} })
 	})
 
-	test('GET /outfits/me 401s without a token, serves the empty envelope with one', async () => {
+	test('GET /outfits/me 401s without a token, serves the empty envelope for a new player', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/outfits/me`)
 		expect(anon.status).toBe(401)
-		const res = await exports.default.fetch(`${ORIGIN}/outfits/me`, { headers: await bearer() })
+		// Account 77 never saves an outfit, so it keeps getting the new-account envelope.
+		const res = await exports.default.fetch(`${ORIGIN}/outfits/me`, { headers: await bearer('77') })
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({
 			LegacyData: {
@@ -384,6 +393,80 @@ describe('public endpoints', () => {
 			Accessibility: 0,
 			Slot: 0,
 		})
+	})
+
+	test('PUT /outfits/me saves into slot 0; GET reads it back verbatim', async () => {
+		// The client's own payload, trimmed to one selection: the point is that the heavy
+		// JSON-in-a-string fields survive the round trip as strings, unparsed.
+		const outfit = {
+			DataVersion: 2,
+			LegacyData: {
+				SelectionsV1: '193a3bf9-abc0-4d78-8d63-92046908b1c5,,0',
+				SelectionsV2:
+					'{"selections":[{"PrefabGuid":"193a3bf9-abc0-4d78-8d63-92046908b1c5","CombinationGuid":"","BodyPart":0}]}',
+				FaceFeatures: '{"ver":7,"eyeId":"Aeu0yxJXG0qCOLZW5Tcu7A","hideEars":false}',
+				SkinColor: 'Dc6StLFk60u5iUTrb3_C3w',
+				HairColor: 'UAT0OaWEkUG-mWDIyiX1Kg',
+			},
+			CustomizationSettings: '{"AvatarVersion":2,"AvatarBodyType":0}',
+			Selections: [],
+			Slot: 0,
+			Name: null,
+			Accessibility: 1,
+			ThumbnailFileName: null,
+		}
+
+		const anon = await exports.default.fetch(`${ORIGIN}/outfits/me`, {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(outfit),
+		})
+		expect(anon.status).toBe(401)
+
+		const res = await exports.default.fetch(`${ORIGIN}/outfits/me`, {
+			method: 'PUT',
+			headers: { ...(await bearer()), 'content-type': 'application/json' },
+			body: JSON.stringify(outfit),
+		})
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual(outfit)
+
+		// The read serves it back byte-for-byte — the JSON-in-a-string fields are still
+		// strings, not re-encoded objects.
+		const read = await exports.default.fetch(`${ORIGIN}/outfits/me`, { headers: await bearer() })
+		expect(await read.json()).toEqual(outfit)
+
+		// Re-saving overwrites slot 0 rather than adding a second row.
+		const changed = { ...outfit, LegacyData: { ...outfit.LegacyData, SkinColor: 'changed' } }
+		await exports.default.fetch(`${ORIGIN}/outfits/me`, {
+			method: 'PUT',
+			headers: { ...(await bearer()), 'content-type': 'application/json' },
+			body: JSON.stringify(changed),
+		})
+		const reread = await exports.default.fetch(`${ORIGIN}/outfits/me`, { headers: await bearer() })
+		expect(await reread.json()).toEqual(changed)
+		const rows = await env.DB.prepare(
+			'SELECT COUNT(*) AS n FROM outfit WHERE account_id = 42'
+		).first<{ n: number }>()
+		expect(rows?.n).toBe(1)
+
+		// A save naming another slot does not touch what the caller is wearing.
+		await exports.default.fetch(`${ORIGIN}/outfits/me`, {
+			method: 'PUT',
+			headers: { ...(await bearer()), 'content-type': 'application/json' },
+			body: JSON.stringify({ ...changed, Slot: 3, Name: 'slot three' }),
+		})
+		const worn = await exports.default.fetch(`${ORIGIN}/outfits/me`, { headers: await bearer() })
+		expect(((await worn.json()) as { Name: string | null }).Name).toBe(null)
+	})
+
+	test('PUT /outfits/me 400s on an unparseable body', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/outfits/me`, {
+			method: 'PUT',
+			headers: { ...(await bearer()), 'content-type': 'application/json' },
+			body: 'not json',
+		})
+		expect(res.status).toBe(400)
 	})
 
 	test('GET /api/rooms/v1/filters returns an object with filter arrays', async () => {
@@ -2040,6 +2123,7 @@ describe('openapi', () => {
 			'POST /api/sanitize/v1',
 			'POST /api/sanitize/v1/isPure',
 			'POST /api/v1/progression/bulk',
+			'PUT /outfits/me',
 		])
 
 		// Every operation carries a summary — an undescribed one renders as a bare path.
