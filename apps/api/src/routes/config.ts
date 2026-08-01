@@ -21,6 +21,12 @@ import type { App } from '../context'
  * Client builds the version check answers as current. `GAME_VERSION` is the build the
  * rest of the stack targets; `20230616` and `20231207` are later clients that talk the
  * same protocol, so we let them through rather than telling them to update.
+ *
+ * DEBUGGING ONLY: the extra builds are here so we can point other clients at this
+ * server while working on it — they are not a supported-version list. Nothing else in
+ * the stack targets them, so a client waved through here can still hit protocol
+ * differences the version check would otherwise have caught. Trim this back to
+ * `GAME_VERSION` alone before anyone but us is playing.
  */
 const ACCEPTED_GAME_VERSIONS = new Set([GAME_VERSION, '20230616', '20231207'])
 
