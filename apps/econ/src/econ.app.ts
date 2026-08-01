@@ -18,6 +18,7 @@ import weeklyChallenge from '../static/weekly-challenge.json'
 import { getAvatar, setAvatar } from './avatar-db'
 import {
 	ALL_PLATFORMS,
+	CurrencyType,
 	DEFAULT_STARTING_TOKENS,
 	getBalance,
 	isSpendable,
@@ -40,7 +41,9 @@ import {
 	BuyItemResponse,
 	ChallengeProgressRequest,
 	ChallengeProgressResponse,
+	ChecklistCompleteResponse,
 	ChecklistEntry,
+	CompleteChecklistRequest,
 	ConsumeConsumableRequest,
 	ConsumeEnvelope,
 	ConsumeGiftRequest,
@@ -363,6 +366,9 @@ const DEFAULT_CHECKLIST = [
 	{ Order: 4, Objective: 6, Count: 1, CreditAmount: 25 }, // CheerAPlayer
 ]
 
+/** The `UpdateResponse` context a checklist reward is reported under. */
+const CHECKLIST_REWARD_CONTEXT = 303
+
 /**
  * A concise `describeRoute` spec for a route that serves an opaque JSON array — either
  * a static catalog served verbatim or an empty-list stub. `auth` adds the bearer
@@ -576,6 +582,44 @@ const app = new Hono<App>({ strict: false })
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
 			return c.json(DEFAULT_CHECKLIST)
+		}
+	)
+
+	// Mark a checklist row done. [Authorize]. Stubbed: there is no objective-progress
+	// table to record the completion in, and no reward ledger to make the 25-token grant
+	// once-only — without one, re-posting the same row would mint tokens indefinitely, so
+	// we grant nothing and report a change of 0. The envelope is still the balance-update
+	// shape the client parses, so the flow completes instead of erroring.
+	.on(
+		'POST',
+		['/api/checklist/v1/complete', '/api/checklist/v2/complete'],
+		describeRoute({
+			tags: ['Econ'],
+			summary: 'Complete a checklist row (stub)',
+			description:
+				'Marks a NUX checklist row done. Stubbed: nothing records the completion (no ' +
+				'objective-progress table) and nothing is granted — a reward is worth 25 XP and 25 ' +
+				'tokens, but making that once-only needs a ledger we do not have, and without one ' +
+				're-posting the same row would mint tokens indefinitely. The response is still the ' +
+				'balance-update envelope, with `Balance` (the change) 0. v1 and v2 behave alike.',
+			security: AUTHED,
+			requestBody: jsonBody(CompleteChecklistRequest, 'Which row was completed — `{ ItemIndex }`'),
+			responses: {
+				200: json(ChecklistCompleteResponse, 'The balance-update envelope, granting nothing'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const id = await authedId(c)
+			if (id === null) return unauthorized(c)
+			// The body names the row (`{ ItemIndex: 1 }`, or `Id` as a fallback) — read only
+			// once there is somewhere to record it.
+			return c.json({
+				BalanceUpdates: [{ UpdateResponse: CHECKLIST_REWARD_CONTEXT, Data: [] }],
+				Balance: 0,
+				CurrencyType: CurrencyType.RecCenterTokens,
+				BalanceType: -2,
+			})
 		}
 	)
 

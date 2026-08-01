@@ -116,6 +116,28 @@ export const AvatarItemV4Dto = z.object({
 })
 
 /**
+ * `POST /api/checklist/v1|v2/complete` JSON body — which checklist row was finished.
+ * The client posts just `{ "ItemIndex": 1 }`; `Id` is the fallback key read when
+ * `ItemIndex` is absent or 0.
+ */
+export const CompleteChecklistRequest = z.object({
+	ItemIndex: z.int().describe('The row’s index — what the client actually sends'),
+	Id: z.int().optional().describe('Fallback row id, read when ItemIndex is absent or 0'),
+})
+
+/**
+ * `POST /api/checklist/v1|v2/complete` — the balance-update envelope, the same shape
+ * buyItem answers with. `Balance` is the CHANGE applied, so a stubbed (ungranted)
+ * completion reports 0. `UpdateResponse` 303 is the checklist-reward context.
+ */
+export const ChecklistCompleteResponse = z.object({
+	BalanceUpdates: z.array(z.object({ UpdateResponse: z.int(), Data: z.array(JsonObject) })),
+	Balance: z.int().describe('The change applied — 0 while completion is stubbed'),
+	CurrencyType: z.int(),
+	BalanceType: z.int().describe('-2 = account-wide'),
+})
+
+/**
  * One row of the new-user checklist (`GET /api/checklist/v1|v2/current`). `Objective` is
  * an `ObjectiveType` ordinal the client matches its own progress events against.
  */

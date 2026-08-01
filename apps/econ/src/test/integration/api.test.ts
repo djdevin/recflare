@@ -311,6 +311,37 @@ describe('econ endpoints', () => {
 		}
 	})
 
+	test('POST /api/checklist/v1|v2/complete 401s without a token, grants nothing with one', async () => {
+		for (const path of ['/api/checklist/v1/complete', '/api/checklist/v2/complete']) {
+			const anon = await exports.default.fetch(`${ORIGIN}${path}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ItemIndex: 1 }),
+			})
+			expect(anon.status).toBe(401)
+
+			const res = await exports.default.fetch(`${ORIGIN}${path}`, {
+				method: 'POST',
+				headers: { ...(await bearer('33')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ItemIndex: 1 }),
+			})
+			expect(res.status).toBe(200)
+			expect(await res.json()).toEqual({
+				BalanceUpdates: [{ UpdateResponse: 303, Data: [] }],
+				Balance: 0,
+				CurrencyType: 2,
+				BalanceType: -2,
+			})
+		}
+
+		// Stubbed, so completing rows does not move the balance — re-posting cannot farm
+		// tokens, and the checklist still lists every row.
+		const bal = await exports.default.fetch(`${ORIGIN}/api/storefronts/v4/balance/2`, {
+			headers: await bearer('33'),
+		})
+		expect(await bal.json()).toEqual([{ CurrencyType: 2, Platform: -2, Balance: 10000 }])
+	})
+
 	test('GET /api/itemWishlists/v1/wishlist/me 401s without a token, returns [] with one', async () => {
 		const anon = await exports.default.fetch(`${ORIGIN}/api/itemWishlists/v1/wishlist/me`)
 		expect(anon.status).toBe(401)
@@ -1223,6 +1254,8 @@ describe('econ endpoints', () => {
 			'POST /api/avatar/v3/saved/set',
 			'POST /api/avatar/v4/saved/set',
 			'POST /api/challenge/v2/updateProgress',
+			'POST /api/checklist/v1/complete',
+			'POST /api/checklist/v2/complete',
 			'POST /api/consumables/v1/consume',
 			'POST /api/gamerewards/v1/request',
 			'POST /api/objectives/v1/cleargroup',
