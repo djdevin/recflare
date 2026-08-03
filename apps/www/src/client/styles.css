@@ -234,6 +234,25 @@ body {
 	margin: 0 0 28px;
 }
 
+/* The signup offer under the hero buttons. Deliberately quieter than a CTA — it sits
+   below the downloads without competing with them — but the link itself carries the
+   accent so it reads as the action it is. */
+.stage-alt {
+	font-size: 0.925rem;
+	color: var(--muted);
+	margin: 18px 0 0;
+}
+
+.stage-alt a {
+	color: var(--accent);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.stage-alt a:hover {
+	text-decoration: underline;
+}
+
 /* Credit line and slideshow controls, under the photo rather than on it. */
 .stage-foot {
 	display: flex;
@@ -614,6 +633,27 @@ textarea {
 	min-height: 76px;
 }
 
+/* Marks a field the form will submit without. Quiet, but next to the label rather than
+   inside the input, so it survives the field being filled in. */
+.optional {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--muted);
+	opacity: 0.7;
+	margin-left: 4px;
+}
+
+/* Why a field is worth filling in, under the input it belongs to. Sits inside the label,
+   so it's read out with the field rather than as loose text after it. */
+.hint {
+	display: block;
+	margin-top: 6px;
+	font-size: 0.8rem;
+	line-height: 1.45;
+	color: var(--muted);
+}
+
 input:focus,
 textarea:focus {
 	outline: 2px solid var(--accent);
@@ -650,6 +690,22 @@ button[type='submit']:not(:disabled):hover {
 button[type='submit']:disabled {
 	opacity: 0.55;
 	cursor: default;
+}
+
+/* The cross-link under an auth form ("Don't have an account? Create one"). Sits under
+   the submit button, which hugs its label, so it needs its own separation from it. */
+.swap {
+	margin: 16px 0 0;
+}
+
+.swap a {
+	color: var(--accent);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.swap a:hover {
+	text-decoration: underline;
 }
 
 /* ---- Utilities ---------------------------------------------------------- */

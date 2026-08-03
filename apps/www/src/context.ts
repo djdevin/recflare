@@ -8,22 +8,21 @@ export type Env = SharedHonoEnv & {
 	ASSETS: Fetcher
 	/**
 	 * The Turnstile widget's public site key. Public by design — it ships to the browser so
-	 * the widget can render — but kept alongside its secret as a worker secret rather than a
-	 * var, so one pair of commands configures signup and there's a single place to look.
+	 * the widget can render — but it lives in the Secrets Store beside its secret, so one
+	 * place configures signup and there's a single place to look.
 	 *
-	 *   wrangler secret put TURNSTILE_SITE_KEY --name www
+	 * Resolve the value with `await env.TURNSTILE_SITE_KEY.get()`.
 	 */
-	TURNSTILE_SITE_KEY?: string
+	TURNSTILE_SITE_KEY: SecretsStoreSecret
 	/**
 	 * The Turnstile widget's secret key — the one that turns a widget token into a verdict.
+	 * Same shared account-level store as JWT_SECRET; the store id is spliced into
+	 * wrangler.jsonc at deploy time (RECFLARE_SECRETS_STORE).
 	 *
-	 *   wrangler secret put TURNSTILE_SECRET_KEY --name www
-	 *
-	 * Secrets survive a deploy (vars are replaced wholesale), so both are set once and left
-	 * alone. Locally they come from `apps/www/.dev.vars`. Either one unset closes web
-	 * signup — see src/turnstile.ts.
+	 * Store values survive a deploy, so both are created once and left alone. Either one
+	 * failing to resolve closes web signup — see src/turnstile.ts.
 	 */
-	TURNSTILE_SECRET_KEY?: string
+	TURNSTILE_SECRET_KEY: SecretsStoreSecret
 }
 
 /** Variables can be extended */

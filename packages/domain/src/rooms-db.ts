@@ -82,6 +82,26 @@ export const SUBROOM_SCHEMA_DDL: string[] = [
 		data TEXT NOT NULL
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_subroom_save_sub ON subroom_save (sub_room_id)`,
+	// Per-subroom permission overrides (migrations/0009_subroom_permissions.sql). The room
+	// owner's permission table for one subroom, keyed by (permission, role) — that pair is
+	// what the client's PUT addresses, and re-sending it overwrites the stored row rather
+	// than appending a second one.
+	//
+	// A row IS an override, which is why the client's `Override` flag is not a column: it's
+	// the checkbox next to the permission, so clearing it deletes the row and the pair falls
+	// back to its default. `value` is the client's string, stored verbatim.
+	//
+	// Deliberately NOT in the subroom's `data` blob: that blob is served to the client
+	// verbatim as part of the room, and these overrides are read on one path only
+	// (`GET /photon_access_token`, where they overwrite the matching default entries).
+	`CREATE TABLE IF NOT EXISTS subroom_permission (
+		sub_room_id INTEGER NOT NULL,
+		permission TEXT NOT NULL,
+		role INTEGER NOT NULL,
+		type INTEGER NOT NULL DEFAULT 0,
+		value TEXT NOT NULL,
+		PRIMARY KEY (sub_room_id, permission, role)
+	)`,
 ]
 
 /** A stored room — the parsed JSON blob (full client-facing room response). */
@@ -695,6 +715,9 @@ export async function deleteSubRoom(
 		// The saves go with it — nothing can reference them once the subroom is gone.
 		// The blobs they point at are left in R2, like a deleted room's images.
 		db.prepare('DELETE FROM subroom_save WHERE sub_room_id = ?1').bind(subRoomId),
+		// So do its permission overrides — subroom ids are minted from one global
+		// sequence, but leaving orphans would still be dead rows nothing can reach.
+		db.prepare('DELETE FROM subroom_permission WHERE sub_room_id = ?1').bind(subRoomId),
 	])
 
 	const room = await getRoomById(db, roomId)
@@ -942,6 +965,119 @@ export async function getSubRoomSaveById(
 	return row ? parseSubRoomSaveRow(row) : null
 }
 
+// ---- Subroom permissions --------------------------------------------------
+
+/**
+ * One entry of a subroom's permission table, in the client's own shape. `Value` is a
+ * STRING, not a boolean — usually `"True"`/`"False"`, but a permission whose UI isn't a
+ * True/False picker carries something else, so it is stored and served verbatim. `Role`
+ * is the tier the entry applies to (0 = everyone, 30 = co-owner, …). `Permission` + `Role`
+ * identify an entry: the client PUTs the pair it wants changed, and the same pair
+ * overwrites the matching default in the photon access token's table.
+ *
+ * `Override` is the row's own existence, not data: the client's UI is a checkbox ("is
+ * this permission overridden in this subroom?") plus a True/False picker for the value.
+ * Unchecking it means "fall back to the default", so an entry arriving with
+ * `Override: false` DELETES the stored row rather than storing anything. Every stored
+ * entry is therefore an override, and reads always serve `Override: true`.
+ */
+export interface RoomPermission {
+	Permission: string
+	Role: number
+	Override: boolean
+	Type: number
+	Value: string
+}
+
+interface RoomPermissionRow {
+	permission: string
+	role: number
+	type: number
+	value: string
+}
+
+const toRoomPermission = (row: RoomPermissionRow): RoomPermission => ({
+	// A stored row IS the override — the table holds nothing else (see RoomPermission).
+	Override: true,
+	Permission: row.permission,
+	Role: row.role,
+	Type: row.type,
+	Value: row.value,
+})
+
+/** The permission columns, in the order the read/copy statements use. */
+const PERMISSION_COLUMNS = 'permission, role, type, value'
+
+/**
+ * A subroom's stored permission overrides, in the order they were first set. Empty for a
+ * subroom whose owner has never overridden a permission — the photon access token then
+ * serves its defaults untouched.
+ */
+export async function getSubRoomPermissions(
+	db: D1Database,
+	subRoomId: number
+): Promise<RoomPermission[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT ${PERMISSION_COLUMNS} FROM subroom_permission WHERE sub_room_id = ?1 ORDER BY rowid`
+		)
+		.bind(subRoomId)
+		.all<RoomPermissionRow>()
+	return results.map(toRoomPermission)
+}
+
+/**
+ * Apply permission changes to a subroom, keyed by (`Permission`, `Role`). Only the pairs
+ * supplied are touched; every other stored entry is left alone.
+ *
+ * `Override` decides which way an entry goes, mirroring the checkbox the client draws
+ * next to each permission: true STORES the `Value` for that pair (overwriting whatever
+ * was there), false CLEARS it, so the pair falls back to the photon access token's
+ * default. Clearing a pair that was never overridden is a no-op.
+ */
+export async function setSubRoomPermissions(
+	db: D1Database,
+	subRoomId: number,
+	permissions: RoomPermission[]
+): Promise<void> {
+	if (permissions.length === 0) return
+	const upsert = db.prepare(
+		`INSERT INTO subroom_permission (sub_room_id, ${PERMISSION_COLUMNS})
+		 VALUES (?1, ?2, ?3, ?4, ?5)
+		 ON CONFLICT (sub_room_id, permission, role)
+		 DO UPDATE SET type = excluded.type, value = excluded.value`
+	)
+	const clear = db.prepare(
+		'DELETE FROM subroom_permission WHERE sub_room_id = ?1 AND permission = ?2 AND role = ?3'
+	)
+	await db.batch(
+		permissions.map((p) =>
+			p.Override
+				? upsert.bind(subRoomId, p.Permission, p.Role, p.Type, p.Value)
+				: clear.bind(subRoomId, p.Permission, p.Role)
+		)
+	)
+}
+
+/**
+ * Copy a subroom's permission overrides onto another subroom — a clone inherits the
+ * source's permission table along with its scene and settings. Replaces any entry the
+ * destination already holds for the same (permission, role).
+ */
+async function copySubRoomPermissions(
+	db: D1Database,
+	fromSubRoomId: number,
+	toSubRoomId: number
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT OR REPLACE INTO subroom_permission (sub_room_id, ${PERMISSION_COLUMNS})
+			 SELECT ?2, ${PERMISSION_COLUMNS} FROM subroom_permission WHERE sub_room_id = ?1`
+		)
+		.bind(fromSubRoomId, toSubRoomId)
+		.run()
+}
+
 /**
  * Insert a subroom for a room, minting a fresh globally-unique SubRoomId from the
  * table's autoincrement sequence. Returns the created subroom (with its new id).
@@ -962,6 +1098,12 @@ export async function insertSubRoom(
 		RoomId: roomId,
 		CurrentSave: null,
 		StagedSubRoomDataSaveId: null,
+	}
+	// The permission overrides follow the copy too — they live in their own table (keyed by
+	// the id the caller is cloning FROM), so unlike the rest of the settings they aren't
+	// carried by the blob. A fresh subroom (`createSubRoom`) passes no id and copies nothing.
+	if (typeof sub.SubRoomId === 'number') {
+		await copySubRoomPermissions(db, sub.SubRoomId, subRoomId)
 	}
 	// A copied subroom (room clone, subroom clone) carries the source's save. It gets its
 	// OWN row — a save belongs to exactly one subroom, so sharing the source's id would
@@ -1037,10 +1179,16 @@ export async function deleteRoom(db: D1Database, roomId: number): Promise<void> 
 	await db.batch([
 		db.prepare('DELETE FROM room WHERE room_id = ?1').bind(roomId),
 		db.prepare('DELETE FROM interaction WHERE room_id = ?1').bind(roomId),
-		// Saves first — they're keyed by subroom, so they'd be unreachable afterwards.
+		// Saves and permission overrides first — both are keyed by subroom, so they'd be
+		// unreachable once the subrooms themselves are gone.
 		db
 			.prepare(
 				'DELETE FROM subroom_save WHERE sub_room_id IN (SELECT sub_room_id FROM subroom WHERE room_id = ?1)'
+			)
+			.bind(roomId),
+		db
+			.prepare(
+				'DELETE FROM subroom_permission WHERE sub_room_id IN (SELECT sub_room_id FROM subroom WHERE room_id = ?1)'
 			)
 			.bind(roomId),
 		db.prepare('DELETE FROM subroom WHERE room_id = ?1').bind(roomId),

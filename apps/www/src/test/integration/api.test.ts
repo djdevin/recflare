@@ -1,11 +1,27 @@
-import { SELF } from 'cloudflare:test'
-import { expect, it } from 'vitest'
+import { adminSecretsStore, env, SELF } from 'cloudflare:test'
+import { beforeAll, expect, it } from 'vitest'
 
 import { DOCUMENTED_SERVICES } from '../../docs'
 import { DISCORD_INVITE, ISSUES_URL, PRIVACY_EMAIL } from '../../links'
 import { turnstileKeys } from '../../turnstile'
 
 import type { Env } from '../../context'
+
+declare module 'cloudflare:test' {
+	interface ProvidedEnv extends Env {}
+}
+
+// Turnstile's documented always-passes test keypair, seeded into the LOCAL Secrets Store
+// so the bindings resolve — the same way every other worker's tests seed JWT_SECRET. It
+// stands in for the two account-level secrets a deployed www reads, and it's what OPENS
+// signup (see src/turnstile.ts): without it every signup test would test the closed door.
+const TEST_SITE_KEY = '1x00000000000000000000AA'
+const TEST_SECRET_KEY = '1x0000000000000000000000000000000AA'
+
+beforeAll(async () => {
+	await adminSecretsStore(env.TURNSTILE_SITE_KEY).create(TEST_SITE_KEY)
+	await adminSecretsStore(env.TURNSTILE_SECRET_KEY).create(TEST_SECRET_KEY)
+})
 
 it('rejects unauthenticated account reads', async () => {
 	const res = await SELF.fetch('https://example.com/api/me')
@@ -18,26 +34,46 @@ it('rejects unauthenticated account reads', async () => {
 it('advertises signup with the Turnstile site key the widget needs', async () => {
 	const res = await SELF.fetch('https://example.com/api/config')
 	expect(res.status).toBe(200)
-	// The test keypair bound in vitest.config.ts stands in for the worker secrets a
-	// deployed www carries.
+	// Read through the Secrets Store binding, from the value seeded above.
 	expect(await res.json()).toEqual({
 		signupEnabled: true,
-		turnstileSiteKey: '1x00000000000000000000AA',
+		turnstileSiteKey: TEST_SITE_KEY,
 	})
 })
 
-// The keypair is the on/off switch for signup, so a worker with no secrets set must report
-// it closed — that's the state every fresh deploy starts in, and nothing in the environment
-// may override it. Checked directly because the bindings are fixed for the fetch tests
-// above.
-it('treats a missing or half-configured keypair as signup being off', () => {
-	const env = (over: Partial<Env>) => ({ ENVIRONMENT: 'development', ...over }) as Env
-	expect(turnstileKeys(env({}))).toBeNull()
-	expect(turnstileKeys(env({ TURNSTILE_SITE_KEY: '0xsite' }))).toBeNull()
-	expect(turnstileKeys(env({ TURNSTILE_SECRET_KEY: '0xsecret' }))).toBeNull()
-	expect(
-		turnstileKeys(env({ TURNSTILE_SITE_KEY: '0xsite', TURNSTILE_SECRET_KEY: '0xsecret' }))
-	).toEqual({ siteKey: '0xsite', secretKey: '0xsecret' })
+// The keypair is the on/off switch for signup, so a www whose keys don't resolve must
+// report it closed — that's the state a fresh deploy starts in, before the operator
+// creates the two secrets. Checked directly because the real bindings are seeded for the
+// fetch tests above.
+//
+// A store read that THROWS (secret absent, store unreachable) has to close the door the
+// same way rather than surface as an error: /api/config is on the homepage's critical
+// path, and a 500 there costs the whole page, not just the signup form.
+it('treats an unresolvable or half-configured keypair as signup being off', async () => {
+	const stub = (value: string | null): SecretsStoreSecret =>
+		({ get: async () => value ?? '' }) as SecretsStoreSecret
+	const throws = (): SecretsStoreSecret =>
+		({
+			get: async () => {
+				throw new Error('secret not found')
+			},
+		}) as unknown as SecretsStoreSecret
+
+	const withKeys = (site: SecretsStoreSecret, secret: SecretsStoreSecret) =>
+		({
+			ENVIRONMENT: 'development',
+			TURNSTILE_SITE_KEY: site,
+			TURNSTILE_SECRET_KEY: secret,
+		}) as Env
+
+	await expect(turnstileKeys(withKeys(throws(), throws()))).resolves.toBeNull()
+	await expect(turnstileKeys(withKeys(stub('0xsite'), throws()))).resolves.toBeNull()
+	await expect(turnstileKeys(withKeys(throws(), stub('0xsecret')))).resolves.toBeNull()
+	await expect(turnstileKeys(withKeys(stub(''), stub('0xsecret')))).resolves.toBeNull()
+	await expect(turnstileKeys(withKeys(stub('0xsite'), stub('0xsecret')))).resolves.toEqual({
+		siteKey: '0xsite',
+		secretKey: '0xsecret',
+	})
 })
 
 it('refuses a signup with no Turnstile token', async () => {
@@ -49,6 +85,19 @@ it('refuses a signup with no Turnstile token', async () => {
 	// Rejected before any upstream call, so a bot can't reach create_account by omitting it.
 	expect(res.status).toBe(400)
 	expect(await res.json()).toEqual({ error: 'Please complete the bot check.' })
+})
+
+// The email is optional, but a malformed one is rejected BEFORE the account is created —
+// the accounts worker would refuse to store it, and by then the account exists and the
+// player would be left with an account whose email silently didn't save.
+it('refuses a signup whose email could not be stored', async () => {
+	const res = await SELF.fetch('https://example.com/api/signup', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ password: 'whatever', email: 'not-an-address', turnstileToken: 'x' }),
+	})
+	expect(res.status).toBe(400)
+	expect(await res.json()).toEqual({ error: 'That email address looks wrong.' })
 })
 
 it('refuses a signup with no password', async () => {

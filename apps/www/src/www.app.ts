@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withOnError } from '@repo/hono-helpers'
+import { logger, withOnError } from '@repo/hono-helpers'
 
 import { NotificationType } from '../../notify/src/notification-types'
 import { docsPage, fetchSpec } from './docs'
@@ -88,8 +88,12 @@ async function relay(c: Context<App>, res: Response) {
  * Exchange an auth `/connect/token` response for a session: persist the returned
  * access token in the httpOnly cookie, then return the caller's self account
  * (fetched from the accounts worker with the fresh token).
+ *
+ * `email`, when given, is saved onto the new account before that fetch, so the account
+ * comes back already carrying it. `create_account` takes no email — the accounts worker
+ * owns that field — which is why this is a second call rather than another grant field.
  */
-async function establishSession(c: Context<App>, tokenResponse: Response) {
+async function establishSession(c: Context<App>, tokenResponse: Response, email?: string) {
 	if (!tokenResponse.ok) return relay(c, tokenResponse)
 
 	const token = (await tokenResponse.json()) as { access_token?: string; expires_in?: number }
@@ -103,6 +107,25 @@ async function establishSession(c: Context<App>, tokenResponse: Response) {
 		token.access_token,
 		sessionCookieOptions(c, token.expires_in ?? 3600)
 	)
+
+	// Deliberately not fatal: the account exists and the session is live by now, so failing
+	// the request would leave the player holding an account they think they don't have —
+	// and a retry would burn another slot against auth's per-IP signup cap. They land on
+	// the account page instead, where the email field is the same one call away. The
+	// address is validated before signup starts, so reaching here means something upstream
+	// went wrong, not that the input was bad.
+	if (email) {
+		const res = await postForm(
+			`${accountsBase(c.env)}/account/me/email`,
+			{ email },
+			token.access_token
+		)
+		if (!res.ok) {
+			logger.error('failed to save the signup email; the account was still created', {
+				status: res.status,
+			})
+		}
+	}
 
 	const me = await fetch(`${accountsBase(c.env)}/account/me`, {
 		headers: { authorization: `Bearer ${token.access_token}` },
@@ -131,8 +154,8 @@ const app = new Hono<App>()
 	// is open, and the Turnstile site key to mount its widget with. The site key is public
 	// (it ships in the widget markup either way); the secret never leaves the worker.
 	// Served rather than baked into the client build so one build works for any operator.
-	.get('/api/config', (c) => {
-		const keys = turnstileKeys(c.env)
+	.get('/api/config', async (c) => {
+		const keys = await turnstileKeys(c.env)
 		return c.json({ signupEnabled: keys !== null, turnstileSiteKey: keys?.siteKey ?? null })
 	})
 
@@ -146,14 +169,26 @@ const app = new Hono<App>()
 	// don't pick one — and the new session is established from the token response.
 	.post('/api/signup', async (c) => {
 		// No usable keypair means signup is closed rather than unprotected (see turnstile.ts).
-		const keys = turnstileKeys(c.env)
+		const keys = await turnstileKeys(c.env)
 		if (!keys) return c.json({ error: 'Account creation is currently disabled.' }, 403)
 
-		const { password, turnstileToken } = await c.req
-			.json<{ password?: string; turnstileToken?: string }>()
-			.catch(() => ({}) as { password?: string; turnstileToken?: string })
+		type SignupBody = { password?: string; email?: string; turnstileToken?: string }
+		const { password, email, turnstileToken } = await c.req
+			.json<SignupBody>()
+			.catch(() => ({}) as SignupBody)
 		if (!password) return c.json({ error: 'A password is required.' }, 400)
 		if (!turnstileToken) return c.json({ error: 'Please complete the bot check.' }, 400)
+
+		// Optional — an account works without one; it's the address a locked-out player
+		// would be reached at. Checked HERE, before anything is created, because the
+		// accounts worker rejects an address with no `@` and by then the account exists:
+		// better to fail the form than to hand back an account whose email silently didn't
+		// save. Same rule the accounts worker applies, deliberately no stricter — this is
+		// a contact address, not an identity, and nothing is sent to it to prove it.
+		const signupEmail = typeof email === 'string' ? email.trim() : ''
+		if (signupEmail !== '' && !signupEmail.includes('@')) {
+			return c.json({ error: 'That email address looks wrong.' }, 400)
+		}
 
 		// The IP Turnstile cross-checks the token against — set by the edge, so the client
 		// can't spoof it (unlike X-Forwarded-For). `auth` records the same header as the
@@ -170,7 +205,7 @@ const app = new Hono<App>()
 			grant_type: 'create_account',
 			password,
 		})
-		return establishSession(c, res)
+		return establishSession(c, res, signupEmail || undefined)
 	})
 
 	// Log in with a username + password, then start a session. The auth password grant

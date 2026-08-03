@@ -124,12 +124,22 @@ export function App() {
 	return (
 		<>
 			<NavBar account={account} path={path} navigate={navigate} onLogout={logout} />
-			{path === '/login' ? (
-				<LoginPage account={account} config={config} navigate={navigate} onAuthed={setAccount} />
+			{path === '/login' || path === '/signup' ? (
+				// One page, two doors. `/signup` exists so the homepage's create-account link
+				// lands on that tab instead of dropping people on sign-in to find it — and so
+				// the URL is linkable. Unknown paths fall back to index.html (see the assets
+				// config in wrangler.jsonc), so a cold load of /signup reaches the SPA.
+				<LoginPage
+					account={account}
+					config={config}
+					initialTab={path === '/signup' ? 'signup' : 'login'}
+					navigate={navigate}
+					onAuthed={setAccount}
+				/>
 			) : path === '/account' ? (
 				<AccountPage account={account} navigate={navigate} onChange={setAccount} />
 			) : (
-				<HomePage />
+				<HomePage account={account} config={config} navigate={navigate} />
 			)}
 			<SiteFooter />
 		</>
@@ -227,12 +237,25 @@ function useSlideshow() {
  * on top of them. Everything about how the thing is built sits below, for whoever
  * scrolls looking for it.
  */
-function HomePage() {
+function HomePage({
+	account,
+	config,
+	navigate,
+}: {
+	account: SelfAccount | null | undefined
+	config: SiteConfig | undefined
+	navigate: Navigate
+}) {
 	const feed = useSlideshow()
+
+	// The signup offer only makes sense to a signed-out visitor when the server would
+	// actually take one. `account === undefined` is still-checking, so it shows nothing
+	// rather than offering an account to someone who already has one.
+	const offerSignup = account === null && config?.signupEnabled === true
 
 	return (
 		<main>
-			<Stage slides={feed.slides} />
+			<Stage slides={feed.slides} offerSignup={offerSignup} navigate={navigate} />
 			<div className="shell home">
 				<About slides={feed.slides} error={feed.error} />
 			</div>
@@ -246,7 +269,15 @@ function HomePage() {
  * frame holds its space and the left half reads the same, so "Play now!" is reachable
  * either way.
  */
-function Stage({ slides }: { slides: Slide[] | null }) {
+function Stage({
+	slides,
+	offerSignup,
+	navigate,
+}: {
+	slides: Slide[] | null
+	offerSignup: boolean
+	navigate: Navigate
+}) {
 	const [idx, setIdx] = useState(0)
 	const count = slides?.length ?? 0
 
@@ -284,6 +315,18 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 						Join the Discord
 					</a>
 				</div>
+				{/* A line rather than a fourth button: the download is the point of this page,
+				    and launching the game makes an account by itself — signing up here is the
+				    way in for someone who wants one first. Hidden entirely when signup is
+				    closed, matching /login, which hides its create-account tab the same way. */}
+				{offerSignup && (
+					<p className="stage-alt">
+						New here?{' '}
+						<Link to="/signup" navigate={navigate}>
+							Create an account
+						</Link>
+					</p>
+				)}
 			</div>
 			<div className="stage-show">
 				<div className="stage-frame">
@@ -389,15 +432,19 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 function LoginPage({
 	account,
 	config,
+	initialTab,
 	navigate,
 	onAuthed,
 }: {
 	account: SelfAccount | null | undefined
 	config: SiteConfig | undefined
+	initialTab: 'signup' | 'login'
 	navigate: Navigate
 	onAuthed: (a: SelfAccount) => void
 }) {
-	const [tab, setTab] = useState<'signup' | 'login'>('login')
+	// The tab IS the route (`/login` vs `/signup`) rather than local state, so the two can
+	// never disagree — switching tabs pushes history, and back goes back to the other one.
+	const tab = initialTab
 
 	useEffect(() => {
 		if (account) navigate('/account')
@@ -415,10 +462,13 @@ function LoginPage({
 			<section className="card">
 				{siteKey && (
 					<div className="tabs">
-						<button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
+						<button className={tab === 'login' ? 'active' : ''} onClick={() => navigate('/login')}>
 							Sign in
 						</button>
-						<button className={tab === 'signup' ? 'active' : ''} onClick={() => setTab('signup')}>
+						<button
+							className={tab === 'signup' ? 'active' : ''}
+							onClick={() => navigate('/signup')}
+						>
 							Create account
 						</button>
 					</div>
@@ -440,6 +490,17 @@ function LoginPage({
 							your Steam ID — set a password on it and it signs in here too.
 						</p>
 						<LoginForm onAuthed={authed} />
+						{/* The tabs above already offer this; the line under the button is where
+						    someone who just found out they have no account is actually looking.
+						    Gated on the same key, so it can't point at a door that isn't there. */}
+						{siteKey && (
+							<p className="muted swap">
+								Don&apos;t have an account?{' '}
+								<Link to="/signup" navigate={navigate}>
+									Create one
+								</Link>
+							</p>
+						)}
 					</>
 				)}
 			</section>
@@ -611,6 +672,7 @@ function SignupForm({
 	onAuthed: (a: SelfAccount) => void
 }) {
 	const [password, setPassword] = useState('')
+	const [email, setEmail] = useState('')
 	const { container, token, error: widgetError, reset } = useTurnstile(siteKey)
 	const { pending, error, run } = useAction()
 
@@ -622,6 +684,7 @@ function SignupForm({
 					try {
 						const { account } = await api<{ account: SelfAccount }>('/api/signup', {
 							password,
+							email,
 							turnstileToken: token,
 						})
 						onAuthed(account)
@@ -643,6 +706,23 @@ function SignupForm({
 					onChange={(e) => setPassword(e.target.value)}
 					required
 				/>
+			</label>
+			{/* Optional, and the button doesn't wait on it — but it's the only contact detail
+			    an account has, so the hint says plainly what it's for rather than leaving it
+			    to be guessed. `type="email"` gets the right keyboard on mobile and a free
+			    format check; the worker re-checks it before the account is created. */}
+			<label>
+				Email <span className="optional">optional</span>
+				<input
+					type="email"
+					value={email}
+					autoComplete="email"
+					onChange={(e) => setEmail(e.target.value)}
+				/>
+				<span className="hint">
+					How you get back in if you forget your password — there&apos;s no other way to reach you.
+					You can add it later on your account page.
+				</span>
 			</label>
 			<div className="turnstile" ref={container} />
 			{widgetError && <p className="error">{widgetError}</p>}
