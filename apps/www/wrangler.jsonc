@@ -35,17 +35,16 @@
 			"head_sampling_rate": 1 // 100%
 		}
 	},
-	// The Turnstile keypair guarding web signup is deliberately NOT here. The public site
-	// key rides in from the gitignored .env as RECFLARE_TURNSTILE_SITE_KEY (like the other
-	// tuning knobs, see .env.example); the SECRET key is a real secret, so it's set on the
-	// worker out of band and survives deploys:
+	// The Turnstile keypair guarding web signup is deliberately NOT here: both keys are
+	// worker secrets, set out of band and surviving deploys (vars are replaced wholesale).
 	//
-	//   wrangler secret put TURNSTILE_SECRET_KEY --name www    # deployed
-	//   echo 'TURNSTILE_SECRET_KEY="…"' >> apps/www/.dev.vars  # local dev
+	//   wrangler secret put TURNSTILE_SITE_KEY --name www     # deployed
+	//   wrangler secret put TURNSTILE_SECRET_KEY --name www
+	//   apps/www/.dev.vars holds the same two names for local dev
 	//
-	// With neither set, signup falls back to Turnstile's always-passes test keypair locally
-	// and is CLOSED anywhere else — an operator who skips this gets no signup rather than an
-	// unprotected one. See src/turnstile.ts.
+	// Setting them is what OPENS signup; with either missing it stays closed, so an
+	// operator who skips this gets no signup rather than an unprotected one. See
+	// src/turnstile.ts.
 	"vars": {
 		"ENVIRONMENT": "development", // overridden during deployment
 		"SENTRY_RELEASE": "unknown", // overridden during deployment

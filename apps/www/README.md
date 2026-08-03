@@ -46,13 +46,14 @@ the widget's token, and the worker verifies it against Turnstile's `siteverify`
 server-side before calling `auth`. The secret key never leaves the worker, and the
 browser never talks to `siteverify` itself.
 
-Two keys configure it — the public `TURNSTILE_SITE_KEY` var and the
-`TURNSTILE_SECRET_KEY` worker secret (see `wrangler.jsonc` and `src/turnstile.ts`).
-Signup **fails closed**: with no usable keypair, `/api/config` reports
-`signupEnabled: false` (so the SPA shows sign-in only) and `/api/signup` returns
-403, rather than serving an unprotected endpoint. Locally (`just dev`, tests) an
-unconfigured worker falls back to Turnstile's documented always-passes test
-keypair, so the form works in a fresh checkout.
+Two worker secrets configure it, `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`
+(see `wrangler.jsonc` and `src/turnstile.ts`) — the site key is public, but keeping
+it with its secret makes the pair the single switch. Setting both is what opens
+signup; with either missing `/api/config` reports `signupEnabled: false` (so the
+SPA shows sign-in only) and `/api/signup` returns 403, so an unconfigured worker
+serves no signup rather than an unprotected one. Locally the two names come from
+`.dev.vars`, where Turnstile's documented always-passes test keypair works without
+a widget (the tests bind it in `vitest.config.ts`).
 
 ## Development
 

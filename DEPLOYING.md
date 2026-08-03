@@ -169,7 +169,6 @@ edit the value, then re-deploy the worker that reads them.
 | `RECFLARE_MAX_ACCOUNTS_PER_PLATFORM_ID` | `auth`  | `3`     | Accounts one Steam-verified identity may create. `0` disables. |
 | `RECFLARE_MAX_ACCOUNTS_PER_IP`          | `auth`  | `3`     | Accounts one signup IP may create. `0` disables.               |
 | `RECFLARE_STARTING_TOKENS`              | `econ`  | `10000` | RecCenterTokens a new player is granted.                       |
-| `RECFLARE_TURNSTILE_SITE_KEY`           | `www`   | unset   | Turnstile site key; opens signup on the website. See below.    |
 
 Then deploy just the worker that reads it:
 
@@ -209,24 +208,29 @@ you configure one**. Two steps, both one-time:
 
 1. Create the widget: Cloudflare dashboard → **Turnstile** → **Add widget**, mode
    **Managed**, hostnames your domain (add `localhost` if you want it in `just dev` against
-   real keys). Put the **site key** in `.env` as `RECFLARE_TURNSTILE_SITE_KEY` — it's public
-   and ships to the browser.
-2. Give `www` the **secret key**. It never goes in `.env` (everything there becomes a
-   plaintext Worker var); set it as a Worker secret, which survives deploys:
+   real keys). It gives you a **site key** and a **secret key**.
+2. Give both to `www` as Worker secrets — they're the switch that opens signup, and unlike
+   `.env` vars they survive deploys:
 
    ```bash
-   cd apps/www && wrangler secret put TURNSTILE_SECRET_KEY --name www
+   cd apps/www
+   wrangler secret put TURNSTILE_SITE_KEY --name www
+   wrangler secret put TURNSTILE_SECRET_KEY --name www
    ```
 
-Then `just deploy -F www`. The site key reaches the browser through `GET /api/config`, so
-the same build works for any operator, and the secret is only ever used by the worker —
+Then `just deploy -F www`. The site key is public — the browser needs it to render the
+widget, and gets it from `GET /api/config` — but it lives next to its secret so signup is
+configured in one place and turned off by clearing it. The secret never leaves the worker:
 `/api/signup` verifies the token against Turnstile server-side before it calls `auth`.
 
-Signup opens only when **both** keys are set. With neither, `just dev` falls back to
-Turnstile's always-passes test keypair (so the form works locally out of the box) and a
-deployed `www` reports signup closed and refuses `POST /api/signup` — a missed step costs
-you the signup form, never an unprotected one. Both `auth` account caps above still apply
-on top of the bot check, and the per-IP one is the only cap that can see a web signup.
+Signup opens only when **both** are set. With either missing, `/api/config` reports signup
+closed (the site shows sign-in only) and `POST /api/signup` refuses — a missed step costs
+you the signup form, never an unprotected one. That is also how you turn signup back off:
+`wrangler secret delete TURNSTILE_SECRET_KEY --name www`. For local dev, put the two names
+in `apps/www/.dev.vars`; Turnstile's documented always-passes test keypair
+(`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`) works there without a
+widget. Both `auth` account caps above still apply on top of the bot check, and the per-IP
+one is the only cap that can see a web signup.
 
 ## Repository Structure
 

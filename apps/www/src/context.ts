@@ -7,18 +7,21 @@ export type Env = SharedHonoEnv & {
 	/** Static-asset fetcher for the built React SPA (see wrangler.jsonc `assets`). */
 	ASSETS: Fetcher
 	/**
-	 * The Turnstile widget's public site key, injected as a var from the operator's .env
-	 * (`RECFLARE_TURNSTILE_SITE_KEY`). Public by design — it ships to the browser so the
-	 * widget can render.
+	 * The Turnstile widget's public site key. Public by design — it ships to the browser so
+	 * the widget can render — but kept alongside its secret as a worker secret rather than a
+	 * var, so one pair of commands configures signup and there's a single place to look.
+	 *
+	 *   wrangler secret put TURNSTILE_SITE_KEY --name www
 	 */
 	TURNSTILE_SITE_KEY?: string
 	/**
-	 * The Turnstile widget's secret key — a real secret, so it is NOT a var: set it on the
-	 * worker with `wrangler secret put TURNSTILE_SECRET_KEY --name www` (secrets survive a
-	 * deploy; vars are replaced wholesale), and in `.dev.vars` for local dev.
+	 * The Turnstile widget's secret key — the one that turns a widget token into a verdict.
 	 *
-	 * Both keys unset falls back to Turnstile's test keypair locally, and closes web signup
-	 * everywhere else — see src/turnstile.ts.
+	 *   wrangler secret put TURNSTILE_SECRET_KEY --name www
+	 *
+	 * Secrets survive a deploy (vars are replaced wholesale), so both are set once and left
+	 * alone. Locally they come from `apps/www/.dev.vars`. Either one unset closes web
+	 * signup — see src/turnstile.ts.
 	 */
 	TURNSTILE_SECRET_KEY?: string
 }

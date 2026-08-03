@@ -3,6 +3,9 @@ import { expect, it } from 'vitest'
 
 import { DOCUMENTED_SERVICES } from '../../docs'
 import { DISCORD_INVITE, ISSUES_URL, PRIVACY_EMAIL } from '../../links'
+import { turnstileKeys } from '../../turnstile'
+
+import type { Env } from '../../context'
 
 it('rejects unauthenticated account reads', async () => {
 	const res = await SELF.fetch('https://example.com/api/me')
@@ -15,12 +18,26 @@ it('rejects unauthenticated account reads', async () => {
 it('advertises signup with the Turnstile site key the widget needs', async () => {
 	const res = await SELF.fetch('https://example.com/api/config')
 	expect(res.status).toBe(200)
-	// No keypair is configured under vitest, so this is the always-passes test site key
-	// (see src/turnstile.ts) — a deployed worker with no keys reports signupEnabled: false.
+	// The test keypair bound in vitest.config.ts stands in for the worker secrets a
+	// deployed www carries.
 	expect(await res.json()).toEqual({
 		signupEnabled: true,
 		turnstileSiteKey: '1x00000000000000000000AA',
 	})
+})
+
+// The keypair is the on/off switch for signup, so a worker with no secrets set must report
+// it closed — that's the state every fresh deploy starts in, and nothing in the environment
+// may override it. Checked directly because the bindings are fixed for the fetch tests
+// above.
+it('treats a missing or half-configured keypair as signup being off', () => {
+	const env = (over: Partial<Env>) => ({ ENVIRONMENT: 'development', ...over }) as Env
+	expect(turnstileKeys(env({}))).toBeNull()
+	expect(turnstileKeys(env({ TURNSTILE_SITE_KEY: '0xsite' }))).toBeNull()
+	expect(turnstileKeys(env({ TURNSTILE_SECRET_KEY: '0xsecret' }))).toBeNull()
+	expect(
+		turnstileKeys(env({ TURNSTILE_SITE_KEY: '0xsite', TURNSTILE_SECRET_KEY: '0xsecret' }))
+	).toEqual({ siteKey: '0xsite', secretKey: '0xsecret' })
 })
 
 it('refuses a signup with no Turnstile token', async () => {
