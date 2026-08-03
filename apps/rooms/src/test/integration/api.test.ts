@@ -1508,13 +1508,10 @@ describe('rooms endpoints', () => {
 	})
 
 	it('GET /photon_access_token 401s without a token', async () => {
-		for (const path of ['/photon_access_token', '/roomserver/photon_access_token']) {
-			const res = await SELF.fetch(`${ORIGIN}${path}`)
-			expect(res.status).toBe(401)
-		}
+		expect((await SELF.fetch(`${ORIGIN}/photon_access_token`)).status).toBe(401)
 	})
 
-	it('GET /photon_access_token (bare + /roomserver) returns permissions + presence instance', async () => {
+	it('GET /photon_access_token returns permissions + presence instance', async () => {
 		// Seed the caller's presence so RoomInstanceId reflects their current instance.
 		await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
 			.bind(
@@ -1525,22 +1522,19 @@ describe('rooms endpoints', () => {
 				})
 			)
 			.run()
-		const headers = await bearer('777')
-		for (const path of ['/photon_access_token', '/roomserver/photon_access_token']) {
-			const res = await SELF.fetch(`${ORIGIN}${path}`, { headers })
-			expect(res.status).toBe(200)
-			const body = (await res.json()) as {
-				Permissions: Array<{ Permission: string; Role: number }>
-				PhotonAccessToken: string
-				RoomInstanceId: number | null
-			}
-			expect(body.Permissions.length).toBe(11)
-			expect(body.RoomInstanceId).toBe(1000042)
-			// A non-dev account does NOT get the global (Role 0) maker pen.
-			expect(
-				body.Permissions.some((p) => p.Permission === 'CAN_USE_MAKER_PEN' && p.Role === 0)
-			).toBe(false)
+		const res = await SELF.fetch(`${ORIGIN}/photon_access_token`, { headers: await bearer('777') })
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			Permissions: Array<{ Permission: string; Role: number }>
+			PhotonAccessToken: string
+			RoomInstanceId: number | null
 		}
+		expect(body.Permissions.length).toBe(11)
+		expect(body.RoomInstanceId).toBe(1000042)
+		// A non-dev account does NOT get the global (Role 0) maker pen.
+		expect(body.Permissions.some((p) => p.Permission === 'CAN_USE_MAKER_PEN' && p.Role === 0)).toBe(
+			false
+		)
 	})
 
 	it('GET /photon_access_token returns null RoomInstanceId when the caller has no presence', async () => {
@@ -1749,6 +1743,254 @@ describe('rooms endpoints', () => {
 		// The ordinal still works.
 		expect((await envOf(await putForm(path, { accessibility: '1' }, '1'))).success).toBe(true)
 		expect(await accessibilityOf()).toBe(1)
+	})
+
+	// The permission table a room's creator saves on a subroom, and how it reaches the
+	// client: `PUT …/permissions` stores entries keyed by (Permission, Role), and
+	// `GET /photon_access_token` merges them over its defaults for whoever is standing in
+	// that subroom. Room 2 / subroom 2 is owned by account 1; account 743 is the visitor
+	// whose presence points at it.
+	describe('subroom permissions', () => {
+		type Permission = { Permission: string; Role: number; Override: boolean; Value: string }
+
+		const putPermissions = async (path: string, body: unknown, sub?: string) =>
+			SELF.fetch(`${ORIGIN}${path}`, {
+				method: 'PUT',
+				headers: { ...(sub ? await bearer(sub) : {}), 'Content-Type': 'application/json' },
+				body: JSON.stringify(body),
+			})
+
+		// Put a player in an instance of the given subroom, then read the permission table
+		// the client would apply when it spawns there.
+		const permissionsIn = async (accountId: number, subRoomId: number): Promise<Permission[]> => {
+			await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+				.bind(
+					JSON.stringify({
+						accountId,
+						roomInstance: { roomInstanceId: 1000900 + subRoomId, roomId: 2, subRoomId },
+						expiresAt: Math.floor(Date.now() / 1000) + 900,
+					})
+				)
+				.run()
+			const res = await SELF.fetch(`${ORIGIN}/photon_access_token`, {
+				headers: await bearer(String(accountId)),
+			})
+			expect(res.status).toBe(200)
+			return ((await res.json()) as { Permissions: Permission[] }).Permissions
+		}
+
+		const entry = (list: Permission[], permission: string, role: number) =>
+			list.find((p) => p.Permission === permission && p.Role === role)
+
+		it('is auth-gated and creator-only', async () => {
+			const body = [
+				{ Permission: 'CAN_SAVE_INVENTIONS', Role: 30, Override: false, Type: 0, Value: 'True' },
+			]
+			// No token → 401.
+			expect((await putPermissions('/rooms/2/subrooms/2/permissions', body)).status).toBe(401)
+			// A valid token that isn't the room's creator → 403.
+			expect((await putPermissions('/rooms/2/subrooms/2/permissions', body, '999')).status).toBe(
+				403
+			)
+			// Not even a co-owner: account 2 holds Role 30 on the seeded rooms. Co-owners may
+			// build in a room but don't decide what a role may do.
+			expect((await putPermissions('/rooms/2/subrooms/2/permissions', body, '2')).status).toBe(403)
+			// Unknown room / unknown subroom → 404.
+			expect((await putPermissions('/rooms/99999/subrooms/2/permissions', body, '1')).status).toBe(
+				404
+			)
+			// A subroom id belonging to another room doesn't resolve either.
+			expect((await putPermissions('/rooms/2/subrooms/9999/permissions', body, '1')).status).toBe(
+				404
+			)
+		})
+
+		it('answers an empty 200 — the client reads no body', async () => {
+			const res = await putPermissions(
+				'/rooms/2/subrooms/2/permissions',
+				[{ Permission: 'CAN_SPAWN_INVENTIONS', Role: 30, Override: true, Type: 0, Value: 'True' }],
+				'1'
+			)
+			expect(res.status).toBe(200)
+			expect(await res.text()).toBe('')
+		})
+
+		it('a checked Override replaces the matching default in place', async () => {
+			const before = await permissionsIn(743, 2)
+			expect(before.length).toBe(11)
+			const at = before.findIndex((p) => p.Permission === 'CAN_USE_MAKER_PEN' && p.Role === 30)
+			// The default for this pair is an un-overridden grant.
+			expect(before[at]).toMatchObject({ Override: false, Value: 'True' })
+
+			expect(
+				(
+					await putPermissions(
+						'/rooms/2/subrooms/2/permissions',
+						[
+							{
+								Permission: 'CAN_USE_MAKER_PEN',
+								Role: 30,
+								Override: true,
+								Type: 0,
+								Value: 'False',
+							},
+						],
+						'1'
+					)
+				).status
+			).toBe(200)
+
+			const after = await permissionsIn(743, 2)
+			// Replaced, not appended — and at the same index, so the table doesn't reshuffle.
+			expect(after.length).toBe(11)
+			expect(after[at]).toMatchObject({
+				Permission: 'CAN_USE_MAKER_PEN',
+				Role: 30,
+				Override: true,
+				Value: 'False',
+			})
+
+			// Re-sending the same (Permission, Role) updates that entry rather than adding one.
+			await putPermissions(
+				'/rooms/2/subrooms/2/permissions',
+				[{ Permission: 'CAN_USE_MAKER_PEN', Role: 30, Override: true, Type: 0, Value: 'True' }],
+				'1'
+			)
+			const changed = await permissionsIn(743, 2)
+			expect(changed.length).toBe(11)
+			expect(changed[at]).toMatchObject({ Override: true, Value: 'True' })
+		})
+
+		it('an unchecked Override erases the entry, back to the default', async () => {
+			const stored = async () =>
+				(await env.DB.prepare(
+					`SELECT COUNT(*) AS n FROM subroom_permission
+					 WHERE sub_room_id = 2 AND permission = 'CAN_USE_MAKER_PEN' AND role = 30`
+				).first<{ n: number }>())!.n
+
+			// The previous test left this pair overridden.
+			expect(await stored()).toBe(1)
+
+			// `Override: false` means "fall back to the default" — the `Value` riding along is
+			// not stored, it's whatever the picker happened to show.
+			expect(
+				(
+					await putPermissions(
+						'/rooms/2/subrooms/2/permissions',
+						[
+							{
+								Permission: 'CAN_USE_MAKER_PEN',
+								Role: 30,
+								Override: false,
+								Type: 0,
+								Value: 'True',
+							},
+						],
+						'1'
+					)
+				).status
+			).toBe(200)
+
+			// The row is gone, and the token serves the default for the pair again.
+			expect(await stored()).toBe(0)
+			const table = await permissionsIn(743, 2)
+			expect(table.length).toBe(11)
+			expect(entry(table, 'CAN_USE_MAKER_PEN', 30)).toMatchObject({
+				Override: false,
+				Value: 'True',
+			})
+
+			// Clearing a pair that was never overridden is a no-op, not an insert.
+			await putPermissions(
+				'/rooms/2/subrooms/2/permissions',
+				[{ Permission: 'CAN_INVITE', Role: 0, Override: false, Type: 0, Value: 'True' }],
+				'1'
+			)
+			expect((await permissionsIn(743, 2)).length).toBe(11)
+		})
+
+		it('appends a permission the defaults do not carry, and scopes it to its subroom', async () => {
+			// CAN_INVITE is in none of the defaults, so it lands as a new entry.
+			await putPermissions(
+				'/rooms/2/subrooms/2/permissions',
+				[{ Permission: 'CAN_INVITE', Role: 30, Override: true, Type: 0, Value: 'False' }],
+				'1'
+			)
+			const inSubRoom2 = await permissionsIn(744, 2)
+			expect(inSubRoom2.length).toBe(12)
+			expect(entry(inSubRoom2, 'CAN_INVITE', 30)).toMatchObject({
+				Override: true,
+				Value: 'False',
+			})
+
+			// A different subroom is untouched — the table is per-subroom, not per-room.
+			expect((await permissionsIn(744, 3)).length).toBe(11)
+			// And so is a player in no instance at all.
+			await env.DB.prepare('DELETE FROM presence WHERE account_id = ?1').bind(744).run()
+			const lobby = await SELF.fetch(`${ORIGIN}/photon_access_token`, {
+				headers: await bearer('744'),
+			})
+			expect(((await lobby.json()) as { Permissions: Permission[] }).Permissions.length).toBe(11)
+		})
+
+		it('keeps a Value that isn’t True/False verbatim', async () => {
+			// Not every permission's UI is the True/False picker, so nothing interprets the
+			// string — it goes to the client exactly as the creator set it.
+			await putPermissions(
+				'/rooms/2/subrooms/2/permissions',
+				[{ Permission: 'MAX_SPAWNED_INVENTIONS', Role: 0, Override: true, Type: 0, Value: '25' }],
+				'1'
+			)
+			expect(entry(await permissionsIn(747, 2), 'MAX_SPAWNED_INVENTIONS', 0)).toMatchObject({
+				Override: true,
+				Value: '25',
+			})
+		})
+
+		it('applies over the dev accounts’ global maker pen, without listing a pair twice', async () => {
+			await putPermissions(
+				'/rooms/2/subrooms/2/permissions',
+				[
+					{ Permission: 'CAN_USE_MAKER_PEN', Role: 0, Override: true, Type: 0, Value: 'False' },
+					// The third sample body — a Role 0 grant the defaults already carry.
+					{
+						Permission: 'CAN_USE_DELETE_ALL_BUTTON',
+						Role: 0,
+						Override: true,
+						Type: 0,
+						Value: 'True',
+					},
+				],
+				'1'
+			)
+			// Account 3 is one of the hardcoded dev accounts, so it gets the global (Role 0)
+			// maker pen prepended — which this subroom then revokes. The merge runs last and
+			// replaces it in place, so the pair appears exactly ONCE: a table listing it twice
+			// with two values would leave which one applies up to the client.
+			const devTable = await permissionsIn(3, 2)
+			expect(devTable.filter((p) => p.Permission === 'CAN_USE_MAKER_PEN' && p.Role === 0)).toEqual([
+				{ Override: true, Permission: 'CAN_USE_MAKER_PEN', Role: 0, Type: 0, Value: 'False' },
+			])
+			expect(entry(devTable, 'CAN_USE_DELETE_ALL_BUTTON', 0)).toMatchObject({ Value: 'True' })
+
+			// A normal player in the same subroom sees the same revocation.
+			expect(entry(await permissionsIn(745, 2), 'CAN_USE_MAKER_PEN', 0)).toMatchObject({
+				Value: 'False',
+			})
+		})
+
+		it('a cloned subroom inherits the source’s permission table', async () => {
+			const res = await SELF.fetch(`${ORIGIN}/rooms/2/subrooms/2/clone`, {
+				method: 'POST',
+				headers: await bearer('1'),
+			})
+			const room = (await res.json()) as { value: { SubRooms: Array<{ SubRoomId: number }> } }
+			const cloneId = Math.max(...room.value.SubRooms.map((s) => s.SubRoomId))
+
+			const inClone = await permissionsIn(746, cloneId)
+			expect(entry(inClone, 'CAN_INVITE', 30)).toMatchObject({ Value: 'False' })
+			expect(entry(inClone, 'CAN_USE_MAKER_PEN', 0)).toMatchObject({ Value: 'False' })
+		})
 	})
 
 	it('POST /rooms/:id/subrooms/:sid/clone is auth-gated, owner-only, and copies the subroom', async () => {
@@ -2020,7 +2262,6 @@ describe('rooms endpoints', () => {
 			'GET /rooms/{roomId}/playerdata/me',
 			'GET /rooms/{roomId}/similar',
 			'GET /rooms/{roomId}/subrooms/{subRoomId}/saves',
-			'GET /roomserver/photon_access_token',
 			'GET /roomserver/rooms/createdby/me',
 			'POST /rooms/{roomId}/clone',
 			'POST /rooms/{roomId}/subrooms',
@@ -2039,6 +2280,7 @@ describe('rooms endpoints', () => {
 			'PUT /rooms/{roomId}/roles/{accountId}',
 			'PUT /rooms/{roomId}/subrooms/{subRoomId}/accessibility',
 			'PUT /rooms/{roomId}/subrooms/{subRoomId}/modify',
+			'PUT /rooms/{roomId}/subrooms/{subRoomId}/permissions',
 			'PUT /rooms/{roomId}/tags',
 			'PUT /rooms/{roomId}/warning',
 		])

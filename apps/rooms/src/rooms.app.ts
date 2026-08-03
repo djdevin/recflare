@@ -26,6 +26,7 @@ import {
 	getRoomsByCreator,
 	getRoomsByIds,
 	getSimilarRooms,
+	getSubRoomPermissions,
 	getSubRoomSaves,
 	getVisitedRooms,
 	modifySubRoom,
@@ -38,6 +39,7 @@ import {
 	setRoomImage,
 	setRoomName,
 	setRoomRole,
+	setSubRoomPermissions,
 	toggleCheer,
 	toggleFavorite,
 	toggleRoomTag,
@@ -84,6 +86,7 @@ import {
 	stringQuery,
 	SubRoomAccessibilityRequest,
 	subRoomIdParam,
+	SubRoomPermissionsRequest,
 	SubRoomSavesPage,
 	TagRequest,
 	UNAUTHORIZED_EMPTY,
@@ -93,6 +96,7 @@ import {
 } from './openapi'
 
 import type { Context } from 'hono'
+import type { RoomPermission } from '@repo/domain'
 import type { App } from './context'
 
 /**
@@ -134,9 +138,14 @@ const DEFAULT_MAX_ROOMS_PER_ACCOUNT = 10
  * hardcoded moderator/dev accounts. */
 const MAKER_PEN_ACCOUNT_IDS = new Set([1, 2, 3])
 
-/** The slice of the shared presence row we read — the caller's current room instance. */
+/**
+ * The slice of the shared presence row we read — the caller's current room instance.
+ * `subRoomId` is what scopes the stored permission overrides: they belong to the subroom
+ * the player is standing in, not to the room.
+ */
 interface PresenceView {
 	roomInstanceId?: number
+	subRoomId?: number
 }
 
 /**
@@ -146,16 +155,26 @@ interface PresenceView {
  * they aren't in one). `PhotonAccessToken` stays empty — the reference server
  * signs it via `ClientSecurity`, whose secret/algorithm we don't have; our
  * Photon setup accepts an empty token.
+ *
+ * `overrides` are the permissions the room's creator saved on the subroom the caller is
+ * in (see `PUT …/subrooms/{subRoomId}/permissions`). They are matched against the
+ * defaults by (`Permission`, `Role`) — the same pair the client addresses an entry by —
+ * and win, so a subroom that revokes the Role 0 maker pen revokes it for a dev account
+ * standing in it as well.
  */
-function photonAccessToken(accountId: number, roomInstanceId: number | null) {
-	const perm = (Permission: string, Role: number, Override: boolean) => ({
+function photonAccessToken(
+	accountId: number,
+	roomInstanceId: number | null,
+	overrides: RoomPermission[] = []
+) {
+	const perm = (Permission: string, Role: number, Override: boolean): RoomPermission => ({
 		Override,
 		Permission,
 		Role,
 		Type: 0,
 		Value: 'True',
 	})
-	const permissions = [
+	const permissions: RoomPermission[] = [
 		perm('CAN_USE_ROOM_RESET_BUTTON', 0, true),
 		perm('CAN_USE_DELETE_ALL_BUTTON', 0, true),
 		perm('CAN_SAVE_INVENTIONS', 0, true),
@@ -168,8 +187,21 @@ function photonAccessToken(accountId: number, roomInstanceId: number | null) {
 		perm('CAN_SPAWN_INVENTIONS', 30, true),
 		perm('CAN_USE_PLAY_GIZMOS_TOGGLE', 30, true),
 	]
+
 	if (MAKER_PEN_ACCOUNT_IDS.has(accountId)) {
 		permissions.unshift(perm('CAN_USE_MAKER_PEN', 0, true))
+	}
+
+	// The subroom's stored table wins, applied LAST and over the dev grant too: a
+	// (Permission, Role) the table already carries is replaced in place — so the order
+	// doesn't shift under the client, and no pair is ever listed twice with two values —
+	// and one it doesn't (e.g. CAN_INVITE) is appended.
+	for (const override of overrides) {
+		const i = permissions.findIndex(
+			(p) => p.Permission === override.Permission && p.Role === override.Role
+		)
+		if (i === -1) permissions.push(override)
+		else permissions[i] = override
 	}
 	return {
 		Permissions: permissions,
@@ -179,16 +211,22 @@ function photonAccessToken(accountId: number, roomInstanceId: number | null) {
 }
 
 /**
- * Photon access-token handler (served bare and under `/roomserver`). Auth-gated:
- * resolves the caller, reads their current room instance from the shared
- * `presence` table (see @repo/domain), and returns the permissions + token.
+ * Photon access-token handler. Auth-gated: resolves the caller, reads their current
+ * room instance from the shared `presence` table (see @repo/domain), and returns the
+ * permissions + token.
  */
 async function handlePhotonAccessToken(c: Context<App>) {
 	const accountId = await authedAccountId(c)
 	if (accountId === null) return unauthorized(c)
-	const presence = await getPresence<PresenceView>(c.env.DB, accountId)
-	const roomInstanceId = presence?.roomInstance?.roomInstanceId ?? null
-	return c.json(photonAccessToken(accountId, roomInstanceId))
+	const instance = (await getPresence<PresenceView>(c.env.DB, accountId))?.roomInstance
+	// The permission overrides are the ones saved on the subroom the caller is standing in.
+	// A player in no instance — sitting in the lobby, or an instance predating subroom
+	// tracking — gets the default table untouched.
+	const overrides =
+		typeof instance?.subRoomId === 'number'
+			? await getSubRoomPermissions(c.env.DB, instance.subRoomId)
+			: []
+	return c.json(photonAccessToken(accountId, instance?.roomInstanceId ?? null, overrides))
 }
 
 /** The Bearer token's account id (`sub`), or null when there's no valid token. */
@@ -215,6 +253,59 @@ function parseAccessibility(value: unknown): number | undefined {
 		([name, ordinal]) => typeof ordinal === 'number' && name.toLowerCase() === raw.toLowerCase()
 	)
 	return named ? (named[1] as number) : undefined
+}
+
+/** Parse an integer from the number or numeric string a JSON body may carry. */
+function parseInt10(value: unknown): number | undefined {
+	if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : undefined
+	if (typeof value !== 'string') return undefined
+	const n = Number.parseInt(value.trim(), 10)
+	return Number.isNaN(n) ? undefined : n
+}
+
+/**
+ * The client's `Value`, kept as the STRING it sends. Usually `"True"`/`"False"` — the
+ * True/False picker beside the override checkbox — but a permission whose UI is something
+ * else carries a different value, so nothing here interprets it. A JSON boolean or number
+ * is rendered the way the client would have written it.
+ */
+function permissionValue(value: unknown): string {
+	if (typeof value === 'string') return value
+	if (typeof value === 'boolean') return value ? 'True' : 'False'
+	if (typeof value === 'number') return String(value)
+	return ''
+}
+
+/**
+ * Parse the subroom-permissions PUT body: a JSON ARRAY of
+ * `{ Permission, Role, Override, Type, Value }` entries.
+ *
+ * `Override` is the client's checkbox, not data — see {@link setSubRoomPermissions}: true
+ * stores `Value` for that (`Permission`, `Role`), false clears any stored entry so the
+ * pair falls back to the default. It is carried through as sent.
+ *
+ * Entries without a permission name or a usable role are dropped rather than rejected —
+ * the client ignores the response either way, so half a table applied beats none.
+ */
+function parseRoomPermissions(body: unknown): RoomPermission[] {
+	if (!Array.isArray(body)) return []
+	const permissions: RoomPermission[] = []
+	for (const entry of body) {
+		if (typeof entry !== 'object' || entry === null) continue
+		const e = entry as Record<string, unknown>
+		const permission = typeof e.Permission === 'string' ? e.Permission.trim() : ''
+		const role = parseInt10(e.Role)
+		if (permission === '' || role === undefined) continue
+		permissions.push({
+			Permission: permission,
+			Role: role,
+			// Sent as a JSON boolean, unlike `Value` — accept the string form regardless.
+			Override: e.Override === true || String(e.Override).toLowerCase() === 'true',
+			Type: parseInt10(e.Type) ?? 0,
+			Value: permissionValue(e.Value),
+		})
+	}
+	return permissions
 }
 
 /** The notifications hub is a single global DO instance (see the `notify` worker). */
@@ -1862,6 +1953,67 @@ const app = new Hono<App>()
 		}
 	)
 
+	// Set a subroom's permission overrides — what each role may do in that subroom. The
+	// body is a JSON ARRAY of the entries to change, keyed by (Permission, Role): `Override`
+	// is the client's checkbox, so true stores the entry for that pair and false clears it
+	// back to the default. The stored table then overwrites the matching defaults in
+	// `GET /photon_access_token`. Auth-gated (401) and creator-only (403), like the other
+	// subroom mutations. Answers an EMPTY 200 — the client fires this and re-reads nothing,
+	// so there is no envelope to match.
+	.put(
+		'/rooms/:roomId{[0-9]+}/subrooms/:subRoomId{[0-9]+}/permissions',
+		describeRoute({
+			tags: ['Subrooms'],
+			summary: 'Set a subroom’s permissions',
+			description: [
+				'Stores the permission entries a room’s creator changed for one subroom — who may',
+				'save inventions, invite players, use the delete-all button, and so on. The body is a',
+				'JSON ARRAY; each entry is addressed by its (`Permission`, `Role`) pair, so re-sending',
+				'a pair overwrites the stored entry rather than adding a second, and pairs that were',
+				'never sent are left alone.',
+				'',
+				'`Override` is the checkbox the client draws beside each permission, not data:',
+				'`true` stores `Value` for that pair, and `false` means “fall back to the default”, so',
+				'it DELETES any stored entry. Nothing is stored with `Override: false`, and reads',
+				'always serve `true`. `Value` is a string — usually `True`/`False`, but it is kept',
+				'verbatim, since not every permission’s UI is a True/False picker.',
+				'',
+				'What this feeds is `GET /photon_access_token`: a stored entry replaces the default',
+				'with the same (`Permission`, `Role`) in the table the client applies when it spawns,',
+				'and one naming a pair the defaults don’t carry (e.g. `CAN_INVITE`) is added to it.',
+				'The overrides apply to the subroom the caller is standing in, resolved from presence.',
+				'',
+				'Creator-only — co-owners may build in a room but not decide what a role may do.',
+				'The response body is EMPTY: the client doesn’t read one.',
+			].join('\n'),
+			security: AUTHED,
+			parameters: [roomIdParam, subRoomIdParam],
+			requestBody: jsonBody(SubRoomPermissionsRequest, 'The permission entries to set'),
+			responses: {
+				200: { description: 'Stored (empty body)' },
+				401: UNAUTHORIZED_RESPONSE,
+				403: FORBIDDEN_RESPONSE,
+				404: { description: 'No such room or subroom' },
+			},
+		}),
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) return unauthorized(c)
+
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			const subRoomId = Number.parseInt(c.req.param('subRoomId'), 10)
+
+			// Scoped through the room so a subroom id from another room can't be written.
+			const room = await getRoomById(c.env.DB, roomId)
+			if (!room || !findSubRoom(room, subRoomId)) return c.notFound()
+			if (room.CreatorAccountId !== accountId) return c.body(null, 403)
+
+			const permissions = parseRoomPermissions(await c.req.json().catch(() => null))
+			await setSubRoomPermissions(c.env.DB, subRoomId, permissions)
+			return c.body(null, 200)
+		}
+	)
+
 	// Clone a subroom into a new subroom of the same room (fresh SubRoomId, same
 	// scene/settings/data). Auth-gated (401) and owner-only. Notifies the owner and
 	// returns the updated ROOM in the `{ success, error, value }` envelope — NOT the new
@@ -2083,8 +2235,7 @@ const app = new Hono<App>()
 		}
 	)
 
-	// Photon access token + room permissions the client needs to spawn into a
-	// room. The client calls it on the rooms host both bare and under `/roomserver`.
+	// Photon access token + room permissions the client needs to spawn into a room.
 	.get(
 		'/photon_access_token',
 		describeRoute({
@@ -2099,23 +2250,6 @@ const app = new Hono<App>()
 				'secret/algorithm we don’t have, and our Photon setup accepts an empty token. The',
 				'global (Role 0) maker pen is granted only to the hardcoded dev accounts.',
 			].join('\n'),
-			security: AUTHED,
-			responses: {
-				200: json(PhotonAccessTokenDto, 'The permissions and (empty) token'),
-				401: UNAUTHORIZED_RESPONSE,
-			},
-		}),
-		handlePhotonAccessToken
-	)
-	.get(
-		'/roomserver/photon_access_token',
-		describeRoute({
-			tags: ['Session'],
-			summary: 'Photon token + room permissions (legacy path)',
-			description: [
-				'Identical to `GET /photon_access_token` — the client calls it both bare and under the',
-				'`/roomserver` prefix, so both forms are registered.',
-			].join(' '),
 			security: AUTHED,
 			responses: {
 				200: json(PhotonAccessTokenDto, 'The permissions and (empty) token'),
