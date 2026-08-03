@@ -480,6 +480,35 @@ export const SubRoomAccessibilityRequest = z.object({
 })
 
 /**
+ * `PUT /rooms/{roomId}/subrooms/{subRoomId}/permissions` — the entries to change, keyed by
+ * (`Permission`, `Role`). Only the pairs sent are touched. `Override` is the client's
+ * checkbox: true stores the entry, false clears it back to the default.
+ */
+export const SubRoomPermissionsRequest = z
+	.array(
+		z.object({
+			Permission: z
+				.string()
+				.describe('e.g. `CAN_SAVE_INVENTIONS`, `CAN_INVITE`, `CAN_USE_DELETE_ALL_BUTTON`'),
+			Role: z.int().describe('The role tier the entry applies to (0 = everyone, 30 = co-owner)'),
+			Override: z
+				.boolean()
+				.describe(
+					'The override checkbox, and a JSON boolean unlike `Value`: true stores this entry, ' +
+						'false DELETES any stored one so the pair falls back to its default'
+				),
+			Type: z.int().describe('Always 0 in what the client sends; stored verbatim'),
+			Value: z
+				.string()
+				.describe(
+					'A STRING, not a boolean — usually `True` / `False`, but kept verbatim: not every ' +
+						'permission’s UI is a True/False picker. Ignored when `Override` is false'
+				),
+		})
+	)
+	.describe('An array — the client sends one even when changing a single permission')
+
+/**
  * `POST /rooms/{roomId}/subrooms/{subRoomId}/publish_save` — promotes one save to live.
  * Any id from the subroom's history works, so this is both publish and restore.
  */
@@ -543,11 +572,13 @@ export const SubRoomSavesPage = z.object({
 
 /** One entry of the permission table the client applies when it spawns into a room. */
 export const RoomPermissionDto = z.object({
-	Override: z.boolean(),
+	Override: z.boolean().describe('Always true on an entry that came from a subroom’s overrides'),
 	Permission: z.string().describe('e.g. `CAN_USE_MAKER_PEN`, `CAN_SAVE_INVENTIONS`'),
 	Role: z.int().describe('The role tier the permission applies to (0 = everyone)'),
 	Type: z.int(),
-	Value: z.string().describe('Always `True` — a permission is present or absent'),
+	Value: z
+		.string()
+		.describe('A STRING, not a boolean — `True` on the defaults, anything on an override'),
 })
 
 /**
@@ -556,6 +587,11 @@ export const RoomPermissionDto = z.object({
  * `PhotonAccessToken` is deliberately empty: the reference server signs it with a
  * secret/algorithm we don't have, and our Photon setup accepts an empty token. The
  * global (Role 0) maker pen is granted only to the hardcoded dev accounts.
+ *
+ * `Permissions` is the default table with the overrides stored on the subroom the caller
+ * is standing in merged over it (see
+ * `PUT /rooms/{roomId}/subrooms/{subRoomId}/permissions`): an override replaces the
+ * default with the same (`Permission`, `Role`), and one naming a new pair is appended.
  */
 export const PhotonAccessTokenDto = z.object({
 	Permissions: z.array(RoomPermissionDto),
