@@ -58,6 +58,25 @@ beforeAll(async () => {
 	for (const stmt of PRESENCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	// Seed each room and split its subrooms into the subroom table (mirrors 0007's backfill).
 	for (const r of importRooms) await seedRoomWithSubRooms(env.DB, r as Record<string, unknown>)
+
+	// Relationship table (owned by the api worker) — `visitedby/:playerId` reads it to
+	// check the caller is a friend of the player whose history they're asking for.
+	await env.DB.prepare(
+		`CREATE TABLE IF NOT EXISTS relationship (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			requester_id INTEGER NOT NULL,
+			target_id INTEGER NOT NULL,
+			relationship_type INTEGER NOT NULL DEFAULT 0
+		)`
+	).run()
+	const insertRel = env.DB.prepare(
+		'INSERT INTO relationship (requester_id, target_id, relationship_type) VALUES (?1, ?2, ?3)'
+	)
+	await env.DB.batch([
+		insertRel.bind(791, 790, 3), // friends — the caller (791) is the requester
+		insertRel.bind(790, 792, 3), // friends — the caller (792) is the target
+		insertRel.bind(793, 790, 1), // request out, not accepted — 793 is NOT a friend
+	])
 })
 
 describe('rooms endpoints', () => {
@@ -258,6 +277,62 @@ describe('rooms endpoints', () => {
 			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: await bearer('780') })
 		).json()) as unknown[]
 		expect(other).toEqual([])
+	})
+
+	it('GET /rooms/visitedby/:playerId serves a friend’s visited rooms and 403s everyone else', async () => {
+		// Give 790 a visit history (cheering/favoriting stamps a last-visit).
+		const subject = await bearer('790')
+		await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/cheer`, {
+			method: 'PUT',
+			headers: subject,
+		})
+		await SELF.fetch(`${ORIGIN}/rooms/12/interactionby/me/favorite`, {
+			method: 'PUT',
+			headers: subject,
+		})
+
+		// A mutual friend reads it — a bare array, regardless of which side of the
+		// relationship row the caller sits on.
+		for (const friend of ['791', '792']) {
+			const res = await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`, {
+				headers: await bearer(friend),
+			})
+			expect(res.status).toBe(200)
+			const body = (await res.json()) as Array<{ RoomId: number }>
+			expect(body.map((r) => r.RoomId).sort((a, b) => a - b)).toEqual([2, 12])
+		}
+
+		// Paginated via skip/take.
+		const page = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/790?skip=0&take=1`, {
+				headers: await bearer('791'),
+			})
+		).json()) as unknown[]
+		expect(page.length).toBe(1)
+
+		// Your own history is readable by id, not just via `me`.
+		const own = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`, { headers: subject })
+		).json()) as unknown[]
+		expect(own.length).toBe(2)
+
+		// A pending request is not a friendship, and a stranger is not either → 403.
+		for (const outsider of ['793', '794']) {
+			const res = await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`, {
+				headers: await bearer(outsider),
+			})
+			expect(res.status).toBe(403)
+		}
+
+		// No token at all → 401, never a fallback account.
+		const anon = await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`)
+		expect(anon.status).toBe(401)
+
+		// `visitedby/me` still routes to the literal handler, not the id pattern.
+		const me = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: subject })
+		).json()) as unknown[]
+		expect(me.length).toBe(2)
 	})
 
 	it('GET /rooms/hot returns a paginated { Results, TotalResults } of public rooms', async () => {
@@ -1939,6 +2014,7 @@ describe('rooms endpoints', () => {
 			'GET /rooms/recommendations',
 			'GET /rooms/search',
 			'GET /rooms/visitedby/me',
+			'GET /rooms/visitedby/{playerId}',
 			'GET /rooms/{roomId}',
 			'GET /rooms/{roomId}/interactionby/me',
 			'GET /rooms/{roomId}/playerdata/me',
