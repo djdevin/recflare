@@ -235,9 +235,10 @@ function HomePage() {
 }
 
 /**
- * The hero: a rotating in-game photo with the headline and the way in over it. The
- * photo is the backdrop, never the payload — when the feed is slow or down the stage
- * still renders, so "Play now!" is reachable either way.
+ * The hero: the headline and the way in on the left, a rotating in-game photo on the
+ * right. The photo is proof, never the payload — when the feed is slow or down the
+ * frame holds its space and the left half reads the same, so "Play now!" is reachable
+ * either way.
  */
 function Stage({ slides }: { slides: Slide[] | null }) {
 	const [idx, setIdx] = useState(0)
@@ -252,14 +253,6 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 
 	return (
 		<section className="stage">
-			{slide && (
-				<img
-					className="stage-photo"
-					key={slide.url}
-					src={slide.url}
-					alt={`Photo taken in game by ${slide.username}`}
-				/>
-			)}
 			<div className="stage-body">
 				{/* Deliberately doesn't name the game: this is a fan project, so the
 				    trademark stays out of the headline and appears lower down, in
@@ -267,6 +260,9 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 				<h1 className="stage-title">
 					Play like it&apos;s <em>2023</em>.
 				</h1>
+				<p className="stage-lede">
+					The servers you remember, rebuilt and running — free, open source, and up right now.
+				</p>
 				<div className="stage-actions">
 					<a className="cta" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">
 						Download for PC
@@ -276,12 +272,25 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 					</a>
 				</div>
 			</div>
-			{slide && (
+			<div className="stage-show">
+				<div className="stage-frame">
+					{slide && (
+						<img
+							className="stage-photo"
+							key={slide.url}
+							src={slide.url}
+							alt={`Photo taken in game by ${slide.username}`}
+						/>
+					)}
+				</div>
+				{/* Always mounted, so the frame doesn't shift down when the feed lands. */}
 				<div className="stage-foot">
-					<span className="credit">
-						Photo by @{slide.username}
-						{slide.roomName && ` in ${slide.roomName}`}
-					</span>
+					{slide && (
+						<span className="credit">
+							Photo by @{slide.username}
+							{slide.roomName && ` in ${slide.roomName}`}
+						</span>
+					)}
 					{slides && slides.length > 1 && (
 						<span className="dots">
 							{slides.map((s, i) => (
@@ -296,7 +305,7 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 						</span>
 					)}
 				</div>
-			)}
+			</div>
 		</section>
 	)
 }
@@ -313,8 +322,8 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 				<h2 className="about-title">An open source rebuild of the 2023 servers</h2>
 				<p className="about-lede">
 					A free fan project, made by players who missed it. Aiming to be{' '}
-					<strong>feature-complete</strong> and infinitely scalable — no gatekeeping, no basement
-					server.
+					<strong>feature-complete</strong> and infinitely scalable —{' '}
+					<strong>architected for the cloud</strong>, no gatekeeping, no basement server.
 				</p>
 			</div>
 			<div className="about-side">

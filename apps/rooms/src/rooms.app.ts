@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
 	Accessibility,
+	areFriends,
 	canManageRoom,
 	cloneRoom,
 	cloneSubRoom,
@@ -63,10 +64,12 @@ import {
 	MissingLookupParam,
 	ModifySubRoomRequest,
 	NameRequest,
+	NOT_FRIENDS_RESPONSE,
 	PagedRooms,
 	pageParams,
 	PhotonAccessTokenDto,
 	PlayerDataDto,
+	playerIdParam,
 	PublishSaveRequest,
 	RestrictionsRequest,
 	RoleRequest,
@@ -669,6 +672,45 @@ const app = new Hono<App>()
 			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 			const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
 			return c.json(await getVisitedRooms(c.env.DB, accountId, skip, take))
+		}
+	)
+
+	// Another player's visited rooms — what the client shows on a friend's profile.
+	// Auth-gated (401), and FRIENDS-ONLY: a valid token for someone who isn't that
+	// player and isn't a mutual friend of theirs is a 403, since where a player has
+	// been is not public. Registered after `visitedby/me` so the literal path wins.
+	// Paginated via skip/take (take defaults to 100) and, like `visitedby/me`, a bare
+	// array — the client's room-source loaders expect a plain list, not a page.
+	.get(
+		'/rooms/visitedby/:playerId{[0-9]+}',
+		describeRoute({
+			tags: ['Rooms'],
+			summary: 'A friend’s visited rooms',
+			description: [
+				'The rooms another player has visited, as a bare array. Friends only: the caller must',
+				'be that player or a mutual friend of theirs (403 otherwise) — visit history is not',
+				'public.',
+			].join(' '),
+			security: AUTHED,
+			parameters: [playerIdParam, ...pageParams(100)],
+			responses: {
+				200: json(RoomDto.array(), 'That player’s visited rooms'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: NOT_FRIENDS_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) return unauthorized(c)
+			const playerId = Number.parseInt(c.req.param('playerId'), 10)
+			// Your own history is always readable (the client sometimes sends the id
+			// rather than `me`); anyone else's needs a mutual friendship.
+			if (playerId !== accountId && !(await areFriends(c.env.DB, accountId, playerId))) {
+				return c.body(null, 403)
+			}
+			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
+			const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
+			return c.json(await getVisitedRooms(c.env.DB, playerId, skip, take))
 		}
 	)
 
