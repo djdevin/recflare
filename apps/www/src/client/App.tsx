@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { DISCORD_INVITE, DOWNLOAD_URL, LICENSE_URL, SOURCE_REPO } from '../links'
+import {
+	DISCORD_INVITE,
+	DOWNLOAD_URL,
+	LICENSE_URL,
+	QUEST_DOWNLOAD_URL,
+	SOURCE_REPO,
+} from '../links'
 
 import type { ReactNode } from 'react'
 
@@ -242,14 +248,18 @@ function HomePage() {
  */
 function Stage({ slides }: { slides: Slide[] | null }) {
 	const [idx, setIdx] = useState(0)
+	const count = slides?.length ?? 0
 
+	// A timeout keyed on the current slide rather than one long-lived interval: steering
+	// by hand re-arms it, so a photo you just picked gets its full six seconds.
 	useEffect(() => {
-		if (!slides || slides.length < 2) return
-		const t = setInterval(() => setIdx((i) => (i + 1) % slides.length), 6000)
-		return () => clearInterval(t)
-	}, [slides])
+		if (count < 2) return
+		const t = setTimeout(() => setIdx((i) => (i + 1) % count), 6000)
+		return () => clearTimeout(t)
+	}, [count, idx])
 
 	const slide = slides && slides.length > 0 ? slides[idx] : null
+	const step = (by: number) => setIdx((i) => (i + by + count) % count)
 
 	return (
 		<section className="stage">
@@ -266,6 +276,9 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 				<div className="stage-actions">
 					<a className="cta" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">
 						Download for PC
+					</a>
+					<a className="cta" href={QUEST_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+						Download for Quest
 					</a>
 					<a className="cta discord" href={DISCORD_INVITE} target="_blank" rel="noreferrer">
 						Join the Discord
@@ -291,22 +304,41 @@ function Stage({ slides }: { slides: Slide[] | null }) {
 							{slide.roomName && ` in ${slide.roomName}`}
 						</span>
 					)}
-					{slides && slides.length > 1 && (
-						<span className="dots">
-							{slides.map((s, i) => (
-								<button
-									key={s.url}
-									className={i === idx ? 'on' : ''}
-									onClick={() => setIdx(i)}
-									aria-label={`Show photo ${i + 1} of ${slides.length}`}
-									aria-current={i === idx}
-								/>
-							))}
+					{/* Arrows and a count, not a dot per photo: the feed runs to SLIDESHOW_LIMIT
+					    (130) images, and a dot each is both unusable and wide enough to shove
+					    the headline's half of the split off the page. */}
+					{count > 1 && (
+						<span className="steer">
+							<button onClick={() => step(-1)} aria-label="Previous photo">
+								<Chevron />
+							</button>
+							<span className="count">
+								{idx + 1} / {count}
+							</span>
+							<button onClick={() => step(1)} aria-label="Next photo">
+								<Chevron next />
+							</button>
 						</span>
 					)}
 				</div>
 			</div>
 		</section>
+	)
+}
+
+/** The slideshow's back/forward mark. Decorative — the buttons carry the label. */
+function Chevron({ next }: { next?: boolean }) {
+	return (
+		<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+			<path
+				d={next ? 'M9 5l7 7-7 7' : 'M15 5l-7 7 7 7'}
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="2.2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
+		</svg>
 	)
 }
 

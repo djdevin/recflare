@@ -167,10 +167,15 @@ body {
 	padding: 56px 20px 16px;
 }
 
+/* min-width: 0 on both halves, or the split isn't one: a `1fr` track's automatic
+   minimum is its content's min-content width, so a wide child (the slideshow controls,
+   a long unbroken credit) grows its column past 50% and takes the space out of the
+   other one — which is how this last read as 30/70 with the buttons crushed. */
 .stage-show {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
+	min-width: 0;
 }
 
 /* Fixed shape, filled by whatever lands: screenshots arrive at any aspect ratio, and a
@@ -229,7 +234,7 @@ body {
 	margin: 0 0 28px;
 }
 
-/* Credit line and slide dots, under the photo rather than on it. */
+/* Credit line and slideshow controls, under the photo rather than on it. */
 .stage-foot {
 	display: flex;
 	flex-wrap: wrap;
@@ -237,44 +242,51 @@ body {
 	align-items: center;
 	gap: 8px 20px;
 	/* Reserved even while the feed is in flight, so nothing shifts when it lands. */
-	min-height: 24px;
+	min-height: 28px;
 	font-size: 0.8rem;
 	color: var(--muted);
 }
 
-/* The dots are the only way to steer the stage, so each one gets a 24px target
-   even though the mark itself is 7px. */
-.dots {
-	display: flex;
-	margin: -8px -6px;
+/* Long usernames and room names wrap instead of widening the column. */
+.credit {
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 
-.dots button {
+/* Back / forward, with the position between them. Fixed width whatever the feed
+   length is — see the note on .stage-show for what a per-photo control did here. */
+.steer {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+}
+
+.steer button {
 	display: grid;
 	place-content: center;
-	width: 24px;
-	height: 24px;
+	width: 28px;
+	height: 28px;
 	padding: 0;
-	border: none;
-	background: none;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: transparent;
+	color: var(--muted);
 	cursor: pointer;
+	transition:
+		color 0.15s ease,
+		border-color 0.15s ease;
 }
 
-.dots button::after {
-	content: '';
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: color-mix(in srgb, var(--muted) 45%, transparent);
-	transition: background 0.2s ease;
+.steer button:hover {
+	color: var(--text);
+	border-color: var(--muted);
 }
 
-.dots button:hover::after {
-	background: var(--muted);
-}
-
-.dots button.on::after {
-	background: var(--accent);
+/* Tabular figures so the frame doesn't twitch as the index rolls 9 → 10. */
+.count {
+	font-variant-numeric: tabular-nums;
+	padding: 0 6px;
 }
 
 /* ---- What it is (below the stage) --------------------------------------- */
